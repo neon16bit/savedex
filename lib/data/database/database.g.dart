@@ -1,0 +1,3282 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'database.dart';
+
+// ignore_for_file: type=lint
+class $SavedItemsTableTable extends SavedItemsTable
+    with TableInfo<$SavedItemsTableTable, SavedItemEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SavedItemsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _permalinkMeta = const VerificationMeta(
+    'permalink',
+  );
+  @override
+  late final GeneratedColumn<String> permalink = GeneratedColumn<String>(
+    'permalink',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<ItemType, int> itemType =
+      GeneratedColumn<int>(
+        'item_type',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<ItemType>($SavedItemsTableTable.$converteritemType);
+  static const VerificationMeta _parentPostIdMeta = const VerificationMeta(
+    'parentPostId',
+  );
+  @override
+  late final GeneratedColumn<String> parentPostId = GeneratedColumn<String>(
+    'parent_post_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _parentPostTitleMeta = const VerificationMeta(
+    'parentPostTitle',
+  );
+  @override
+  late final GeneratedColumn<String> parentPostTitle = GeneratedColumn<String>(
+    'parent_post_title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subredditMeta = const VerificationMeta(
+    'subreddit',
+  );
+  @override
+  late final GeneratedColumn<String> subreddit = GeneratedColumn<String>(
+    'subreddit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _authorMeta = const VerificationMeta('author');
+  @override
+  late final GeneratedColumn<String> author = GeneratedColumn<String>(
+    'author',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _thumbnailUrlMeta = const VerificationMeta(
+    'thumbnailUrl',
+  );
+  @override
+  late final GeneratedColumn<String> thumbnailUrl = GeneratedColumn<String>(
+    'thumbnail_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _mediaUrlMeta = const VerificationMeta(
+    'mediaUrl',
+  );
+  @override
+  late final GeneratedColumn<String> mediaUrl = GeneratedColumn<String>(
+    'media_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<MediaType, int> mediaType =
+      GeneratedColumn<int>(
+        'media_type',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: Constant(MediaType.text.index),
+      ).withConverter<MediaType>($SavedItemsTableTable.$convertermediaType);
+  static const VerificationMeta _scoreMeta = const VerificationMeta('score');
+  @override
+  late final GeneratedColumn<int> score = GeneratedColumn<int>(
+    'score',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _numCommentsMeta = const VerificationMeta(
+    'numComments',
+  );
+  @override
+  late final GeneratedColumn<int> numComments = GeneratedColumn<int>(
+    'num_comments',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _isNsfwMeta = const VerificationMeta('isNsfw');
+  @override
+  late final GeneratedColumn<bool> isNsfw = GeneratedColumn<bool>(
+    'is_nsfw',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_nsfw" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _isStarredMeta = const VerificationMeta(
+    'isStarred',
+  );
+  @override
+  late final GeneratedColumn<bool> isStarred = GeneratedColumn<bool>(
+    'is_starred',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_starred" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _isArchivedMeta = const VerificationMeta(
+    'isArchived',
+  );
+  @override
+  late final GeneratedColumn<bool> isArchived = GeneratedColumn<bool>(
+    'is_archived',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_archived" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _userNoteMeta = const VerificationMeta(
+    'userNote',
+  );
+  @override
+  late final GeneratedColumn<String> userNote = GeneratedColumn<String>(
+    'user_note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _csvSourceMeta = const VerificationMeta(
+    'csvSource',
+  );
+  @override
+  late final GeneratedColumn<String> csvSource = GeneratedColumn<String>(
+    'csv_source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('saved_posts.csv'),
+  );
+  static const VerificationMeta _importOrderMeta = const VerificationMeta(
+    'importOrder',
+  );
+  @override
+  late final GeneratedColumn<int> importOrder = GeneratedColumn<int>(
+    'import_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtUtcMeta = const VerificationMeta(
+    'createdAtUtc',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAtUtc = GeneratedColumn<DateTime>(
+    'created_at_utc',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _savedAtUtcMeta = const VerificationMeta(
+    'savedAtUtc',
+  );
+  @override
+  late final GeneratedColumn<DateTime> savedAtUtc = GeneratedColumn<DateTime>(
+    'saved_at_utc',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _postFlairMeta = const VerificationMeta(
+    'postFlair',
+  );
+  @override
+  late final GeneratedColumn<String> postFlair = GeneratedColumn<String>(
+    'post_flair',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _subredditTypeMeta = const VerificationMeta(
+    'subredditType',
+  );
+  @override
+  late final GeneratedColumn<String> subredditType = GeneratedColumn<String>(
+    'subreddit_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('public'),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<EnrichmentStatus, int>
+  enrichmentStatus =
+      GeneratedColumn<int>(
+        'enrichment_status',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: Constant(EnrichmentStatus.slugOnly.index),
+      ).withConverter<EnrichmentStatus>(
+        $SavedItemsTableTable.$converterenrichmentStatus,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    permalink,
+    itemType,
+    parentPostId,
+    parentPostTitle,
+    title,
+    subreddit,
+    author,
+    body,
+    url,
+    thumbnailUrl,
+    mediaUrl,
+    mediaType,
+    score,
+    numComments,
+    isNsfw,
+    isStarred,
+    isArchived,
+    userNote,
+    csvSource,
+    importOrder,
+    createdAtUtc,
+    savedAtUtc,
+    postFlair,
+    subredditType,
+    enrichmentStatus,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'saved_items_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SavedItemEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('permalink')) {
+      context.handle(
+        _permalinkMeta,
+        permalink.isAcceptableOrUnknown(data['permalink']!, _permalinkMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_permalinkMeta);
+    }
+    if (data.containsKey('parent_post_id')) {
+      context.handle(
+        _parentPostIdMeta,
+        parentPostId.isAcceptableOrUnknown(
+          data['parent_post_id']!,
+          _parentPostIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('parent_post_title')) {
+      context.handle(
+        _parentPostTitleMeta,
+        parentPostTitle.isAcceptableOrUnknown(
+          data['parent_post_title']!,
+          _parentPostTitleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('subreddit')) {
+      context.handle(
+        _subredditMeta,
+        subreddit.isAcceptableOrUnknown(data['subreddit']!, _subredditMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subredditMeta);
+    }
+    if (data.containsKey('author')) {
+      context.handle(
+        _authorMeta,
+        author.isAcceptableOrUnknown(data['author']!, _authorMeta),
+      );
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    }
+    if (data.containsKey('thumbnail_url')) {
+      context.handle(
+        _thumbnailUrlMeta,
+        thumbnailUrl.isAcceptableOrUnknown(
+          data['thumbnail_url']!,
+          _thumbnailUrlMeta,
+        ),
+      );
+    }
+    if (data.containsKey('media_url')) {
+      context.handle(
+        _mediaUrlMeta,
+        mediaUrl.isAcceptableOrUnknown(data['media_url']!, _mediaUrlMeta),
+      );
+    }
+    if (data.containsKey('score')) {
+      context.handle(
+        _scoreMeta,
+        score.isAcceptableOrUnknown(data['score']!, _scoreMeta),
+      );
+    }
+    if (data.containsKey('num_comments')) {
+      context.handle(
+        _numCommentsMeta,
+        numComments.isAcceptableOrUnknown(
+          data['num_comments']!,
+          _numCommentsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_nsfw')) {
+      context.handle(
+        _isNsfwMeta,
+        isNsfw.isAcceptableOrUnknown(data['is_nsfw']!, _isNsfwMeta),
+      );
+    }
+    if (data.containsKey('is_starred')) {
+      context.handle(
+        _isStarredMeta,
+        isStarred.isAcceptableOrUnknown(data['is_starred']!, _isStarredMeta),
+      );
+    }
+    if (data.containsKey('is_archived')) {
+      context.handle(
+        _isArchivedMeta,
+        isArchived.isAcceptableOrUnknown(data['is_archived']!, _isArchivedMeta),
+      );
+    }
+    if (data.containsKey('user_note')) {
+      context.handle(
+        _userNoteMeta,
+        userNote.isAcceptableOrUnknown(data['user_note']!, _userNoteMeta),
+      );
+    }
+    if (data.containsKey('csv_source')) {
+      context.handle(
+        _csvSourceMeta,
+        csvSource.isAcceptableOrUnknown(data['csv_source']!, _csvSourceMeta),
+      );
+    }
+    if (data.containsKey('import_order')) {
+      context.handle(
+        _importOrderMeta,
+        importOrder.isAcceptableOrUnknown(
+          data['import_order']!,
+          _importOrderMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at_utc')) {
+      context.handle(
+        _createdAtUtcMeta,
+        createdAtUtc.isAcceptableOrUnknown(
+          data['created_at_utc']!,
+          _createdAtUtcMeta,
+        ),
+      );
+    }
+    if (data.containsKey('saved_at_utc')) {
+      context.handle(
+        _savedAtUtcMeta,
+        savedAtUtc.isAcceptableOrUnknown(
+          data['saved_at_utc']!,
+          _savedAtUtcMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_savedAtUtcMeta);
+    }
+    if (data.containsKey('post_flair')) {
+      context.handle(
+        _postFlairMeta,
+        postFlair.isAcceptableOrUnknown(data['post_flair']!, _postFlairMeta),
+      );
+    }
+    if (data.containsKey('subreddit_type')) {
+      context.handle(
+        _subredditTypeMeta,
+        subredditType.isAcceptableOrUnknown(
+          data['subreddit_type']!,
+          _subredditTypeMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SavedItemEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SavedItemEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      permalink: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}permalink'],
+      )!,
+      itemType: $SavedItemsTableTable.$converteritemType.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}item_type'],
+        )!,
+      ),
+      parentPostId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_post_id'],
+      ),
+      parentPostTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}parent_post_title'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      subreddit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subreddit'],
+      )!,
+      author: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}author'],
+      ),
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      ),
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      ),
+      thumbnailUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}thumbnail_url'],
+      ),
+      mediaUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}media_url'],
+      ),
+      mediaType: $SavedItemsTableTable.$convertermediaType.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}media_type'],
+        )!,
+      ),
+      score: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}score'],
+      )!,
+      numComments: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}num_comments'],
+      )!,
+      isNsfw: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_nsfw'],
+      )!,
+      isStarred: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_starred'],
+      )!,
+      isArchived: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_archived'],
+      )!,
+      userNote: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_note'],
+      ),
+      csvSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}csv_source'],
+      )!,
+      importOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}import_order'],
+      )!,
+      createdAtUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at_utc'],
+      ),
+      savedAtUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}saved_at_utc'],
+      )!,
+      postFlair: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}post_flair'],
+      ),
+      subredditType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subreddit_type'],
+      )!,
+      enrichmentStatus: $SavedItemsTableTable.$converterenrichmentStatus
+          .fromSql(
+            attachedDatabase.typeMapping.read(
+              DriftSqlType.int,
+              data['${effectivePrefix}enrichment_status'],
+            )!,
+          ),
+    );
+  }
+
+  @override
+  $SavedItemsTableTable createAlias(String alias) {
+    return $SavedItemsTableTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<ItemType, int, int> $converteritemType =
+      const EnumIndexConverter<ItemType>(ItemType.values);
+  static JsonTypeConverter2<MediaType, int, int> $convertermediaType =
+      const EnumIndexConverter<MediaType>(MediaType.values);
+  static JsonTypeConverter2<EnrichmentStatus, int, int>
+  $converterenrichmentStatus = const EnumIndexConverter<EnrichmentStatus>(
+    EnrichmentStatus.values,
+  );
+}
+
+class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
+  final String id;
+  final String permalink;
+  final ItemType itemType;
+  final String? parentPostId;
+  final String? parentPostTitle;
+  final String title;
+  final String subreddit;
+  final String? author;
+  final String? body;
+  final String? url;
+  final String? thumbnailUrl;
+  final String? mediaUrl;
+  final MediaType mediaType;
+  final int score;
+  final int numComments;
+  final bool isNsfw;
+  final bool isStarred;
+  final bool isArchived;
+  final String? userNote;
+  final String csvSource;
+  final int importOrder;
+  final DateTime? createdAtUtc;
+  final DateTime savedAtUtc;
+  final String? postFlair;
+  final String subredditType;
+  final EnrichmentStatus enrichmentStatus;
+  const SavedItemEntry({
+    required this.id,
+    required this.permalink,
+    required this.itemType,
+    this.parentPostId,
+    this.parentPostTitle,
+    required this.title,
+    required this.subreddit,
+    this.author,
+    this.body,
+    this.url,
+    this.thumbnailUrl,
+    this.mediaUrl,
+    required this.mediaType,
+    required this.score,
+    required this.numComments,
+    required this.isNsfw,
+    required this.isStarred,
+    required this.isArchived,
+    this.userNote,
+    required this.csvSource,
+    required this.importOrder,
+    this.createdAtUtc,
+    required this.savedAtUtc,
+    this.postFlair,
+    required this.subredditType,
+    required this.enrichmentStatus,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['permalink'] = Variable<String>(permalink);
+    {
+      map['item_type'] = Variable<int>(
+        $SavedItemsTableTable.$converteritemType.toSql(itemType),
+      );
+    }
+    if (!nullToAbsent || parentPostId != null) {
+      map['parent_post_id'] = Variable<String>(parentPostId);
+    }
+    if (!nullToAbsent || parentPostTitle != null) {
+      map['parent_post_title'] = Variable<String>(parentPostTitle);
+    }
+    map['title'] = Variable<String>(title);
+    map['subreddit'] = Variable<String>(subreddit);
+    if (!nullToAbsent || author != null) {
+      map['author'] = Variable<String>(author);
+    }
+    if (!nullToAbsent || body != null) {
+      map['body'] = Variable<String>(body);
+    }
+    if (!nullToAbsent || url != null) {
+      map['url'] = Variable<String>(url);
+    }
+    if (!nullToAbsent || thumbnailUrl != null) {
+      map['thumbnail_url'] = Variable<String>(thumbnailUrl);
+    }
+    if (!nullToAbsent || mediaUrl != null) {
+      map['media_url'] = Variable<String>(mediaUrl);
+    }
+    {
+      map['media_type'] = Variable<int>(
+        $SavedItemsTableTable.$convertermediaType.toSql(mediaType),
+      );
+    }
+    map['score'] = Variable<int>(score);
+    map['num_comments'] = Variable<int>(numComments);
+    map['is_nsfw'] = Variable<bool>(isNsfw);
+    map['is_starred'] = Variable<bool>(isStarred);
+    map['is_archived'] = Variable<bool>(isArchived);
+    if (!nullToAbsent || userNote != null) {
+      map['user_note'] = Variable<String>(userNote);
+    }
+    map['csv_source'] = Variable<String>(csvSource);
+    map['import_order'] = Variable<int>(importOrder);
+    if (!nullToAbsent || createdAtUtc != null) {
+      map['created_at_utc'] = Variable<DateTime>(createdAtUtc);
+    }
+    map['saved_at_utc'] = Variable<DateTime>(savedAtUtc);
+    if (!nullToAbsent || postFlair != null) {
+      map['post_flair'] = Variable<String>(postFlair);
+    }
+    map['subreddit_type'] = Variable<String>(subredditType);
+    {
+      map['enrichment_status'] = Variable<int>(
+        $SavedItemsTableTable.$converterenrichmentStatus.toSql(
+          enrichmentStatus,
+        ),
+      );
+    }
+    return map;
+  }
+
+  SavedItemsTableCompanion toCompanion(bool nullToAbsent) {
+    return SavedItemsTableCompanion(
+      id: Value(id),
+      permalink: Value(permalink),
+      itemType: Value(itemType),
+      parentPostId: parentPostId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentPostId),
+      parentPostTitle: parentPostTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentPostTitle),
+      title: Value(title),
+      subreddit: Value(subreddit),
+      author: author == null && nullToAbsent
+          ? const Value.absent()
+          : Value(author),
+      body: body == null && nullToAbsent ? const Value.absent() : Value(body),
+      url: url == null && nullToAbsent ? const Value.absent() : Value(url),
+      thumbnailUrl: thumbnailUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(thumbnailUrl),
+      mediaUrl: mediaUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mediaUrl),
+      mediaType: Value(mediaType),
+      score: Value(score),
+      numComments: Value(numComments),
+      isNsfw: Value(isNsfw),
+      isStarred: Value(isStarred),
+      isArchived: Value(isArchived),
+      userNote: userNote == null && nullToAbsent
+          ? const Value.absent()
+          : Value(userNote),
+      csvSource: Value(csvSource),
+      importOrder: Value(importOrder),
+      createdAtUtc: createdAtUtc == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAtUtc),
+      savedAtUtc: Value(savedAtUtc),
+      postFlair: postFlair == null && nullToAbsent
+          ? const Value.absent()
+          : Value(postFlair),
+      subredditType: Value(subredditType),
+      enrichmentStatus: Value(enrichmentStatus),
+    );
+  }
+
+  factory SavedItemEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SavedItemEntry(
+      id: serializer.fromJson<String>(json['id']),
+      permalink: serializer.fromJson<String>(json['permalink']),
+      itemType: $SavedItemsTableTable.$converteritemType.fromJson(
+        serializer.fromJson<int>(json['itemType']),
+      ),
+      parentPostId: serializer.fromJson<String?>(json['parentPostId']),
+      parentPostTitle: serializer.fromJson<String?>(json['parentPostTitle']),
+      title: serializer.fromJson<String>(json['title']),
+      subreddit: serializer.fromJson<String>(json['subreddit']),
+      author: serializer.fromJson<String?>(json['author']),
+      body: serializer.fromJson<String?>(json['body']),
+      url: serializer.fromJson<String?>(json['url']),
+      thumbnailUrl: serializer.fromJson<String?>(json['thumbnailUrl']),
+      mediaUrl: serializer.fromJson<String?>(json['mediaUrl']),
+      mediaType: $SavedItemsTableTable.$convertermediaType.fromJson(
+        serializer.fromJson<int>(json['mediaType']),
+      ),
+      score: serializer.fromJson<int>(json['score']),
+      numComments: serializer.fromJson<int>(json['numComments']),
+      isNsfw: serializer.fromJson<bool>(json['isNsfw']),
+      isStarred: serializer.fromJson<bool>(json['isStarred']),
+      isArchived: serializer.fromJson<bool>(json['isArchived']),
+      userNote: serializer.fromJson<String?>(json['userNote']),
+      csvSource: serializer.fromJson<String>(json['csvSource']),
+      importOrder: serializer.fromJson<int>(json['importOrder']),
+      createdAtUtc: serializer.fromJson<DateTime?>(json['createdAtUtc']),
+      savedAtUtc: serializer.fromJson<DateTime>(json['savedAtUtc']),
+      postFlair: serializer.fromJson<String?>(json['postFlair']),
+      subredditType: serializer.fromJson<String>(json['subredditType']),
+      enrichmentStatus: $SavedItemsTableTable.$converterenrichmentStatus
+          .fromJson(serializer.fromJson<int>(json['enrichmentStatus'])),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'permalink': serializer.toJson<String>(permalink),
+      'itemType': serializer.toJson<int>(
+        $SavedItemsTableTable.$converteritemType.toJson(itemType),
+      ),
+      'parentPostId': serializer.toJson<String?>(parentPostId),
+      'parentPostTitle': serializer.toJson<String?>(parentPostTitle),
+      'title': serializer.toJson<String>(title),
+      'subreddit': serializer.toJson<String>(subreddit),
+      'author': serializer.toJson<String?>(author),
+      'body': serializer.toJson<String?>(body),
+      'url': serializer.toJson<String?>(url),
+      'thumbnailUrl': serializer.toJson<String?>(thumbnailUrl),
+      'mediaUrl': serializer.toJson<String?>(mediaUrl),
+      'mediaType': serializer.toJson<int>(
+        $SavedItemsTableTable.$convertermediaType.toJson(mediaType),
+      ),
+      'score': serializer.toJson<int>(score),
+      'numComments': serializer.toJson<int>(numComments),
+      'isNsfw': serializer.toJson<bool>(isNsfw),
+      'isStarred': serializer.toJson<bool>(isStarred),
+      'isArchived': serializer.toJson<bool>(isArchived),
+      'userNote': serializer.toJson<String?>(userNote),
+      'csvSource': serializer.toJson<String>(csvSource),
+      'importOrder': serializer.toJson<int>(importOrder),
+      'createdAtUtc': serializer.toJson<DateTime?>(createdAtUtc),
+      'savedAtUtc': serializer.toJson<DateTime>(savedAtUtc),
+      'postFlair': serializer.toJson<String?>(postFlair),
+      'subredditType': serializer.toJson<String>(subredditType),
+      'enrichmentStatus': serializer.toJson<int>(
+        $SavedItemsTableTable.$converterenrichmentStatus.toJson(
+          enrichmentStatus,
+        ),
+      ),
+    };
+  }
+
+  SavedItemEntry copyWith({
+    String? id,
+    String? permalink,
+    ItemType? itemType,
+    Value<String?> parentPostId = const Value.absent(),
+    Value<String?> parentPostTitle = const Value.absent(),
+    String? title,
+    String? subreddit,
+    Value<String?> author = const Value.absent(),
+    Value<String?> body = const Value.absent(),
+    Value<String?> url = const Value.absent(),
+    Value<String?> thumbnailUrl = const Value.absent(),
+    Value<String?> mediaUrl = const Value.absent(),
+    MediaType? mediaType,
+    int? score,
+    int? numComments,
+    bool? isNsfw,
+    bool? isStarred,
+    bool? isArchived,
+    Value<String?> userNote = const Value.absent(),
+    String? csvSource,
+    int? importOrder,
+    Value<DateTime?> createdAtUtc = const Value.absent(),
+    DateTime? savedAtUtc,
+    Value<String?> postFlair = const Value.absent(),
+    String? subredditType,
+    EnrichmentStatus? enrichmentStatus,
+  }) => SavedItemEntry(
+    id: id ?? this.id,
+    permalink: permalink ?? this.permalink,
+    itemType: itemType ?? this.itemType,
+    parentPostId: parentPostId.present ? parentPostId.value : this.parentPostId,
+    parentPostTitle: parentPostTitle.present
+        ? parentPostTitle.value
+        : this.parentPostTitle,
+    title: title ?? this.title,
+    subreddit: subreddit ?? this.subreddit,
+    author: author.present ? author.value : this.author,
+    body: body.present ? body.value : this.body,
+    url: url.present ? url.value : this.url,
+    thumbnailUrl: thumbnailUrl.present ? thumbnailUrl.value : this.thumbnailUrl,
+    mediaUrl: mediaUrl.present ? mediaUrl.value : this.mediaUrl,
+    mediaType: mediaType ?? this.mediaType,
+    score: score ?? this.score,
+    numComments: numComments ?? this.numComments,
+    isNsfw: isNsfw ?? this.isNsfw,
+    isStarred: isStarred ?? this.isStarred,
+    isArchived: isArchived ?? this.isArchived,
+    userNote: userNote.present ? userNote.value : this.userNote,
+    csvSource: csvSource ?? this.csvSource,
+    importOrder: importOrder ?? this.importOrder,
+    createdAtUtc: createdAtUtc.present ? createdAtUtc.value : this.createdAtUtc,
+    savedAtUtc: savedAtUtc ?? this.savedAtUtc,
+    postFlair: postFlair.present ? postFlair.value : this.postFlair,
+    subredditType: subredditType ?? this.subredditType,
+    enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
+  );
+  SavedItemEntry copyWithCompanion(SavedItemsTableCompanion data) {
+    return SavedItemEntry(
+      id: data.id.present ? data.id.value : this.id,
+      permalink: data.permalink.present ? data.permalink.value : this.permalink,
+      itemType: data.itemType.present ? data.itemType.value : this.itemType,
+      parentPostId: data.parentPostId.present
+          ? data.parentPostId.value
+          : this.parentPostId,
+      parentPostTitle: data.parentPostTitle.present
+          ? data.parentPostTitle.value
+          : this.parentPostTitle,
+      title: data.title.present ? data.title.value : this.title,
+      subreddit: data.subreddit.present ? data.subreddit.value : this.subreddit,
+      author: data.author.present ? data.author.value : this.author,
+      body: data.body.present ? data.body.value : this.body,
+      url: data.url.present ? data.url.value : this.url,
+      thumbnailUrl: data.thumbnailUrl.present
+          ? data.thumbnailUrl.value
+          : this.thumbnailUrl,
+      mediaUrl: data.mediaUrl.present ? data.mediaUrl.value : this.mediaUrl,
+      mediaType: data.mediaType.present ? data.mediaType.value : this.mediaType,
+      score: data.score.present ? data.score.value : this.score,
+      numComments: data.numComments.present
+          ? data.numComments.value
+          : this.numComments,
+      isNsfw: data.isNsfw.present ? data.isNsfw.value : this.isNsfw,
+      isStarred: data.isStarred.present ? data.isStarred.value : this.isStarred,
+      isArchived: data.isArchived.present
+          ? data.isArchived.value
+          : this.isArchived,
+      userNote: data.userNote.present ? data.userNote.value : this.userNote,
+      csvSource: data.csvSource.present ? data.csvSource.value : this.csvSource,
+      importOrder: data.importOrder.present
+          ? data.importOrder.value
+          : this.importOrder,
+      createdAtUtc: data.createdAtUtc.present
+          ? data.createdAtUtc.value
+          : this.createdAtUtc,
+      savedAtUtc: data.savedAtUtc.present
+          ? data.savedAtUtc.value
+          : this.savedAtUtc,
+      postFlair: data.postFlair.present ? data.postFlair.value : this.postFlair,
+      subredditType: data.subredditType.present
+          ? data.subredditType.value
+          : this.subredditType,
+      enrichmentStatus: data.enrichmentStatus.present
+          ? data.enrichmentStatus.value
+          : this.enrichmentStatus,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SavedItemEntry(')
+          ..write('id: $id, ')
+          ..write('permalink: $permalink, ')
+          ..write('itemType: $itemType, ')
+          ..write('parentPostId: $parentPostId, ')
+          ..write('parentPostTitle: $parentPostTitle, ')
+          ..write('title: $title, ')
+          ..write('subreddit: $subreddit, ')
+          ..write('author: $author, ')
+          ..write('body: $body, ')
+          ..write('url: $url, ')
+          ..write('thumbnailUrl: $thumbnailUrl, ')
+          ..write('mediaUrl: $mediaUrl, ')
+          ..write('mediaType: $mediaType, ')
+          ..write('score: $score, ')
+          ..write('numComments: $numComments, ')
+          ..write('isNsfw: $isNsfw, ')
+          ..write('isStarred: $isStarred, ')
+          ..write('isArchived: $isArchived, ')
+          ..write('userNote: $userNote, ')
+          ..write('csvSource: $csvSource, ')
+          ..write('importOrder: $importOrder, ')
+          ..write('createdAtUtc: $createdAtUtc, ')
+          ..write('savedAtUtc: $savedAtUtc, ')
+          ..write('postFlair: $postFlair, ')
+          ..write('subredditType: $subredditType, ')
+          ..write('enrichmentStatus: $enrichmentStatus')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    id,
+    permalink,
+    itemType,
+    parentPostId,
+    parentPostTitle,
+    title,
+    subreddit,
+    author,
+    body,
+    url,
+    thumbnailUrl,
+    mediaUrl,
+    mediaType,
+    score,
+    numComments,
+    isNsfw,
+    isStarred,
+    isArchived,
+    userNote,
+    csvSource,
+    importOrder,
+    createdAtUtc,
+    savedAtUtc,
+    postFlair,
+    subredditType,
+    enrichmentStatus,
+  ]);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SavedItemEntry &&
+          other.id == this.id &&
+          other.permalink == this.permalink &&
+          other.itemType == this.itemType &&
+          other.parentPostId == this.parentPostId &&
+          other.parentPostTitle == this.parentPostTitle &&
+          other.title == this.title &&
+          other.subreddit == this.subreddit &&
+          other.author == this.author &&
+          other.body == this.body &&
+          other.url == this.url &&
+          other.thumbnailUrl == this.thumbnailUrl &&
+          other.mediaUrl == this.mediaUrl &&
+          other.mediaType == this.mediaType &&
+          other.score == this.score &&
+          other.numComments == this.numComments &&
+          other.isNsfw == this.isNsfw &&
+          other.isStarred == this.isStarred &&
+          other.isArchived == this.isArchived &&
+          other.userNote == this.userNote &&
+          other.csvSource == this.csvSource &&
+          other.importOrder == this.importOrder &&
+          other.createdAtUtc == this.createdAtUtc &&
+          other.savedAtUtc == this.savedAtUtc &&
+          other.postFlair == this.postFlair &&
+          other.subredditType == this.subredditType &&
+          other.enrichmentStatus == this.enrichmentStatus);
+}
+
+class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
+  final Value<String> id;
+  final Value<String> permalink;
+  final Value<ItemType> itemType;
+  final Value<String?> parentPostId;
+  final Value<String?> parentPostTitle;
+  final Value<String> title;
+  final Value<String> subreddit;
+  final Value<String?> author;
+  final Value<String?> body;
+  final Value<String?> url;
+  final Value<String?> thumbnailUrl;
+  final Value<String?> mediaUrl;
+  final Value<MediaType> mediaType;
+  final Value<int> score;
+  final Value<int> numComments;
+  final Value<bool> isNsfw;
+  final Value<bool> isStarred;
+  final Value<bool> isArchived;
+  final Value<String?> userNote;
+  final Value<String> csvSource;
+  final Value<int> importOrder;
+  final Value<DateTime?> createdAtUtc;
+  final Value<DateTime> savedAtUtc;
+  final Value<String?> postFlair;
+  final Value<String> subredditType;
+  final Value<EnrichmentStatus> enrichmentStatus;
+  final Value<int> rowid;
+  const SavedItemsTableCompanion({
+    this.id = const Value.absent(),
+    this.permalink = const Value.absent(),
+    this.itemType = const Value.absent(),
+    this.parentPostId = const Value.absent(),
+    this.parentPostTitle = const Value.absent(),
+    this.title = const Value.absent(),
+    this.subreddit = const Value.absent(),
+    this.author = const Value.absent(),
+    this.body = const Value.absent(),
+    this.url = const Value.absent(),
+    this.thumbnailUrl = const Value.absent(),
+    this.mediaUrl = const Value.absent(),
+    this.mediaType = const Value.absent(),
+    this.score = const Value.absent(),
+    this.numComments = const Value.absent(),
+    this.isNsfw = const Value.absent(),
+    this.isStarred = const Value.absent(),
+    this.isArchived = const Value.absent(),
+    this.userNote = const Value.absent(),
+    this.csvSource = const Value.absent(),
+    this.importOrder = const Value.absent(),
+    this.createdAtUtc = const Value.absent(),
+    this.savedAtUtc = const Value.absent(),
+    this.postFlair = const Value.absent(),
+    this.subredditType = const Value.absent(),
+    this.enrichmentStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SavedItemsTableCompanion.insert({
+    required String id,
+    required String permalink,
+    required ItemType itemType,
+    this.parentPostId = const Value.absent(),
+    this.parentPostTitle = const Value.absent(),
+    required String title,
+    required String subreddit,
+    this.author = const Value.absent(),
+    this.body = const Value.absent(),
+    this.url = const Value.absent(),
+    this.thumbnailUrl = const Value.absent(),
+    this.mediaUrl = const Value.absent(),
+    this.mediaType = const Value.absent(),
+    this.score = const Value.absent(),
+    this.numComments = const Value.absent(),
+    this.isNsfw = const Value.absent(),
+    this.isStarred = const Value.absent(),
+    this.isArchived = const Value.absent(),
+    this.userNote = const Value.absent(),
+    this.csvSource = const Value.absent(),
+    this.importOrder = const Value.absent(),
+    this.createdAtUtc = const Value.absent(),
+    required DateTime savedAtUtc,
+    this.postFlair = const Value.absent(),
+    this.subredditType = const Value.absent(),
+    this.enrichmentStatus = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       permalink = Value(permalink),
+       itemType = Value(itemType),
+       title = Value(title),
+       subreddit = Value(subreddit),
+       savedAtUtc = Value(savedAtUtc);
+  static Insertable<SavedItemEntry> custom({
+    Expression<String>? id,
+    Expression<String>? permalink,
+    Expression<int>? itemType,
+    Expression<String>? parentPostId,
+    Expression<String>? parentPostTitle,
+    Expression<String>? title,
+    Expression<String>? subreddit,
+    Expression<String>? author,
+    Expression<String>? body,
+    Expression<String>? url,
+    Expression<String>? thumbnailUrl,
+    Expression<String>? mediaUrl,
+    Expression<int>? mediaType,
+    Expression<int>? score,
+    Expression<int>? numComments,
+    Expression<bool>? isNsfw,
+    Expression<bool>? isStarred,
+    Expression<bool>? isArchived,
+    Expression<String>? userNote,
+    Expression<String>? csvSource,
+    Expression<int>? importOrder,
+    Expression<DateTime>? createdAtUtc,
+    Expression<DateTime>? savedAtUtc,
+    Expression<String>? postFlair,
+    Expression<String>? subredditType,
+    Expression<int>? enrichmentStatus,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (permalink != null) 'permalink': permalink,
+      if (itemType != null) 'item_type': itemType,
+      if (parentPostId != null) 'parent_post_id': parentPostId,
+      if (parentPostTitle != null) 'parent_post_title': parentPostTitle,
+      if (title != null) 'title': title,
+      if (subreddit != null) 'subreddit': subreddit,
+      if (author != null) 'author': author,
+      if (body != null) 'body': body,
+      if (url != null) 'url': url,
+      if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
+      if (mediaUrl != null) 'media_url': mediaUrl,
+      if (mediaType != null) 'media_type': mediaType,
+      if (score != null) 'score': score,
+      if (numComments != null) 'num_comments': numComments,
+      if (isNsfw != null) 'is_nsfw': isNsfw,
+      if (isStarred != null) 'is_starred': isStarred,
+      if (isArchived != null) 'is_archived': isArchived,
+      if (userNote != null) 'user_note': userNote,
+      if (csvSource != null) 'csv_source': csvSource,
+      if (importOrder != null) 'import_order': importOrder,
+      if (createdAtUtc != null) 'created_at_utc': createdAtUtc,
+      if (savedAtUtc != null) 'saved_at_utc': savedAtUtc,
+      if (postFlair != null) 'post_flair': postFlair,
+      if (subredditType != null) 'subreddit_type': subredditType,
+      if (enrichmentStatus != null) 'enrichment_status': enrichmentStatus,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SavedItemsTableCompanion copyWith({
+    Value<String>? id,
+    Value<String>? permalink,
+    Value<ItemType>? itemType,
+    Value<String?>? parentPostId,
+    Value<String?>? parentPostTitle,
+    Value<String>? title,
+    Value<String>? subreddit,
+    Value<String?>? author,
+    Value<String?>? body,
+    Value<String?>? url,
+    Value<String?>? thumbnailUrl,
+    Value<String?>? mediaUrl,
+    Value<MediaType>? mediaType,
+    Value<int>? score,
+    Value<int>? numComments,
+    Value<bool>? isNsfw,
+    Value<bool>? isStarred,
+    Value<bool>? isArchived,
+    Value<String?>? userNote,
+    Value<String>? csvSource,
+    Value<int>? importOrder,
+    Value<DateTime?>? createdAtUtc,
+    Value<DateTime>? savedAtUtc,
+    Value<String?>? postFlair,
+    Value<String>? subredditType,
+    Value<EnrichmentStatus>? enrichmentStatus,
+    Value<int>? rowid,
+  }) {
+    return SavedItemsTableCompanion(
+      id: id ?? this.id,
+      permalink: permalink ?? this.permalink,
+      itemType: itemType ?? this.itemType,
+      parentPostId: parentPostId ?? this.parentPostId,
+      parentPostTitle: parentPostTitle ?? this.parentPostTitle,
+      title: title ?? this.title,
+      subreddit: subreddit ?? this.subreddit,
+      author: author ?? this.author,
+      body: body ?? this.body,
+      url: url ?? this.url,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
+      mediaUrl: mediaUrl ?? this.mediaUrl,
+      mediaType: mediaType ?? this.mediaType,
+      score: score ?? this.score,
+      numComments: numComments ?? this.numComments,
+      isNsfw: isNsfw ?? this.isNsfw,
+      isStarred: isStarred ?? this.isStarred,
+      isArchived: isArchived ?? this.isArchived,
+      userNote: userNote ?? this.userNote,
+      csvSource: csvSource ?? this.csvSource,
+      importOrder: importOrder ?? this.importOrder,
+      createdAtUtc: createdAtUtc ?? this.createdAtUtc,
+      savedAtUtc: savedAtUtc ?? this.savedAtUtc,
+      postFlair: postFlair ?? this.postFlair,
+      subredditType: subredditType ?? this.subredditType,
+      enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (permalink.present) {
+      map['permalink'] = Variable<String>(permalink.value);
+    }
+    if (itemType.present) {
+      map['item_type'] = Variable<int>(
+        $SavedItemsTableTable.$converteritemType.toSql(itemType.value),
+      );
+    }
+    if (parentPostId.present) {
+      map['parent_post_id'] = Variable<String>(parentPostId.value);
+    }
+    if (parentPostTitle.present) {
+      map['parent_post_title'] = Variable<String>(parentPostTitle.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (subreddit.present) {
+      map['subreddit'] = Variable<String>(subreddit.value);
+    }
+    if (author.present) {
+      map['author'] = Variable<String>(author.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (thumbnailUrl.present) {
+      map['thumbnail_url'] = Variable<String>(thumbnailUrl.value);
+    }
+    if (mediaUrl.present) {
+      map['media_url'] = Variable<String>(mediaUrl.value);
+    }
+    if (mediaType.present) {
+      map['media_type'] = Variable<int>(
+        $SavedItemsTableTable.$convertermediaType.toSql(mediaType.value),
+      );
+    }
+    if (score.present) {
+      map['score'] = Variable<int>(score.value);
+    }
+    if (numComments.present) {
+      map['num_comments'] = Variable<int>(numComments.value);
+    }
+    if (isNsfw.present) {
+      map['is_nsfw'] = Variable<bool>(isNsfw.value);
+    }
+    if (isStarred.present) {
+      map['is_starred'] = Variable<bool>(isStarred.value);
+    }
+    if (isArchived.present) {
+      map['is_archived'] = Variable<bool>(isArchived.value);
+    }
+    if (userNote.present) {
+      map['user_note'] = Variable<String>(userNote.value);
+    }
+    if (csvSource.present) {
+      map['csv_source'] = Variable<String>(csvSource.value);
+    }
+    if (importOrder.present) {
+      map['import_order'] = Variable<int>(importOrder.value);
+    }
+    if (createdAtUtc.present) {
+      map['created_at_utc'] = Variable<DateTime>(createdAtUtc.value);
+    }
+    if (savedAtUtc.present) {
+      map['saved_at_utc'] = Variable<DateTime>(savedAtUtc.value);
+    }
+    if (postFlair.present) {
+      map['post_flair'] = Variable<String>(postFlair.value);
+    }
+    if (subredditType.present) {
+      map['subreddit_type'] = Variable<String>(subredditType.value);
+    }
+    if (enrichmentStatus.present) {
+      map['enrichment_status'] = Variable<int>(
+        $SavedItemsTableTable.$converterenrichmentStatus.toSql(
+          enrichmentStatus.value,
+        ),
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SavedItemsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('permalink: $permalink, ')
+          ..write('itemType: $itemType, ')
+          ..write('parentPostId: $parentPostId, ')
+          ..write('parentPostTitle: $parentPostTitle, ')
+          ..write('title: $title, ')
+          ..write('subreddit: $subreddit, ')
+          ..write('author: $author, ')
+          ..write('body: $body, ')
+          ..write('url: $url, ')
+          ..write('thumbnailUrl: $thumbnailUrl, ')
+          ..write('mediaUrl: $mediaUrl, ')
+          ..write('mediaType: $mediaType, ')
+          ..write('score: $score, ')
+          ..write('numComments: $numComments, ')
+          ..write('isNsfw: $isNsfw, ')
+          ..write('isStarred: $isStarred, ')
+          ..write('isArchived: $isArchived, ')
+          ..write('userNote: $userNote, ')
+          ..write('csvSource: $csvSource, ')
+          ..write('importOrder: $importOrder, ')
+          ..write('createdAtUtc: $createdAtUtc, ')
+          ..write('savedAtUtc: $savedAtUtc, ')
+          ..write('postFlair: $postFlair, ')
+          ..write('subredditType: $subredditType, ')
+          ..write('enrichmentStatus: $enrichmentStatus, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $TagsTableTable extends TagsTable
+    with TableInfo<$TagsTableTable, TagEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TagsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _colorValueMeta = const VerificationMeta(
+    'colorValue',
+  );
+  @override
+  late final GeneratedColumn<int> colorValue = GeneratedColumn<int>(
+    'color_value',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0xFFFF4500),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, colorValue];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'tags_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TagEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('color_value')) {
+      context.handle(
+        _colorValueMeta,
+        colorValue.isAcceptableOrUnknown(data['color_value']!, _colorValueMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TagEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TagEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      colorValue: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}color_value'],
+      )!,
+    );
+  }
+
+  @override
+  $TagsTableTable createAlias(String alias) {
+    return $TagsTableTable(attachedDatabase, alias);
+  }
+}
+
+class TagEntry extends DataClass implements Insertable<TagEntry> {
+  final int id;
+  final String name;
+  final int colorValue;
+  const TagEntry({
+    required this.id,
+    required this.name,
+    required this.colorValue,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['color_value'] = Variable<int>(colorValue);
+    return map;
+  }
+
+  TagsTableCompanion toCompanion(bool nullToAbsent) {
+    return TagsTableCompanion(
+      id: Value(id),
+      name: Value(name),
+      colorValue: Value(colorValue),
+    );
+  }
+
+  factory TagEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TagEntry(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      colorValue: serializer.fromJson<int>(json['colorValue']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'colorValue': serializer.toJson<int>(colorValue),
+    };
+  }
+
+  TagEntry copyWith({int? id, String? name, int? colorValue}) => TagEntry(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    colorValue: colorValue ?? this.colorValue,
+  );
+  TagEntry copyWithCompanion(TagsTableCompanion data) {
+    return TagEntry(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      colorValue: data.colorValue.present
+          ? data.colorValue.value
+          : this.colorValue,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TagEntry(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('colorValue: $colorValue')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, name, colorValue);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TagEntry &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.colorValue == this.colorValue);
+}
+
+class TagsTableCompanion extends UpdateCompanion<TagEntry> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> colorValue;
+  const TagsTableCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.colorValue = const Value.absent(),
+  });
+  TagsTableCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    this.colorValue = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<TagEntry> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? colorValue,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (colorValue != null) 'color_value': colorValue,
+    });
+  }
+
+  TagsTableCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<int>? colorValue,
+  }) {
+    return TagsTableCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      colorValue: colorValue ?? this.colorValue,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (colorValue.present) {
+      map['color_value'] = Variable<int>(colorValue.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TagsTableCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('colorValue: $colorValue')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ItemTagsTableTable extends ItemTagsTable
+    with TableInfo<$ItemTagsTableTable, ItemTagEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ItemTagsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _itemIdMeta = const VerificationMeta('itemId');
+  @override
+  late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
+    'item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES saved_items_table (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
+  @override
+  late final GeneratedColumn<int> tagId = GeneratedColumn<int>(
+    'tag_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES tags_table (id) ON DELETE CASCADE',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [itemId, tagId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'item_tags_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ItemTagEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('item_id')) {
+      context.handle(
+        _itemIdMeta,
+        itemId.isAcceptableOrUnknown(data['item_id']!, _itemIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_itemIdMeta);
+    }
+    if (data.containsKey('tag_id')) {
+      context.handle(
+        _tagIdMeta,
+        tagId.isAcceptableOrUnknown(data['tag_id']!, _tagIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tagIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {itemId, tagId};
+  @override
+  ItemTagEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ItemTagEntry(
+      itemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_id'],
+      )!,
+      tagId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tag_id'],
+      )!,
+    );
+  }
+
+  @override
+  $ItemTagsTableTable createAlias(String alias) {
+    return $ItemTagsTableTable(attachedDatabase, alias);
+  }
+}
+
+class ItemTagEntry extends DataClass implements Insertable<ItemTagEntry> {
+  final String itemId;
+  final int tagId;
+  const ItemTagEntry({required this.itemId, required this.tagId});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['item_id'] = Variable<String>(itemId);
+    map['tag_id'] = Variable<int>(tagId);
+    return map;
+  }
+
+  ItemTagsTableCompanion toCompanion(bool nullToAbsent) {
+    return ItemTagsTableCompanion(itemId: Value(itemId), tagId: Value(tagId));
+  }
+
+  factory ItemTagEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ItemTagEntry(
+      itemId: serializer.fromJson<String>(json['itemId']),
+      tagId: serializer.fromJson<int>(json['tagId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'itemId': serializer.toJson<String>(itemId),
+      'tagId': serializer.toJson<int>(tagId),
+    };
+  }
+
+  ItemTagEntry copyWith({String? itemId, int? tagId}) =>
+      ItemTagEntry(itemId: itemId ?? this.itemId, tagId: tagId ?? this.tagId);
+  ItemTagEntry copyWithCompanion(ItemTagsTableCompanion data) {
+    return ItemTagEntry(
+      itemId: data.itemId.present ? data.itemId.value : this.itemId,
+      tagId: data.tagId.present ? data.tagId.value : this.tagId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ItemTagEntry(')
+          ..write('itemId: $itemId, ')
+          ..write('tagId: $tagId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(itemId, tagId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ItemTagEntry &&
+          other.itemId == this.itemId &&
+          other.tagId == this.tagId);
+}
+
+class ItemTagsTableCompanion extends UpdateCompanion<ItemTagEntry> {
+  final Value<String> itemId;
+  final Value<int> tagId;
+  final Value<int> rowid;
+  const ItemTagsTableCompanion({
+    this.itemId = const Value.absent(),
+    this.tagId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ItemTagsTableCompanion.insert({
+    required String itemId,
+    required int tagId,
+    this.rowid = const Value.absent(),
+  }) : itemId = Value(itemId),
+       tagId = Value(tagId);
+  static Insertable<ItemTagEntry> custom({
+    Expression<String>? itemId,
+    Expression<int>? tagId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (itemId != null) 'item_id': itemId,
+      if (tagId != null) 'tag_id': tagId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ItemTagsTableCompanion copyWith({
+    Value<String>? itemId,
+    Value<int>? tagId,
+    Value<int>? rowid,
+  }) {
+    return ItemTagsTableCompanion(
+      itemId: itemId ?? this.itemId,
+      tagId: tagId ?? this.tagId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (itemId.present) {
+      map['item_id'] = Variable<String>(itemId.value);
+    }
+    if (tagId.present) {
+      map['tag_id'] = Variable<int>(tagId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ItemTagsTableCompanion(')
+          ..write('itemId: $itemId, ')
+          ..write('tagId: $tagId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+abstract class _$AppDatabase extends GeneratedDatabase {
+  _$AppDatabase(QueryExecutor e) : super(e);
+  $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $SavedItemsTableTable savedItemsTable = $SavedItemsTableTable(
+    this,
+  );
+  late final $TagsTableTable tagsTable = $TagsTableTable(this);
+  late final $ItemTagsTableTable itemTagsTable = $ItemTagsTableTable(this);
+  @override
+  Iterable<TableInfo<Table, Object?>> get allTables =>
+      allSchemaEntities.whereType<TableInfo<Table, Object?>>();
+  @override
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    savedItemsTable,
+    tagsTable,
+    itemTagsTable,
+  ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'saved_items_table',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('item_tags_table', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'tags_table',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('item_tags_table', kind: UpdateKind.delete)],
+    ),
+  ]);
+}
+
+typedef $$SavedItemsTableTableCreateCompanionBuilder =
+    SavedItemsTableCompanion Function({
+      required String id,
+      required String permalink,
+      required ItemType itemType,
+      Value<String?> parentPostId,
+      Value<String?> parentPostTitle,
+      required String title,
+      required String subreddit,
+      Value<String?> author,
+      Value<String?> body,
+      Value<String?> url,
+      Value<String?> thumbnailUrl,
+      Value<String?> mediaUrl,
+      Value<MediaType> mediaType,
+      Value<int> score,
+      Value<int> numComments,
+      Value<bool> isNsfw,
+      Value<bool> isStarred,
+      Value<bool> isArchived,
+      Value<String?> userNote,
+      Value<String> csvSource,
+      Value<int> importOrder,
+      Value<DateTime?> createdAtUtc,
+      required DateTime savedAtUtc,
+      Value<String?> postFlair,
+      Value<String> subredditType,
+      Value<EnrichmentStatus> enrichmentStatus,
+      Value<int> rowid,
+    });
+typedef $$SavedItemsTableTableUpdateCompanionBuilder =
+    SavedItemsTableCompanion Function({
+      Value<String> id,
+      Value<String> permalink,
+      Value<ItemType> itemType,
+      Value<String?> parentPostId,
+      Value<String?> parentPostTitle,
+      Value<String> title,
+      Value<String> subreddit,
+      Value<String?> author,
+      Value<String?> body,
+      Value<String?> url,
+      Value<String?> thumbnailUrl,
+      Value<String?> mediaUrl,
+      Value<MediaType> mediaType,
+      Value<int> score,
+      Value<int> numComments,
+      Value<bool> isNsfw,
+      Value<bool> isStarred,
+      Value<bool> isArchived,
+      Value<String?> userNote,
+      Value<String> csvSource,
+      Value<int> importOrder,
+      Value<DateTime?> createdAtUtc,
+      Value<DateTime> savedAtUtc,
+      Value<String?> postFlair,
+      Value<String> subredditType,
+      Value<EnrichmentStatus> enrichmentStatus,
+      Value<int> rowid,
+    });
+
+final class $$SavedItemsTableTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $SavedItemsTableTable, SavedItemEntry> {
+  $$SavedItemsTableTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<$ItemTagsTableTable, List<ItemTagEntry>>
+  _itemTagsTableRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.itemTagsTable,
+    aliasName: 'saved_items_table__id__item_tags_table__item_id',
+  );
+
+  $$ItemTagsTableTableProcessedTableManager get itemTagsTableRefs {
+    final manager = $$ItemTagsTableTableTableManager(
+      $_db,
+      $_db.itemTagsTable,
+    ).filter((f) => f.itemId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_itemTagsTableRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$SavedItemsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SavedItemsTableTable> {
+  $$SavedItemsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get permalink => $composableBuilder(
+    column: $table.permalink,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ItemType, ItemType, int> get itemType =>
+      $composableBuilder(
+        column: $table.itemType,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get parentPostId => $composableBuilder(
+    column: $table.parentPostId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get parentPostTitle => $composableBuilder(
+    column: $table.parentPostTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subreddit => $composableBuilder(
+    column: $table.subreddit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get author => $composableBuilder(
+    column: $table.author,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get thumbnailUrl => $composableBuilder(
+    column: $table.thumbnailUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mediaUrl => $composableBuilder(
+    column: $table.mediaUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<MediaType, MediaType, int> get mediaType =>
+      $composableBuilder(
+        column: $table.mediaType,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<int> get score => $composableBuilder(
+    column: $table.score,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get numComments => $composableBuilder(
+    column: $table.numComments,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isNsfw => $composableBuilder(
+    column: $table.isNsfw,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isStarred => $composableBuilder(
+    column: $table.isStarred,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userNote => $composableBuilder(
+    column: $table.userNote,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get csvSource => $composableBuilder(
+    column: $table.csvSource,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get importOrder => $composableBuilder(
+    column: $table.importOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get savedAtUtc => $composableBuilder(
+    column: $table.savedAtUtc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get postFlair => $composableBuilder(
+    column: $table.postFlair,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subredditType => $composableBuilder(
+    column: $table.subredditType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<EnrichmentStatus, EnrichmentStatus, int>
+  get enrichmentStatus => $composableBuilder(
+    column: $table.enrichmentStatus,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  Expression<bool> itemTagsTableRefs(
+    Expression<bool> Function($$ItemTagsTableTableFilterComposer f) f,
+  ) {
+    final $$ItemTagsTableTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.itemTagsTable,
+      getReferencedColumn: (t) => t.itemId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ItemTagsTableTableFilterComposer(
+            $db: $db,
+            $table: $db.itemTagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$SavedItemsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SavedItemsTableTable> {
+  $$SavedItemsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get permalink => $composableBuilder(
+    column: $table.permalink,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get itemType => $composableBuilder(
+    column: $table.itemType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get parentPostId => $composableBuilder(
+    column: $table.parentPostId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get parentPostTitle => $composableBuilder(
+    column: $table.parentPostTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subreddit => $composableBuilder(
+    column: $table.subreddit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get author => $composableBuilder(
+    column: $table.author,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get thumbnailUrl => $composableBuilder(
+    column: $table.thumbnailUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mediaUrl => $composableBuilder(
+    column: $table.mediaUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get mediaType => $composableBuilder(
+    column: $table.mediaType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get score => $composableBuilder(
+    column: $table.score,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get numComments => $composableBuilder(
+    column: $table.numComments,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isNsfw => $composableBuilder(
+    column: $table.isNsfw,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isStarred => $composableBuilder(
+    column: $table.isStarred,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userNote => $composableBuilder(
+    column: $table.userNote,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get csvSource => $composableBuilder(
+    column: $table.csvSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get importOrder => $composableBuilder(
+    column: $table.importOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get savedAtUtc => $composableBuilder(
+    column: $table.savedAtUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get postFlair => $composableBuilder(
+    column: $table.postFlair,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subredditType => $composableBuilder(
+    column: $table.subredditType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get enrichmentStatus => $composableBuilder(
+    column: $table.enrichmentStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SavedItemsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SavedItemsTableTable> {
+  $$SavedItemsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get permalink =>
+      $composableBuilder(column: $table.permalink, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<ItemType, int> get itemType =>
+      $composableBuilder(column: $table.itemType, builder: (column) => column);
+
+  GeneratedColumn<String> get parentPostId => $composableBuilder(
+    column: $table.parentPostId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get parentPostTitle => $composableBuilder(
+    column: $table.parentPostTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get subreddit =>
+      $composableBuilder(column: $table.subreddit, builder: (column) => column);
+
+  GeneratedColumn<String> get author =>
+      $composableBuilder(column: $table.author, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get thumbnailUrl => $composableBuilder(
+    column: $table.thumbnailUrl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get mediaUrl =>
+      $composableBuilder(column: $table.mediaUrl, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<MediaType, int> get mediaType =>
+      $composableBuilder(column: $table.mediaType, builder: (column) => column);
+
+  GeneratedColumn<int> get score =>
+      $composableBuilder(column: $table.score, builder: (column) => column);
+
+  GeneratedColumn<int> get numComments => $composableBuilder(
+    column: $table.numComments,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isNsfw =>
+      $composableBuilder(column: $table.isNsfw, builder: (column) => column);
+
+  GeneratedColumn<bool> get isStarred =>
+      $composableBuilder(column: $table.isStarred, builder: (column) => column);
+
+  GeneratedColumn<bool> get isArchived => $composableBuilder(
+    column: $table.isArchived,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get userNote =>
+      $composableBuilder(column: $table.userNote, builder: (column) => column);
+
+  GeneratedColumn<String> get csvSource =>
+      $composableBuilder(column: $table.csvSource, builder: (column) => column);
+
+  GeneratedColumn<int> get importOrder => $composableBuilder(
+    column: $table.importOrder,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get savedAtUtc => $composableBuilder(
+    column: $table.savedAtUtc,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get postFlair =>
+      $composableBuilder(column: $table.postFlair, builder: (column) => column);
+
+  GeneratedColumn<String> get subredditType => $composableBuilder(
+    column: $table.subredditType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<EnrichmentStatus, int>
+  get enrichmentStatus => $composableBuilder(
+    column: $table.enrichmentStatus,
+    builder: (column) => column,
+  );
+
+  Expression<T> itemTagsTableRefs<T extends Object>(
+    Expression<T> Function($$ItemTagsTableTableAnnotationComposer a) f,
+  ) {
+    final $$ItemTagsTableTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.itemTagsTable,
+      getReferencedColumn: (t) => t.itemId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ItemTagsTableTableAnnotationComposer(
+            $db: $db,
+            $table: $db.itemTagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$SavedItemsTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SavedItemsTableTable,
+          SavedItemEntry,
+          $$SavedItemsTableTableFilterComposer,
+          $$SavedItemsTableTableOrderingComposer,
+          $$SavedItemsTableTableAnnotationComposer,
+          $$SavedItemsTableTableCreateCompanionBuilder,
+          $$SavedItemsTableTableUpdateCompanionBuilder,
+          (SavedItemEntry, $$SavedItemsTableTableReferences),
+          SavedItemEntry,
+          PrefetchHooks Function({bool itemTagsTableRefs})
+        > {
+  $$SavedItemsTableTableTableManager(
+    _$AppDatabase db,
+    $SavedItemsTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SavedItemsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SavedItemsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SavedItemsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> permalink = const Value.absent(),
+                Value<ItemType> itemType = const Value.absent(),
+                Value<String?> parentPostId = const Value.absent(),
+                Value<String?> parentPostTitle = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> subreddit = const Value.absent(),
+                Value<String?> author = const Value.absent(),
+                Value<String?> body = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> thumbnailUrl = const Value.absent(),
+                Value<String?> mediaUrl = const Value.absent(),
+                Value<MediaType> mediaType = const Value.absent(),
+                Value<int> score = const Value.absent(),
+                Value<int> numComments = const Value.absent(),
+                Value<bool> isNsfw = const Value.absent(),
+                Value<bool> isStarred = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
+                Value<String?> userNote = const Value.absent(),
+                Value<String> csvSource = const Value.absent(),
+                Value<int> importOrder = const Value.absent(),
+                Value<DateTime?> createdAtUtc = const Value.absent(),
+                Value<DateTime> savedAtUtc = const Value.absent(),
+                Value<String?> postFlair = const Value.absent(),
+                Value<String> subredditType = const Value.absent(),
+                Value<EnrichmentStatus> enrichmentStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SavedItemsTableCompanion(
+                id: id,
+                permalink: permalink,
+                itemType: itemType,
+                parentPostId: parentPostId,
+                parentPostTitle: parentPostTitle,
+                title: title,
+                subreddit: subreddit,
+                author: author,
+                body: body,
+                url: url,
+                thumbnailUrl: thumbnailUrl,
+                mediaUrl: mediaUrl,
+                mediaType: mediaType,
+                score: score,
+                numComments: numComments,
+                isNsfw: isNsfw,
+                isStarred: isStarred,
+                isArchived: isArchived,
+                userNote: userNote,
+                csvSource: csvSource,
+                importOrder: importOrder,
+                createdAtUtc: createdAtUtc,
+                savedAtUtc: savedAtUtc,
+                postFlair: postFlair,
+                subredditType: subredditType,
+                enrichmentStatus: enrichmentStatus,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String permalink,
+                required ItemType itemType,
+                Value<String?> parentPostId = const Value.absent(),
+                Value<String?> parentPostTitle = const Value.absent(),
+                required String title,
+                required String subreddit,
+                Value<String?> author = const Value.absent(),
+                Value<String?> body = const Value.absent(),
+                Value<String?> url = const Value.absent(),
+                Value<String?> thumbnailUrl = const Value.absent(),
+                Value<String?> mediaUrl = const Value.absent(),
+                Value<MediaType> mediaType = const Value.absent(),
+                Value<int> score = const Value.absent(),
+                Value<int> numComments = const Value.absent(),
+                Value<bool> isNsfw = const Value.absent(),
+                Value<bool> isStarred = const Value.absent(),
+                Value<bool> isArchived = const Value.absent(),
+                Value<String?> userNote = const Value.absent(),
+                Value<String> csvSource = const Value.absent(),
+                Value<int> importOrder = const Value.absent(),
+                Value<DateTime?> createdAtUtc = const Value.absent(),
+                required DateTime savedAtUtc,
+                Value<String?> postFlair = const Value.absent(),
+                Value<String> subredditType = const Value.absent(),
+                Value<EnrichmentStatus> enrichmentStatus = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SavedItemsTableCompanion.insert(
+                id: id,
+                permalink: permalink,
+                itemType: itemType,
+                parentPostId: parentPostId,
+                parentPostTitle: parentPostTitle,
+                title: title,
+                subreddit: subreddit,
+                author: author,
+                body: body,
+                url: url,
+                thumbnailUrl: thumbnailUrl,
+                mediaUrl: mediaUrl,
+                mediaType: mediaType,
+                score: score,
+                numComments: numComments,
+                isNsfw: isNsfw,
+                isStarred: isStarred,
+                isArchived: isArchived,
+                userNote: userNote,
+                csvSource: csvSource,
+                importOrder: importOrder,
+                createdAtUtc: createdAtUtc,
+                savedAtUtc: savedAtUtc,
+                postFlair: postFlair,
+                subredditType: subredditType,
+                enrichmentStatus: enrichmentStatus,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$SavedItemsTableTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({itemTagsTableRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (itemTagsTableRefs) db.itemTagsTable,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (itemTagsTableRefs)
+                    await $_getPrefetchedData<
+                      SavedItemEntry,
+                      $SavedItemsTableTable,
+                      ItemTagEntry
+                    >(
+                      currentTable: table,
+                      referencedTable: $$SavedItemsTableTableReferences
+                          ._itemTagsTableRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$SavedItemsTableTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).itemTagsTableRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.itemId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$SavedItemsTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SavedItemsTableTable,
+      SavedItemEntry,
+      $$SavedItemsTableTableFilterComposer,
+      $$SavedItemsTableTableOrderingComposer,
+      $$SavedItemsTableTableAnnotationComposer,
+      $$SavedItemsTableTableCreateCompanionBuilder,
+      $$SavedItemsTableTableUpdateCompanionBuilder,
+      (SavedItemEntry, $$SavedItemsTableTableReferences),
+      SavedItemEntry,
+      PrefetchHooks Function({bool itemTagsTableRefs})
+    >;
+typedef $$TagsTableTableCreateCompanionBuilder = TagsTableCompanion Function({
+  Value<int> id,
+  required String name,
+  Value<int> colorValue,
+});
+typedef $$TagsTableTableUpdateCompanionBuilder = TagsTableCompanion Function({
+  Value<int> id,
+  Value<String> name,
+  Value<int> colorValue,
+});
+
+final class $$TagsTableTableReferences
+    extends BaseReferences<_$AppDatabase, $TagsTableTable, TagEntry> {
+  $$TagsTableTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$ItemTagsTableTable, List<ItemTagEntry>>
+  _itemTagsTableRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.itemTagsTable,
+    aliasName: 'tags_table__id__item_tags_table__tag_id',
+  );
+
+  $$ItemTagsTableTableProcessedTableManager get itemTagsTableRefs {
+    final manager = $$ItemTagsTableTableTableManager(
+      $_db,
+      $_db.itemTagsTable,
+    ).filter((f) => f.tagId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_itemTagsTableRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$TagsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $TagsTableTable> {
+  $$TagsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> itemTagsTableRefs(
+    Expression<bool> Function($$ItemTagsTableTableFilterComposer f) f,
+  ) {
+    final $$ItemTagsTableTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.itemTagsTable,
+      getReferencedColumn: (t) => t.tagId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ItemTagsTableTableFilterComposer(
+            $db: $db,
+            $table: $db.itemTagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$TagsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $TagsTableTable> {
+  $$TagsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TagsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TagsTableTable> {
+  $$TagsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get colorValue => $composableBuilder(
+    column: $table.colorValue,
+    builder: (column) => column,
+  );
+
+  Expression<T> itemTagsTableRefs<T extends Object>(
+    Expression<T> Function($$ItemTagsTableTableAnnotationComposer a) f,
+  ) {
+    final $$ItemTagsTableTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.itemTagsTable,
+      getReferencedColumn: (t) => t.tagId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ItemTagsTableTableAnnotationComposer(
+            $db: $db,
+            $table: $db.itemTagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$TagsTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TagsTableTable,
+          TagEntry,
+          $$TagsTableTableFilterComposer,
+          $$TagsTableTableOrderingComposer,
+          $$TagsTableTableAnnotationComposer,
+          $$TagsTableTableCreateCompanionBuilder,
+          $$TagsTableTableUpdateCompanionBuilder,
+          (TagEntry, $$TagsTableTableReferences),
+          TagEntry,
+          PrefetchHooks Function({bool itemTagsTableRefs})
+        > {
+  $$TagsTableTableTableManager(_$AppDatabase db, $TagsTableTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TagsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TagsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TagsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<int> colorValue = const Value.absent(),
+          }) => TagsTableCompanion(id: id, name: name, colorValue: colorValue),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                Value<int> colorValue = const Value.absent(),
+              }) => TagsTableCompanion.insert(
+                id: id,
+                name: name,
+                colorValue: colorValue,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$TagsTableTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({itemTagsTableRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (itemTagsTableRefs) db.itemTagsTable,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (itemTagsTableRefs)
+                    await $_getPrefetchedData<
+                      TagEntry,
+                      $TagsTableTable,
+                      ItemTagEntry
+                    >(
+                      currentTable: table,
+                      referencedTable: $$TagsTableTableReferences
+                          ._itemTagsTableRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$TagsTableTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).itemTagsTableRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.tagId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$TagsTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TagsTableTable,
+      TagEntry,
+      $$TagsTableTableFilterComposer,
+      $$TagsTableTableOrderingComposer,
+      $$TagsTableTableAnnotationComposer,
+      $$TagsTableTableCreateCompanionBuilder,
+      $$TagsTableTableUpdateCompanionBuilder,
+      (TagEntry, $$TagsTableTableReferences),
+      TagEntry,
+      PrefetchHooks Function({bool itemTagsTableRefs})
+    >;
+typedef $$ItemTagsTableTableCreateCompanionBuilder =
+    ItemTagsTableCompanion Function({
+      required String itemId,
+      required int tagId,
+      Value<int> rowid,
+    });
+typedef $$ItemTagsTableTableUpdateCompanionBuilder =
+    ItemTagsTableCompanion Function({
+      Value<String> itemId,
+      Value<int> tagId,
+      Value<int> rowid,
+    });
+
+final class $$ItemTagsTableTableReferences
+    extends BaseReferences<_$AppDatabase, $ItemTagsTableTable, ItemTagEntry> {
+  $$ItemTagsTableTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $SavedItemsTableTable _itemIdTable(_$AppDatabase db) => db
+      .savedItemsTable
+      .createAlias('item_tags_table__item_id__saved_items_table__id');
+
+  $$SavedItemsTableTableProcessedTableManager get itemId {
+    final $_column = $_itemColumn<String>('item_id')!;
+
+    final manager = $$SavedItemsTableTableTableManager(
+      $_db,
+      $_db.savedItemsTable,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_itemIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $TagsTableTable _tagIdTable(_$AppDatabase db) =>
+      db.tagsTable.createAlias('item_tags_table__tag_id__tags_table__id');
+
+  $$TagsTableTableProcessedTableManager get tagId {
+    final $_column = $_itemColumn<int>('tag_id')!;
+
+    final manager = $$TagsTableTableTableManager(
+      $_db,
+      $_db.tagsTable,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_tagIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ItemTagsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $ItemTagsTableTable> {
+  $$ItemTagsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$SavedItemsTableTableFilterComposer get itemId {
+    final $$SavedItemsTableTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.itemId,
+      referencedTable: $db.savedItemsTable,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SavedItemsTableTableFilterComposer(
+            $db: $db,
+            $table: $db.savedItemsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TagsTableTableFilterComposer get tagId {
+    final $$TagsTableTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tagId,
+      referencedTable: $db.tagsTable,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TagsTableTableFilterComposer(
+            $db: $db,
+            $table: $db.tagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ItemTagsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $ItemTagsTableTable> {
+  $$ItemTagsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$SavedItemsTableTableOrderingComposer get itemId {
+    final $$SavedItemsTableTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.itemId,
+      referencedTable: $db.savedItemsTable,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SavedItemsTableTableOrderingComposer(
+            $db: $db,
+            $table: $db.savedItemsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TagsTableTableOrderingComposer get tagId {
+    final $$TagsTableTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tagId,
+      referencedTable: $db.tagsTable,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TagsTableTableOrderingComposer(
+            $db: $db,
+            $table: $db.tagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ItemTagsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ItemTagsTableTable> {
+  $$ItemTagsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$SavedItemsTableTableAnnotationComposer get itemId {
+    final $$SavedItemsTableTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.itemId,
+      referencedTable: $db.savedItemsTable,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SavedItemsTableTableAnnotationComposer(
+            $db: $db,
+            $table: $db.savedItemsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$TagsTableTableAnnotationComposer get tagId {
+    final $$TagsTableTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.tagId,
+      referencedTable: $db.tagsTable,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$TagsTableTableAnnotationComposer(
+            $db: $db,
+            $table: $db.tagsTable,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ItemTagsTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ItemTagsTableTable,
+          ItemTagEntry,
+          $$ItemTagsTableTableFilterComposer,
+          $$ItemTagsTableTableOrderingComposer,
+          $$ItemTagsTableTableAnnotationComposer,
+          $$ItemTagsTableTableCreateCompanionBuilder,
+          $$ItemTagsTableTableUpdateCompanionBuilder,
+          (ItemTagEntry, $$ItemTagsTableTableReferences),
+          ItemTagEntry,
+          PrefetchHooks Function({bool itemId, bool tagId})
+        > {
+  $$ItemTagsTableTableTableManager(_$AppDatabase db, $ItemTagsTableTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ItemTagsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ItemTagsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ItemTagsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> itemId = const Value.absent(),
+                Value<int> tagId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ItemTagsTableCompanion(
+                itemId: itemId,
+                tagId: tagId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String itemId,
+                required int tagId,
+                Value<int> rowid = const Value.absent(),
+              }) => ItemTagsTableCompanion.insert(
+                itemId: itemId,
+                tagId: tagId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ItemTagsTableTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({itemId = false, tagId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (itemId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.itemId,
+                        referencedTable: $$ItemTagsTableTableReferences
+                            ._itemIdTable(db),
+                        referencedColumn: $$ItemTagsTableTableReferences
+                            ._itemIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+                    if (tagId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.tagId,
+                        referencedTable: $$ItemTagsTableTableReferences
+                            ._tagIdTable(db),
+                        referencedColumn: $$ItemTagsTableTableReferences
+                            ._tagIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ItemTagsTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ItemTagsTableTable,
+      ItemTagEntry,
+      $$ItemTagsTableTableFilterComposer,
+      $$ItemTagsTableTableOrderingComposer,
+      $$ItemTagsTableTableAnnotationComposer,
+      $$ItemTagsTableTableCreateCompanionBuilder,
+      $$ItemTagsTableTableUpdateCompanionBuilder,
+      (ItemTagEntry, $$ItemTagsTableTableReferences),
+      ItemTagEntry,
+      PrefetchHooks Function({bool itemId, bool tagId})
+    >;
+
+class $AppDatabaseManager {
+  final _$AppDatabase _db;
+  $AppDatabaseManager(this._db);
+  $$SavedItemsTableTableTableManager get savedItemsTable =>
+      $$SavedItemsTableTableTableManager(_db, _db.savedItemsTable);
+  $$TagsTableTableTableManager get tagsTable =>
+      $$TagsTableTableTableManager(_db, _db.tagsTable);
+  $$ItemTagsTableTableTableManager get itemTagsTable =>
+      $$ItemTagsTableTableTableManager(_db, _db.itemTagsTable);
+}

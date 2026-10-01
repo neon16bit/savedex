@@ -1,0 +1,56 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/data/database/database.dart';
+import 'package:savedex/data/repositories/saved_item_repository.dart';
+import 'package:savedex/data/repositories/settings_repository.dart';
+import 'package:savedex/data/repositories/tag_repository.dart';
+import 'package:savedex/data/services/backup_export_service.dart';
+import 'package:savedex/data/services/csv_parser_service.dart';
+import 'package:savedex/data/services/reddit_api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) {
+  return null;
+});
+
+final databaseProvider = Provider<AppDatabase>((ref) => AppDatabase.instance);
+
+final csvParserServiceProvider = Provider<CsvParserService>((ref) {
+  return CsvParserService();
+});
+
+final redditApiServiceProvider = Provider<RedditApiService>((ref) {
+  final api = RedditApiService();
+  final settings = ref.watch(settingsRepositoryProvider).settings;
+  api.updateCredentials(
+    clientId: settings.redditClientId,
+    clientSecret: settings.redditClientSecret,
+    redirectUri: settings.redditRedirectUri,
+    userAgent: settings.userAgent,
+    refreshToken: settings.redditRefreshToken,
+    accessToken: settings.redditAccessToken,
+    tokenExpiry: settings.redditTokenExpiry,
+  );
+  ref.onDispose(() => api.dispose());
+  return api;
+});
+
+final backupExportServiceProvider = Provider<BackupExportService>((ref) {
+  return BackupExportService();
+});
+
+final tagRepositoryProvider = Provider<TagRepository>((ref) {
+  final db = ref.watch(databaseProvider);
+  return TagRepository(db);
+});
+
+final savedItemRepositoryProvider = Provider<SavedItemRepository>((ref) {
+  final db = ref.watch(databaseProvider);
+  final parser = ref.watch(csvParserServiceProvider);
+  final api = ref.watch(redditApiServiceProvider);
+  return SavedItemRepository(db: db, csvParser: parser, redditApi: api);
+});
+
+final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return SettingsRepository(prefs);
+});

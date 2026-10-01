@@ -1,0 +1,1253 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/theme/app_theme.dart';
+import 'package:savedex/data/services/reddit_api_service.dart';
+import 'package:savedex/data/services/reddit_auth_service.dart';
+import 'package:savedex/features/import_export/import_view.dart';
+import 'package:savedex/features/import_export/import_viewmodel.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
+
+class SettingsView extends ConsumerWidget {
+  const SettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsViewModelProvider);
+    final viewModel = ref.read(settingsViewModelProvider.notifier);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Settings'),
+        elevation: 0,
+        scrolledUnderElevation: 2,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        children: [
+          _buildSectionHeader('Data & Takeout', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.file_upload_outlined,
+                      color: colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  title: const Text(
+                    'Import Reddit Takeout',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: const Text(
+                    'Load saved_posts.csv, saved_comments.csv, or ZIP archive',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ImportView()),
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Backup & Export Library',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Export your organized library with custom tags, personal notes, and stars.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _handleExport(context, ref, asJson: true),
+                              icon: const Icon(
+                                Icons.data_object_rounded,
+                                size: 17,
+                              ),
+                              label: const Text('Export JSON'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _handleExport(context, ref, asJson: false),
+                              icon: const Icon(
+                                Icons.table_chart_outlined,
+                                size: 17,
+                              ),
+                              label: const Text('Export CSV'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.errorContainer.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.delete_sweep_rounded,
+                      color: colorScheme.error,
+                    ),
+                  ),
+                  title: Text(
+                    'Clear Saved Database',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.error,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Delete all saved posts, comments, tags, and search index',
+                  ),
+                  trailing: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      side: BorderSide(
+                        color: colorScheme.error.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    onPressed: () => _confirmClearDatabase(context, ref),
+                    child: const Text('Clear All'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          _buildSectionHeader('Appearance & Theme', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.palette_outlined),
+                  title: const Text('Material You (Dynamic Color)'),
+                  subtitle: const Text(
+                    'Use system wallpaper palette when available',
+                  ),
+                  trailing: Switch(
+                    value: settings.useDynamicColor,
+                    onChanged: (val) => viewModel.toggleDynamicColor(val),
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Theme Accent Color',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: List.generate(AppTheme.presets.length, (
+                            index,
+                          ) {
+                            final presetColor = AppTheme.presets[index];
+                            final isSelected =
+                                !settings.useDynamicColor &&
+                                settings.seedColorIndex == index;
+
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 12),
+                              child: GestureDetector(
+                                onTap: () {
+                                  if (settings.useDynamicColor) {
+                                    viewModel.toggleDynamicColor(false);
+                                  }
+                                  viewModel.setSeedColorIndex(index);
+                                },
+                                child: Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: presetColor,
+                                    shape: BoxShape.circle,
+                                    border: isSelected
+                                        ? Border.all(
+                                            color: colorScheme.primary,
+                                            width: 3.5,
+                                          )
+                                        : null,
+                                    boxShadow: isSelected
+                                        ? [
+                                            BoxShadow(
+                                              color: presetColor.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                              blurRadius: 8,
+                                              spreadRadius: 2,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: isSelected
+                                      ? const Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                          size: 20,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.brightness_6_outlined),
+                  title: const Text('Theme Mode'),
+                  subtitle: Text(
+                    settings.themeMode == ThemeMode.system
+                        ? 'System Default'
+                        : settings.themeMode == ThemeMode.dark
+                        ? 'Dark Mode'
+                        : 'Light Mode',
+                  ),
+                  trailing: SegmentedButton<ThemeMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: ThemeMode.system,
+                        icon: Icon(Icons.auto_mode, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        icon: Icon(Icons.light_mode, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        icon: Icon(Icons.dark_mode, size: 16),
+                      ),
+                    ],
+                    selected: {settings.themeMode},
+                    onSelectionChanged: (set) =>
+                        viewModel.setThemeMode(set.first),
+                    showSelectedIcon: false,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          _buildSectionHeader('Reddit API', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.sync_outlined),
+                  title: const Text('Auto-Enrich on Import'),
+                  subtitle: const Text(
+                    'Download post metadata & flairs right after CSV import',
+                  ),
+                  trailing: Switch(
+                    value: settings.autoEnrichOnImport,
+                    onChanged: (val) => viewModel.toggleAutoEnrich(val),
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: settings.isAuthenticatedWithOAuth
+                          ? colorScheme.primaryContainer
+                          : (settings.redditClientId != null &&
+                                settings.redditClientId!.isNotEmpty)
+                          ? colorScheme.secondaryContainer
+                          : colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      settings.isAuthenticatedWithOAuth
+                          ? Icons.verified_user_rounded
+                          : (settings.redditClientId != null &&
+                                settings.redditClientId!.isNotEmpty)
+                          ? Icons.vpn_key_rounded
+                          : Icons.key_off_outlined,
+                      color: settings.isAuthenticatedWithOAuth
+                          ? colorScheme.primary
+                          : (settings.redditClientId != null &&
+                                settings.redditClientId!.isNotEmpty)
+                          ? colorScheme.onSecondaryContainer
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  title: const Text(
+                    'Reddit API & OAuth',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    settings.isAuthenticatedWithOAuth
+                        ? (settings.redditUsername != null
+                              ? 'Authenticated as u/${settings.redditUsername}'
+                              : 'Authenticated via OAuth')
+                        : (settings.redditClientId != null &&
+                              settings.redditClientId!.isNotEmpty)
+                        ? 'Client ID configured'
+                        : 'Not configured (Client ID required)',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _showApiCredentialsDialog(context),
+                ),
+                if (settings.isAuthenticatedWithOAuth) ...[
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final importState = ref.watch(
+                        importExportViewModelProvider,
+                      );
+                      final importVm = ref.read(
+                        importExportViewModelProvider.notifier,
+                      );
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ListTile(
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF4500)
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.cloud_download_rounded,
+                                color: Color(0xFFFF4500),
+                              ),
+                            ),
+                            title: const Text(
+                              'Pull Saved from Reddit',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: Text(
+                              settings.redditUsername != null
+                                  ? 'Pull last 1,000 saves for u/${settings.redditUsername}'
+                                  : 'Pull up to 1,000 saved posts & comments',
+                            ),
+                            trailing: importState.isImporting
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : FilledButton.tonal(
+                                    onPressed: () async {
+                                      final summary = await importVm
+                                          .pullSavedFromReddit();
+                                      if (context.mounted) {
+                                        if (summary != null) {
+                                          final totalInDb =
+                                              summary.totalInDatabase;
+                                          final dbSuffix = totalInDb != null
+                                              ? ' ($totalInDb in library)'
+                                              : '';
+                                          final msg =
+                                              summary.newItemsImported > 0
+                                              ? 'Reddit sync: ${summary.newItemsImported} new items added$dbSuffix!'
+                                              : 'Library is up to date$dbSuffix!';
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(msg),
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                        } else if (importState.errorMessage !=
+                                            null) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    importState.errorMessage!,
+                                                  ),
+                                                  backgroundColor:
+                                                      colorScheme.error,
+                                                  behavior:
+                                                      SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                        }
+                                      }
+                                    },
+                                    child: const Text('Pull Now'),
+                                  ),
+                          ),
+                          if (importState.isImporting &&
+                              importState.statusMessage != null)
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                left: 16,
+                                right: 16,
+                                bottom: 12,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const LinearProgressIndicator(),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    importState.statusMessage!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // About Section
+          _buildSectionHeader('About', colorScheme),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: const Text('Savedex'),
+                  subtitle: const Text(
+                    'Version 0.0.1 • Reddit Saved Library Manager',
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.help_outline_rounded),
+                  title: const Text('How to get Reddit Takeout CSV'),
+                  subtitle: const Text(
+                    'Request your data from reddit.com/settings/data-request',
+                  ),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ImportView()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 12),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.8,
+          color: colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleExport(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool asJson,
+  }) async {
+    final viewModel = ref.read(importExportViewModelProvider.notifier);
+    final output = await viewModel.exportLibrary(asJson: asJson);
+    if (output != null && context.mounted) {
+      Clipboard.setData(ClipboardData(text: output));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Exported ${asJson ? "JSON" : "CSV"} copied to clipboard!',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _confirmClearDatabase(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: colorScheme.error,
+              size: 26,
+            ),
+            const SizedBox(width: 10),
+            const Text('Clear Database?'),
+          ],
+        ),
+        content: const Text(
+          'This will permanently delete all saved posts, comments, tags, user notes, and the search index from your local library.\n\nThis is useful for resetting and testing imports from scratch.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(savedItemRepositoryProvider).clearAllData();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Database cleared successfully'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            child: const Text('Delete Everything'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showApiCredentialsDialog(BuildContext context) {
+    showDialog(context: context, builder: (ctx) => const _RedditOAuthDialog());
+  }
+}
+
+class _RedditOAuthDialog extends ConsumerStatefulWidget {
+  const _RedditOAuthDialog();
+
+  @override
+  ConsumerState<_RedditOAuthDialog> createState() => _RedditOAuthDialogState();
+}
+
+class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
+  late final TextEditingController _clientIdController;
+  late final TextEditingController _redirectUriController;
+  late final TextEditingController _userAgentController;
+
+  bool _isConnecting = false;
+  String? _errorMessage;
+  String? _successMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = ref.read(settingsViewModelProvider);
+    _clientIdController = TextEditingController(
+      text: settings.redditClientId ?? '',
+    );
+    _redirectUriController = TextEditingController(
+      text: settings.redditRedirectUri ?? '',
+    );
+    _userAgentController = TextEditingController(
+      text: settings.userAgent ?? '',
+    );
+
+    if (settings.isAuthenticatedWithOAuth && settings.redditUsername == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          final apiService = ref.read(redditApiServiceProvider);
+          final userResult = await apiService.fetchMyUsername();
+          if (userResult.username != null && mounted) {
+            ref
+                .read(settingsViewModelProvider.notifier)
+                .setRedditUsername(userResult.username);
+          }
+        } catch (_) {}
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _clientIdController.dispose();
+    _redirectUriController.dispose();
+    _userAgentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleAuthorize() async {
+    final clientId = _clientIdController.text.trim();
+    final redirectUri = _redirectUriController.text.trim();
+
+    if (clientId.isEmpty || redirectUri.isEmpty) {
+      setState(() {
+        _errorMessage =
+            'Please enter both OAuth Client ID and Redirect URI first.';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    final authUrl = RedditApiService.buildAuthorizationUrl(
+      clientId: clientId,
+      redirectUri: redirectUri,
+    );
+
+    await _launchAndroidCustomTab(authUrl, redirectUri);
+  }
+
+  Future<void> _launchAndroidCustomTab(
+    String authUrl,
+    String redirectUri,
+  ) async {
+    try {
+      setState(() {
+        _errorMessage = null;
+        _successMessage = null;
+      });
+
+      final parsed = Uri.tryParse(redirectUri);
+      final scheme = (parsed != null && parsed.scheme.isNotEmpty)
+          ? parsed.scheme
+          : 'savedex';
+
+      final callbackUrl = await RedditAuthService.authenticateWithCustomTab(
+        authUrl: authUrl,
+        redirectUri: redirectUri,
+        callbackScheme: scheme,
+      );
+
+      final code = RedditApiService.parseCodeFromRedirectUrl(callbackUrl);
+      if (code != null && code.isNotEmpty) {
+        if (mounted) {
+          await _exchangeCode(code);
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'Could not find authorization code in callback URL.';
+          });
+        }
+      }
+    } on PlatformException catch (e) {
+      if (e.code == 'CANCELED' || e.code == 'CANCELLED') {
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'Authorization was canceled.';
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                'Custom Tab failed (${e.code}). Try copying the authorization URL below.';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Custom Tab error: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _copyAuthUrl() async {
+    final clientId = _clientIdController.text.trim();
+    final redirectUri = _redirectUriController.text.trim();
+
+    if (clientId.isEmpty || redirectUri.isEmpty) {
+      setState(
+        () => _errorMessage =
+            'Please enter both OAuth Client ID and Redirect URI first.',
+      );
+      return;
+    }
+
+    final authUrl = RedditApiService.buildAuthorizationUrl(
+      clientId: clientId,
+      redirectUri: redirectUri,
+    );
+
+    await Clipboard.setData(ClipboardData(text: authUrl));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Authorization URL copied to clipboard!'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _exchangeCode(String code) async {
+    final clientId = _clientIdController.text.trim();
+    final redirectUri = _redirectUriController.text.trim();
+    final userAgent = _userAgentController.text.trim();
+
+    if (clientId.isEmpty || redirectUri.isEmpty || userAgent.isEmpty) {
+      setState(() {
+        _errorMessage = 'OAuth Client ID, Redirect URI, and User Agent must all be provided.';
+        _successMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isConnecting = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
+
+    try {
+      final apiService = ref.read(redditApiServiceProvider);
+      final tokenResult = await apiService.exchangeAuthorizationCode(
+        code: code,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        userAgent: userAgent,
+      );
+
+      if (tokenResult != null) {
+        // Save credentials
+        ref
+            .read(settingsViewModelProvider.notifier)
+            .updateRedditCredentials(
+              clientId: clientId,
+              redirectUri: redirectUri,
+              userAgent: userAgent,
+            );
+
+        // Save OAuth tokens
+        ref
+            .read(settingsViewModelProvider.notifier)
+            .setOAuthTokens(
+              accessToken: tokenResult.accessToken,
+              refreshToken: tokenResult.refreshToken,
+              expiresIn: tokenResult.expiresIn,
+            );
+
+        // Fetch and persist username
+        String usernameInfo = '';
+        try {
+          final userResult = await apiService.fetchMyUsername();
+          if (userResult.username != null) {
+            ref
+                .read(settingsViewModelProvider.notifier)
+                .setRedditUsername(userResult.username);
+            usernameInfo = ' as u/${userResult.username}';
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          setState(() {
+            _isConnecting = false;
+            _successMessage =
+                'Successfully authenticated with Reddit OAuth$usernameInfo!';
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isConnecting = false;
+            _errorMessage = 'Token exchange failed. Please verify that your Client ID matches the app, Redirect URI is identical, and the code was not already used.';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+          _errorMessage = 'Error during token exchange: $e';
+        });
+      }
+    }
+  }
+
+  void _saveCredentials() {
+    ref
+        .read(settingsViewModelProvider.notifier)
+        .updateRedditCredentials(
+          clientId: _clientIdController.text,
+          redirectUri: _redirectUriController.text,
+          userAgent: _userAgentController.text,
+        );
+    Navigator.of(context).pop();
+  }
+
+  Widget _buildTextFields() {
+    return Column(
+      children: [
+        TextField(
+          controller: _clientIdController,
+          decoration: InputDecoration(
+            labelText: 'OAuth Client ID',
+            prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+            suffixIcon: _clientIdController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () =>
+                        setState(() => _clientIdController.clear()),
+                  )
+                : null,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _redirectUriController,
+          decoration: InputDecoration(
+            labelText: 'Redirect URI',
+            prefixIcon: const Icon(Icons.link_rounded, size: 20),
+            suffixIcon: _redirectUriController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () =>
+                        setState(() => _redirectUriController.clear()),
+                  )
+                : null,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _userAgentController,
+          decoration: InputDecoration(
+            labelText: 'User Agent',
+            prefixIcon: const Icon(Icons.devices_rounded, size: 20),
+            suffixIcon: _userAgentController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () =>
+                        setState(() => _userAgentController.clear()),
+                  )
+                : null,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(settingsViewModelProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isConnected = settings.isAuthenticatedWithOAuth;
+    final hasUnsavedChanges =
+        _clientIdController.text != (settings.redditClientId ?? '') ||
+        _redirectUriController.text != (settings.redditRedirectUri ?? '') ||
+        _userAgentController.text != (settings.userAgent ?? '');
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.vpn_key_rounded,
+              color: colorScheme.onPrimaryContainer,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Reddit API & OAuth',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isConnected) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          color: Colors.green,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              settings.redditUsername != null
+                                  ? 'u/${settings.redditUsername}'
+                                  : 'OAuth Connected',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'OAuth Active',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colorScheme.error,
+                          side: BorderSide(
+                            color: colorScheme.error.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        onPressed: () {
+                          ref
+                              .read(settingsViewModelProvider.notifier)
+                              .clearOAuthAuth();
+                          setState(() {
+                            _successMessage = null;
+                            _errorMessage = null;
+                          });
+                        },
+                        child: const Text(
+                          'Disconnect',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Theme(
+                  data: theme.copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                    childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
+                    leading: Icon(
+                      Icons.settings_outlined,
+                      size: 20,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    title: Text(
+                      'API Credentials',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    subtitle: Text(
+                      hasUnsavedChanges
+                          ? 'Unsaved changes'
+                          : 'Client ID, Redirect URI and User Agent',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: hasUnsavedChanges
+                            ? colorScheme.error
+                            : colorScheme.outline,
+                      ),
+                    ),
+                    children: [
+                      _buildTextFields(),
+                      if (hasUnsavedChanges && RedditAuthService.isAndroid) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: _handleAuthorize,
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const Text(
+                              'Authorize again with New Credentials',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.5,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: colorScheme.primary,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Enter your Reddit OAuth Client ID and Redirect URI to authorize.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _buildTextFields(),
+                const SizedBox(height: 16),
+                if (RedditAuthService.isAndroid) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed:
+                              (_clientIdController.text.trim().isEmpty ||
+                                  _redirectUriController.text.trim().isEmpty ||
+                                  _isConnecting)
+                              ? null
+                              : _handleAuthorize,
+                          icon: _isConnecting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.open_in_browser_rounded,
+                                  size: 18,
+                                ),
+                          label: Text(
+                            _isConnecting
+                                ? 'Connecting...'
+                                : 'Authorize with Reddit',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        tooltip: 'Copy Auth URL',
+                        onPressed:
+                            (_clientIdController.text.trim().isEmpty ||
+                                _redirectUriController.text.trim().isEmpty)
+                            ? null
+                            : _copyAuthUrl,
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        color: colorScheme.onErrorContainer,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(
+                            color: colorScheme.onErrorContainer,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_successMessage != null && !isConnected) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Colors.green,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _successMessage!,
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(isConnected && !hasUnsavedChanges ? 'Close' : 'Cancel'),
+        ),
+        if (hasUnsavedChanges || !isConnected)
+          FilledButton(
+            onPressed: _saveCredentials,
+            child: const Text('Save Credentials'),
+          ),
+      ],
+    );
+  }
+}
