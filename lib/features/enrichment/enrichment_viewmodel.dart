@@ -66,11 +66,15 @@ final enrichmentViewModelProvider =
 
 class EnrichmentViewModel extends Notifier<EnrichmentState> {
   bool _stopRequested = false;
+  bool _isDisposed = false;
   Completer<void>? _resumeCompleter;
 
   @override
   EnrichmentState build() {
+    _isDisposed = false;
+    _stopRequested = false;
     ref.onDispose(() {
+      _isDisposed = true;
       _stopRequested = true;
       if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
         _resumeCompleter!.complete();
@@ -78,6 +82,8 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
     });
     return const EnrichmentState();
   }
+
+  bool get _isMounted => !_isDisposed && !_stopRequested;
 
   Future<void> startEnrichment() async {
     if (state.isRunning && !state.isPaused) return;
@@ -92,6 +98,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
         : AppConstants.anonymousRequestDelay;
 
     final pendingCount = await repo.getPendingEnrichmentCount();
+    if (!_isMounted) return;
     if (pendingCount == 0) {
       state = state.copyWith(
         isRunning: false,
@@ -118,13 +125,14 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       failedInSession: state.isPaused ? state.failedInSession : 0,
     );
 
-    while (!_stopRequested) {
+    while (_isMounted) {
       if (state.isPaused && _resumeCompleter != null) {
         await _resumeCompleter!.future;
-        if (_stopRequested) break;
+        if (!_isMounted) break;
       }
 
       final currentPending = await repo.getPendingEnrichmentCount();
+      if (!_isMounted) break;
       if (currentPending == 0) {
         state = state.copyWith(
           isRunning: false,
@@ -146,6 +154,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       }
 
       final pendingItems = await repo.getPendingEnrichmentItems(limit: 20);
+      if (!_isMounted) break;
       if (pendingItems.isEmpty) {
         state = state.copyWith(
           isRunning: false,
@@ -157,11 +166,12 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       }
 
       for (final item in pendingItems) {
-        if (_stopRequested || state.isPaused) break;
+        if (!_isMounted || state.isPaused) break;
 
         state = state.copyWith(currentItemTitle: item.title);
 
         final result = await repo.enrichItem(item);
+        if (!_isMounted) break;
 
         if (result.success) {
           state = state.copyWith(
@@ -175,12 +185,15 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
           );
         }
 
+        if (!_isMounted || state.isPaused) break;
         await Future.delayed(delay);
+        if (!_isMounted) break;
       }
     }
   }
 
   void pauseEnrichment() {
+    if (_isDisposed) return;
     if (!state.isPaused) {
       _resumeCompleter = Completer<void>();
       state = state.copyWith(isPaused: true);
@@ -188,6 +201,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
   }
 
   void resumeEnrichment() {
+    if (_isDisposed) return;
     if (state.isPaused) {
       state = state.copyWith(isPaused: false);
       if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
@@ -206,7 +220,9 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       _resumeCompleter!.complete();
       _resumeCompleter = null;
     }
-    state = const EnrichmentState();
+    if (!_isDisposed) {
+      state = const EnrichmentState();
+    }
   }
 
   Future<({bool success, String? error})> enrichSingleItem(
