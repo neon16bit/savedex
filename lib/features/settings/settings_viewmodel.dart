@@ -31,6 +31,11 @@ class SettingsViewModel extends Notifier<UserSettings> {
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
+  void toggleAmoled(bool isAmoled) {
+    state = state.copyWith(isAmoled: isAmoled);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
   void setFeedLayoutMode(FeedLayoutMode mode) {
     state = state.copyWith(feedLayoutMode: mode);
     ref.read(settingsRepositoryProvider).updateSettings(state);

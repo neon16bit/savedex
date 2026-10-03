@@ -281,6 +281,18 @@ class SettingsView extends ConsumerWidget {
                     showSelectedIcon: false,
                   ),
                 ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.dark_mode_outlined),
+                  title: const Text('Pure Black'),
+                  subtitle: const Text(
+                    'Use deep pitch black for dark theme surfaces',
+                  ),
+                  trailing: Switch(
+                    value: settings.isAmoled,
+                    onChanged: (val) => viewModel.toggleAmoled(val),
+                  ),
+                ),
               ],
             ),
           ),

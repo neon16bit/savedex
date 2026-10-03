@@ -33,7 +33,10 @@ class SavedexApp extends ConsumerWidget {
             : settings.currentSeedColor;
 
         final lightTheme = AppTheme.lightTheme(seedColor: seedColor);
-        final darkTheme = AppTheme.darkTheme(seedColor: seedColor);
+        final darkTheme = AppTheme.darkTheme(
+          seedColor: seedColor,
+          isAmoled: settings.isAmoled,
+        );
 
         return MaterialApp(
           title: AppConstants.appName,
