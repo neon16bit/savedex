@@ -94,7 +94,15 @@ class SearchFilterViewModel extends Notifier<FilterCriteria> {
     if (start == null && end == null) {
       state = state.copyWith(clearDateRange: true);
     } else {
-      state = state.copyWith(dateRangeStart: start, dateRangeEnd: end);
+      final adjustedEnd =
+          (end != null &&
+              end.hour == 0 &&
+              end.minute == 0 &&
+              end.second == 0 &&
+              end.millisecond == 0)
+          ? DateTime(end.year, end.month, end.day, 23, 59, 59, 999)
+          : end;
+      state = state.copyWith(dateRangeStart: start, dateRangeEnd: adjustedEnd);
     }
   }
 

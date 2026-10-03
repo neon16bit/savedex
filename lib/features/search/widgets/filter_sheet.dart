@@ -412,16 +412,24 @@ class FilterSheet extends ConsumerWidget {
           ),
           selected: hasCustomRange,
           onSelected: (_) async {
+            final now = DateTime.now();
+            final lastDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
             final picked = await showDateRangePicker(
               context: context,
               firstDate: DateTime(2005),
-              lastDate: DateTime.now(),
+              lastDate: lastDate,
               initialDateRange: hasCustomRange
                   ? DateTimeRange(
                       start:
-                          filter.dateRangeStart ??
-                          DateTime.now().subtract(const Duration(days: 30)),
-                      end: filter.dateRangeEnd ?? DateTime.now(),
+                          filter.dateRangeStart != null &&
+                              !filter.dateRangeStart!.isAfter(lastDate)
+                          ? filter.dateRangeStart!
+                          : now.subtract(const Duration(days: 30)),
+                      end:
+                          filter.dateRangeEnd != null &&
+                              !filter.dateRangeEnd!.isAfter(lastDate)
+                          ? filter.dateRangeEnd!
+                          : lastDate,
                     )
                   : null,
             );

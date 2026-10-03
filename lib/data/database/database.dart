@@ -95,7 +95,12 @@ class AppDatabase extends _$AppDatabase {
         END;
       ''');
     } catch (e, stack) {
-      debugPrint('FTS5 table initialization note: $e\n$stack');
+      debugPrint('[Database] FTS5 initialization note: $e\n$stack');
+      try {
+        await db.customStatement('DROP TRIGGER IF EXISTS saved_items_ai');
+        await db.customStatement('DROP TRIGGER IF EXISTS saved_items_ad');
+        await db.customStatement('DROP TRIGGER IF EXISTS saved_items_au');
+      } catch (_) {}
     }
   }
 
@@ -112,7 +117,8 @@ class AppDatabase extends _$AppDatabase {
         FROM saved_items_table;
       ''');
     } catch (e, stack) {
-      debugPrint('FTS5 table rebuild note: $e\n$stack');
+      debugPrint('[Database] FTS5 rebuild failed: $e\n$stack');
+      rethrow;
     }
   }
 
@@ -177,12 +183,28 @@ class AppDatabase extends _$AppDatabase {
 
       if (dateRangeStart != null) {
         predicate =
-            predicate & tbl.createdAtUtc.isBiggerOrEqualValue(dateRangeStart);
+            predicate &
+            tbl.createdAtUtc.isBiggerOrEqualValue(dateRangeStart.toUtc());
       }
 
       if (dateRangeEnd != null) {
+        final inclusiveEnd =
+            (dateRangeEnd.hour == 0 &&
+                dateRangeEnd.minute == 0 &&
+                dateRangeEnd.second == 0 &&
+                dateRangeEnd.millisecond == 0)
+            ? DateTime(
+                dateRangeEnd.year,
+                dateRangeEnd.month,
+                dateRangeEnd.day,
+                23,
+                59,
+                59,
+                999,
+              ).toUtc()
+            : dateRangeEnd.toUtc();
         predicate =
-            predicate & tbl.createdAtUtc.isSmallerOrEqualValue(dateRangeEnd);
+            predicate & tbl.createdAtUtc.isSmallerOrEqualValue(inclusiveEnd);
       }
 
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
@@ -417,7 +439,9 @@ class AppDatabase extends _$AppDatabase {
       await delete(savedItemsTable).go();
       try {
         await customStatement('DELETE FROM saved_items_fts;');
-      } catch (_) {}
+      } catch (e, stack) {
+        debugPrint('[Database] Note: Could not clear FTS5 index: $e\n$stack');
+      }
     });
   }
 }
