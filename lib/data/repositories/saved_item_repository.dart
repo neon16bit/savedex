@@ -141,6 +141,7 @@ class SavedItemRepository {
     List<SavedItemsTableCompanion> companions, {
     required int totalFound,
     required String sourceName,
+    bool reconcileOrder = false,
   }) async {
     final stopwatch = Stopwatch()..start();
     if (companions.isEmpty) {
@@ -172,6 +173,13 @@ class SavedItemRepository {
         existingMap[e.id] = e;
       }
     }
+
+    final bool batchHasUnreconciledCsv = reconcileOrder &&
+        companions.any((c) {
+          final id = c.id.present ? c.id.value : '';
+          final existing = existingMap[id];
+          return existing != null && existing.csvSource != 'reddit_api';
+        });
 
     int newCount = 0;
     int updatedCount = 0;
@@ -235,12 +243,15 @@ class SavedItemRepository {
             companionSubredditType != null &&
             companionSubredditType.isNotEmpty &&
             companionSubredditType != 'public';
+        final needsOrderReconciliation = batchHasUnreconciledCsv &&
+            companion.importOrder.present;
 
         if (needsEnrichment ||
             needsTitleFix ||
             needsScoreUpdate ||
             needsBodyUpdate ||
-            needsSubredditTypeUpdate) {
+            needsSubredditTypeUpdate ||
+            needsOrderReconciliation) {
           updatedCount++;
           // preserve user modifications and flags
           toUpsert.add(
@@ -249,7 +260,12 @@ class SavedItemRepository {
               isStarred: Value(existing.isStarred),
               isArchived: Value(existing.isArchived),
               userNote: Value(existing.userNote),
-              importOrder: Value(existing.importOrder),
+              csvSource: needsOrderReconciliation
+                  ? const Value('reddit_api')
+                  : Value(existing.csvSource),
+              importOrder: needsOrderReconciliation
+                  ? companion.importOrder
+                  : Value(existing.importOrder),
               savedAtUtc: Value(existing.savedAtUtc),
 
               title: needsTitleFix
@@ -403,7 +419,6 @@ class SavedItemRepository {
         username: username,
         after: after,
         limit: currentLimit,
-        startImportOrder: 0,
       );
 
       if (pageResult.isRateLimited) {
@@ -416,7 +431,6 @@ class SavedItemRepository {
           username: username,
           after: after,
           limit: currentLimit,
-          startImportOrder: 0,
         );
       }
 
@@ -505,6 +519,7 @@ class SavedItemRepository {
       orderedCompanions,
       totalFound: total,
       sourceName: 'Reddit OAuth Sync (u/$username)',
+      reconcileOrder: true,
     );
 
     stopwatch.stop();

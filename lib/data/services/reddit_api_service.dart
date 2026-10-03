@@ -483,7 +483,6 @@ class RedditApiService {
     required String username,
     String? after,
     int limit = 100,
-    int startImportOrder = 0,
   }) async {
     final queryParams = {
       'raw_json': '1',
@@ -556,7 +555,6 @@ class RedditApiService {
         final id = childData['id'] as String?;
         if (id == null || id.isEmpty) continue;
 
-        final importOrder = startImportOrder + i;
         final rawPermalink = (childData['permalink'] as String?) ?? '';
         final canonicalPermalink = rawPermalink.startsWith('/')
             ? rawPermalink
@@ -572,7 +570,7 @@ class RedditApiService {
               permalink: canonicalPermalink,
               itemType: ItemType.post,
               subreddit: subreddit,
-              importOrder: importOrder,
+              importOrder: 0,
               savedAtUtc: now,
             ),
           );
@@ -597,7 +595,7 @@ class RedditApiService {
               permalink: canonicalPermalink,
               itemType: ItemType.comment,
               subreddit: subreddit,
-              importOrder: importOrder,
+              importOrder: 0,
               savedAtUtc: now,
             ),
           );
