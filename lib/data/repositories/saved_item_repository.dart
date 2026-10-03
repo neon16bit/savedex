@@ -389,17 +389,20 @@ class SavedItemRepository {
     const int pageLimit = 100;
     final int maxPages = (maxItems / pageLimit).ceil();
 
-    while (pageNum < maxPages) {
+    while (pageNum < maxPages && allCompanions.length < maxItems) {
       pageNum++;
       onProgress?.call(
         allCompanions.length,
         'Fetching page $pageNum from Reddit (retrieved ${allCompanions.length})...',
       );
 
+      final remaining = maxItems - allCompanions.length;
+      final currentLimit = remaining < pageLimit ? remaining : pageLimit;
+
       var pageResult = await _redditApi.fetchSavedPage(
         username: username,
         after: after,
-        limit: pageLimit,
+        limit: currentLimit,
         startImportOrder: 0,
       );
 
@@ -412,7 +415,7 @@ class SavedItemRepository {
         pageResult = await _redditApi.fetchSavedPage(
           username: username,
           after: after,
-          limit: pageLimit,
+          limit: currentLimit,
           startImportOrder: 0,
         );
       }
@@ -435,9 +438,12 @@ class SavedItemRepository {
         }
       }
 
-      allCompanions.addAll(pageResult.items);
+      final itemsToAdd = pageResult.items.length > remaining
+          ? pageResult.items.sublist(0, remaining)
+          : pageResult.items;
+      allCompanions.addAll(itemsToAdd);
       debugPrint(
-        '[RedditSync] Page $pageNum: fetched ${pageResult.items.length} items (total: ${allCompanions.length}), next after: ${pageResult.after}',
+        '[RedditSync] Page $pageNum: fetched ${itemsToAdd.length} items (total: ${allCompanions.length}), next after: ${pageResult.after}',
       );
       onProgress?.call(
         allCompanions.length,
@@ -476,18 +482,22 @@ class SavedItemRepository {
       );
     }
 
+    final finalCompanions = allCompanions.length > maxItems
+        ? allCompanions.sublist(0, maxItems)
+        : allCompanions;
+
     onProgress?.call(
-      allCompanions.length,
-      'Saving ${allCompanions.length} items to database...',
+      finalCompanions.length,
+      'Saving ${finalCompanions.length} items to database...',
     );
 
-    final total = allCompanions.length;
+    final total = finalCompanions.length;
     final baseOrder = currentMaxOrder + 1;
     final orderedCompanions = <SavedItemsTableCompanion>[];
     for (int i = 0; i < total; i++) {
       final assignedOrder = baseOrder + (total - 1 - i);
       orderedCompanions.add(
-        allCompanions[i].copyWith(importOrder: Value(assignedOrder)),
+        finalCompanions[i].copyWith(importOrder: Value(assignedOrder)),
       );
     }
 
