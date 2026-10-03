@@ -180,7 +180,8 @@ class SavedItemRepository {
     final List<SavedItemsTableCompanion> toUpsert = [];
 
     for (final companion in companions) {
-      final id = companion.id.value;
+      final id = companion.id.present ? companion.id.value : '';
+      if (id.isEmpty) continue;
       final existing = existingMap[id];
 
       if (existing == null) {
@@ -188,25 +189,58 @@ class SavedItemRepository {
         newCount++;
         toUpsert.add(companion);
       } else {
+        final companionEnrichment = companion.enrichmentStatus.present
+            ? companion.enrichmentStatus.value
+            : null;
+        final companionTitle = companion.title.present
+            ? companion.title.value
+            : null;
+        final companionScore = companion.score.present
+            ? companion.score.value
+            : null;
+        final companionNumComments = companion.numComments.present
+            ? companion.numComments.value
+            : null;
+        final companionBody = companion.body.present
+            ? companion.body.value
+            : null;
+        final companionSubredditType = companion.subredditType.present
+            ? companion.subredditType.value
+            : null;
+
         // compare
         final needsEnrichment =
             existing.enrichmentStatus != EnrichmentStatus.enriched &&
-            companion.enrichmentStatus.value == EnrichmentStatus.enriched;
+            companionEnrichment == EnrichmentStatus.enriched;
         final needsTitleFix =
             (existing.title == 'Untitled Post' || existing.title.isEmpty) &&
-            companion.title.value != 'Untitled Post' &&
-            companion.title.value.isNotEmpty;
+            companionTitle != null &&
+            companionTitle.isNotEmpty &&
+            companionTitle != 'Untitled Post' &&
+            companionTitle != '[deleted]' &&
+            companionTitle != '[removed]';
         final needsScoreUpdate =
-            existing.score == 0 && (companion.score.value) != 0;
+            existing.score == 0 &&
+            companionScore != null &&
+            companionScore != 0;
         final needsBodyUpdate =
             (existing.body == null || existing.body!.isEmpty) &&
-            companion.body.value != null &&
-            companion.body.value!.isNotEmpty;
+            companionBody != null &&
+            companionBody.isNotEmpty &&
+            companionBody != '[deleted]' &&
+            companionBody != '[removed]';
+        final needsSubredditTypeUpdate =
+            (existing.subredditType.isEmpty ||
+                existing.subredditType == 'public') &&
+            companionSubredditType != null &&
+            companionSubredditType.isNotEmpty &&
+            companionSubredditType != 'public';
 
         if (needsEnrichment ||
             needsTitleFix ||
             needsScoreUpdate ||
-            needsBodyUpdate) {
+            needsBodyUpdate ||
+            needsSubredditTypeUpdate) {
           updatedCount++;
           // preserve user modifications and flags
           toUpsert.add(
@@ -218,45 +252,81 @@ class SavedItemRepository {
               importOrder: Value(existing.importOrder),
               savedAtUtc: Value(existing.savedAtUtc),
 
-              title: needsTitleFix ? companion.title : Value(existing.title),
+              title: needsTitleFix
+                  ? Value(companionTitle)
+                  : Value(existing.title),
               parentPostTitle: existing.parentPostTitle != null
                   ? Value(existing.parentPostTitle)
-                  : companion.parentPostTitle,
+                  : (companion.parentPostTitle.present
+                        ? companion.parentPostTitle
+                        : const Value.absent()),
               parentPostId: existing.parentPostId != null
                   ? Value(existing.parentPostId)
-                  : companion.parentPostId,
+                  : (companion.parentPostId.present
+                        ? companion.parentPostId
+                        : const Value.absent()),
 
               createdAtUtc: existing.createdAtUtc != null
                   ? Value(existing.createdAtUtc)
-                  : companion.createdAtUtc,
+                  : (companion.createdAtUtc.present
+                        ? companion.createdAtUtc
+                        : const Value.absent()),
               enrichmentStatus: needsEnrichment
-                  ? companion.enrichmentStatus
+                  ? Value(companionEnrichment ?? existing.enrichmentStatus)
                   : Value(existing.enrichmentStatus),
-              score: (companion.score.value) != 0
-                  ? companion.score
+              score: (companionScore != null && companionScore != 0)
+                  ? Value(companionScore)
                   : Value(existing.score),
-              numComments: (companion.numComments.value) != 0
-                  ? companion.numComments
+              numComments:
+                  (companionNumComments != null && companionNumComments != 0)
+                  ? Value(companionNumComments)
                   : Value(existing.numComments),
-              isNsfw: existing.isNsfw ? const Value(true) : companion.isNsfw,
-              author: existing.author != null
+              isNsfw: existing.isNsfw
+                  ? const Value(true)
+                  : (companion.isNsfw.present
+                        ? companion.isNsfw
+                        : const Value(false)),
+              author:
+                  (existing.author != null &&
+                      existing.author!.isNotEmpty &&
+                      existing.author != '[deleted]')
                   ? Value(existing.author)
-                  : companion.author,
-              body: needsBodyUpdate ? companion.body : Value(existing.body),
-              url: existing.url != null ? Value(existing.url) : companion.url,
+                  : (companion.author.present
+                        ? companion.author
+                        : const Value.absent()),
+              body: needsBodyUpdate
+                  ? Value(companionBody)
+                  : Value(existing.body),
+              url: existing.url != null
+                  ? Value(existing.url)
+                  : (companion.url.present
+                        ? companion.url
+                        : const Value.absent()),
               thumbnailUrl: existing.thumbnailUrl != null
                   ? Value(existing.thumbnailUrl)
-                  : companion.thumbnailUrl,
+                  : (companion.thumbnailUrl.present
+                        ? companion.thumbnailUrl
+                        : const Value.absent()),
               mediaUrl: existing.mediaUrl != null
                   ? Value(existing.mediaUrl)
-                  : companion.mediaUrl,
+                  : (companion.mediaUrl.present
+                        ? companion.mediaUrl
+                        : const Value.absent()),
               mediaType: existing.mediaType != MediaType.text
                   ? Value(existing.mediaType)
-                  : companion.mediaType,
+                  : (companion.mediaType.present
+                        ? companion.mediaType
+                        : Value(existing.mediaType)),
               postFlair: existing.postFlair != null
                   ? Value(existing.postFlair)
-                  : companion.postFlair,
-              subredditType: Value(existing.subredditType),
+                  : (companion.postFlair.present
+                        ? companion.postFlair
+                        : const Value.absent()),
+              subredditType:
+                  (companionSubredditType != null &&
+                      companionSubredditType.isNotEmpty)
+                  ? Value(companionSubredditType)
+                  : Value(existing.subredditType),
             ),
           );
         } else {
