@@ -1,5 +1,6 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/widgets/enrichment_progress_card.dart';
@@ -361,8 +362,9 @@ class ImportView extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () =>
-                              _handleExport(context, ref, asJson: true),
+                          onPressed: state.isExporting
+                              ? null
+                              : () => _handleExport(context, ref, asJson: true),
                           icon: const Icon(Icons.data_object_rounded, size: 18),
                           label: const Text('Export JSON'),
                         ),
@@ -370,8 +372,10 @@ class ImportView extends ConsumerWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () =>
-                              _handleExport(context, ref, asJson: false),
+                          onPressed: state.isExporting
+                              ? null
+                              : () =>
+                                    _handleExport(context, ref, asJson: false),
                           icon: const Icon(
                             Icons.table_chart_outlined,
                             size: 18,
@@ -479,24 +483,30 @@ class ImportView extends ConsumerWidget {
     );
   }
 
-  // TODO
   Future<void> _handleExport(
     BuildContext context,
     WidgetRef ref, {
     required bool asJson,
   }) async {
     final viewModel = ref.read(importExportViewModelProvider.notifier);
-    final output = await viewModel.exportLibrary(asJson: asJson);
-    if (output != null && context.mounted) {
-      Clipboard.setData(ClipboardData(text: output));
+    final savedPath = await viewModel.exportLibrary(asJson: asJson);
+    if (!context.mounted) return;
+
+    if (savedPath != null) {
+      final fileName = savedPath.split(Platform.pathSeparator).last;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Exported ${asJson ? "JSON" : "CSV"} copied to clipboard!',
-          ),
+          content: Text('Export saved to $fileName'),
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } else {
+      final error = ref.read(importExportViewModelProvider).errorMessage;
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error), behavior: SnackBarBehavior.floating),
+        );
+      }
     }
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -180,7 +181,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
     }
   }
 
-  //TODO
   Future<String?> exportLibrary({
     required bool asJson,
     bool includeArchived = true,
@@ -188,6 +188,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
     state = state.copyWith(
       isExporting: true,
       statusMessage: 'Generating export...',
+      clearError: true,
     );
     try {
       final repo = ref.read(savedItemRepositoryProvider);
@@ -198,15 +199,48 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
           : const FilterCriteria(isArchived: false);
       final allItems = await repo.watchSavedItems(filter).first;
 
-      String output;
+      if (allItems.isEmpty) {
+        state = state.copyWith(
+          isExporting: false,
+          errorMessage: 'No items in library to export.',
+        );
+        return null;
+      }
+
+      final ext = asJson ? 'json' : 'csv';
+      final String output;
       if (asJson) {
         output = exportService.exportToJson(allItems);
       } else {
         output = exportService.exportToCsv(allItems);
       }
 
+      final now = DateTime.now();
+      final dateStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final fileName = 'savedex_backup_$dateStr.$ext';
+      final bytes = Uint8List.fromList(utf8.encode(output));
+
+      final mimeType = asJson ? 'application/json' : 'text/csv';
+      final saveUri = await FilePickerPlatform.instance.saveFile(
+        dialogTitle: 'Save ${asJson ? "JSON" : "CSV"} Export',
+        fileName: fileName,
+        mimeType: mimeType,
+        bytes: bytes,
+      );
+
+      if (saveUri == null) {
+        state = state.copyWith(isExporting: false, clearStatus: true);
+        return null;
+      }
+
+      final file = File.fromUri(saveUri);
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        await file.writeAsBytes(bytes);
+      }
+
       state = state.copyWith(isExporting: false, clearStatus: true);
-      return output;
+      return saveUri.toFilePath();
     } catch (e) {
       state = state.copyWith(
         isExporting: false,

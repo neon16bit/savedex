@@ -174,7 +174,8 @@ class SavedItemRepository {
       }
     }
 
-    final bool batchHasUnreconciledCsv = reconcileOrder &&
+    final bool batchHasUnreconciledCsv =
+        reconcileOrder &&
         companions.any((c) {
           final id = c.id.present ? c.id.value : '';
           final existing = existingMap[id];
@@ -243,8 +244,8 @@ class SavedItemRepository {
             companionSubredditType != null &&
             companionSubredditType.isNotEmpty &&
             companionSubredditType != 'public';
-        final needsOrderReconciliation = batchHasUnreconciledCsv &&
-            companion.importOrder.present;
+        final needsOrderReconciliation =
+            batchHasUnreconciledCsv && companion.importOrder.present;
 
         if (needsEnrichment ||
             needsTitleFix ||
