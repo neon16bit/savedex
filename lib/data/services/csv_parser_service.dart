@@ -132,6 +132,27 @@ class CsvParserService {
 
   List<CsvParseResult> parseZipArchive(List<int> zipBytes) {
     final archive = ZipDecoder().decodeBytes(zipBytes);
+
+    // check saved_posts.csv or saved_comments.csv exists
+    final hasSavedFiles = archive.any((file) {
+      if (!file.isFile) return false;
+      final lowerName = file.name
+          .split('/')
+          .last
+          .split('\\')
+          .last
+          .toLowerCase();
+      return lowerName == 'saved_posts.csv' ||
+          lowerName == 'saved_comments.csv';
+    });
+
+    if (!hasSavedFiles) {
+      throw const FormatException(
+        'No saved items found in ZIP archive. '
+        'Expected "saved_posts.csv" or "saved_comments.csv" from a Reddit data export.',
+      );
+    }
+
     final List<CsvParseResult> results = [];
     int orderOffset = 0;
 

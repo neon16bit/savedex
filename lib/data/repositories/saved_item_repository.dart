@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 
@@ -12,13 +14,16 @@ class SavedItemRepository {
   final AppDatabase db;
   final CsvParserService _csvParser;
   final RedditApiService _redditApi;
+  final BackupExportService _backupExport;
 
   SavedItemRepository({
     required this.db,
     CsvParserService? csvParser,
     RedditApiService? redditApi,
+    BackupExportService? backupExport,
   }) : _csvParser = csvParser ?? CsvParserService(),
-       _redditApi = redditApi ?? RedditApiService();
+       _redditApi = redditApi ?? RedditApiService(),
+       _backupExport = backupExport ?? BackupExportService();
 
   Stream<List<SavedItem>> watchSavedItems(FilterCriteria filter) {
     return db
@@ -92,6 +97,11 @@ class SavedItemRepository {
     String sourceName, {
     int startOrderIndex = 0,
   }) async {
+    if (BackupExportService.isSavedexBackupCsv(csvContent)) {
+      final payload = _backupExport.parseSavedexCsv(csvContent);
+      return restoreFromPayload(payload, sourceName: sourceName);
+    }
+
     final parseResult = _csvParser.parseCsvContent(
       csvContent,
       sourceName: sourceName,
@@ -102,6 +112,360 @@ class SavedItemRepository {
       parseResult.items,
       totalFound: parseResult.totalRows,
       sourceName: sourceName,
+    );
+  }
+
+  Future<ImportSummary> restoreFromBackup(
+    List<int> bytes, {
+    String sourceName = 'backup.savedex',
+  }) async {
+    final fileType = BackupExportService.detectFileType(
+      filename: sourceName,
+      bytes: bytes,
+    );
+
+    switch (fileType) {
+      case BackupFileType.redditZip:
+        return importFromZip(bytes);
+      case BackupFileType.savedexCsv:
+      case BackupFileType.redditCsv:
+        final content = utf8.decode(bytes, allowMalformed: true);
+        return importFromCsvContent(content, sourceName);
+      case BackupFileType.savedex:
+      case BackupFileType.json:
+        final payload = _backupExport.parseBackup(bytes);
+        return restoreFromPayload(payload, sourceName: sourceName);
+      case BackupFileType.unknown:
+        final lower = sourceName.toLowerCase();
+        final preview = utf8
+            .decode(bytes.take(500).toList(), allowMalformed: true)
+            .trimLeft();
+        final isJsonContent =
+            lower.endsWith('.json') ||
+            lower.endsWith('.savedex') ||
+            preview.startsWith('{') ||
+            preview.startsWith('[');
+
+        if (isJsonContent) {
+          final payload = _backupExport.parseBackup(bytes);
+          return await restoreFromPayload(payload, sourceName: sourceName);
+        }
+
+        try {
+          final content = utf8.decode(bytes, allowMalformed: true);
+          return await importFromCsvContent(content, sourceName);
+        } catch (_) {
+          throw const FormatException(
+            'Unsupported backup file format. Expected .savedex, .json, .csv, or .zip',
+          );
+        }
+    }
+  }
+
+  Future<ImportSummary> restoreFromPayload(
+    SavedexBackupPayload payload, {
+    String sourceName = 'Savedex Backup',
+  }) async {
+    final stopwatch = Stopwatch()..start();
+    if (payload.items.isEmpty) {
+      stopwatch.stop();
+      final totalInDb = await getTotalCount();
+      return ImportSummary(
+        totalFound: 0,
+        newItemsImported: 0,
+        updatedItems: 0,
+        skippedItems: 0,
+        duration: stopwatch.elapsed,
+        sourceFile: sourceName,
+        totalInDatabase: totalInDb,
+      );
+    }
+
+    final ids = payload.items
+        .map((c) => c.id.present ? c.id.value : '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    final existingMap = <String, SavedItemEntry>{};
+    const chunkSize = 200;
+    for (var i = 0; i < ids.length; i += chunkSize) {
+      final chunk = ids.sublist(
+        i,
+        i + chunkSize > ids.length ? ids.length : i + chunkSize,
+      );
+      final entries = await (db.select(
+        db.savedItemsTable,
+      )..where((t) => t.id.isIn(chunk))).get();
+      for (final e in entries) {
+        existingMap[e.id] = e;
+      }
+    }
+
+    int newCount = 0;
+    int updatedCount = 0;
+    int skippedCount = 0;
+
+    final List<SavedItemsTableCompanion> toUpsert = [];
+
+    for (final companion in payload.items) {
+      final id = companion.id.present ? companion.id.value : '';
+      if (id.isEmpty) continue;
+      final existing = existingMap[id];
+
+      if (existing == null) {
+        newCount++;
+        toUpsert.add(companion);
+      } else {
+        final companionStarred = companion.isStarred.present
+            ? companion.isStarred.value
+            : false;
+        final companionArchived = companion.isArchived.present
+            ? companion.isArchived.value
+            : false;
+        final companionNote = companion.userNote.present
+            ? companion.userNote.value
+            : null;
+        final companionTitle = companion.title.present
+            ? companion.title.value
+            : null;
+        final companionEnrichment = companion.enrichmentStatus.present
+            ? companion.enrichmentStatus.value
+            : null;
+        final companionScore = companion.score.present
+            ? companion.score.value
+            : null;
+        final companionNumComments = companion.numComments.present
+            ? companion.numComments.value
+            : null;
+        final companionBody = companion.body.present
+            ? companion.body.value
+            : null;
+        final companionAuthor = companion.author.present
+            ? companion.author.value
+            : null;
+        final companionMediaUrl = companion.mediaUrl.present
+            ? companion.mediaUrl.value
+            : null;
+        final companionMediaType = companion.mediaType.present
+            ? companion.mediaType.value
+            : null;
+        final companionPostFlair = companion.postFlair.present
+            ? companion.postFlair.value
+            : null;
+        final companionSubredditType = companion.subredditType.present
+            ? companion.subredditType.value
+            : null;
+
+        final starNeedsUpdate = !existing.isStarred && companionStarred;
+        final archiveNeedsUpdate = !existing.isArchived && companionArchived;
+        final noteNeedsUpdate =
+            (existing.userNote == null || existing.userNote!.isEmpty) &&
+            companionNote != null &&
+            companionNote.isNotEmpty;
+        final titleNeedsUpdate =
+            (existing.title == 'Untitled Post' || existing.title.isEmpty) &&
+            companionTitle != null &&
+            companionTitle.isNotEmpty &&
+            companionTitle != 'Untitled Post' &&
+            companionTitle != '[deleted]' &&
+            companionTitle != '[removed]';
+        final enrichmentNeedsUpdate =
+            existing.enrichmentStatus != EnrichmentStatus.enriched &&
+            companionEnrichment == EnrichmentStatus.enriched;
+        final scoreNeedsUpdate =
+            existing.score == 0 &&
+            companionScore != null &&
+            companionScore != 0;
+        final commentsNeedsUpdate =
+            existing.numComments == 0 &&
+            companionNumComments != null &&
+            companionNumComments != 0;
+        final bodyNeedsUpdate =
+            (existing.body == null || existing.body!.isEmpty) &&
+            companionBody != null &&
+            companionBody.isNotEmpty &&
+            companionBody != '[deleted]' &&
+            companionBody != '[removed]';
+        final authorNeedsUpdate =
+            (existing.author == null ||
+                existing.author!.isEmpty ||
+                existing.author == '[deleted]') &&
+            companionAuthor != null &&
+            companionAuthor.isNotEmpty &&
+            companionAuthor != '[deleted]';
+        final mediaNeedsUpdate =
+            (existing.mediaUrl == null || existing.mediaUrl!.isEmpty) &&
+            companionMediaUrl != null &&
+            companionMediaUrl.isNotEmpty;
+        final mediaTypeNeedsUpdate =
+            existing.mediaType == MediaType.text &&
+            companionMediaType != null &&
+            companionMediaType != MediaType.text;
+        final flairNeedsUpdate =
+            (existing.postFlair == null || existing.postFlair!.isEmpty) &&
+            companionPostFlair != null &&
+            companionPostFlair.isNotEmpty;
+        final subTypeNeedsUpdate =
+            (existing.subredditType.isEmpty ||
+                existing.subredditType == 'public') &&
+            companionSubredditType != null &&
+            companionSubredditType.isNotEmpty &&
+            companionSubredditType != 'public';
+
+        if (starNeedsUpdate ||
+            archiveNeedsUpdate ||
+            noteNeedsUpdate ||
+            titleNeedsUpdate ||
+            enrichmentNeedsUpdate ||
+            scoreNeedsUpdate ||
+            commentsNeedsUpdate ||
+            bodyNeedsUpdate ||
+            authorNeedsUpdate ||
+            mediaNeedsUpdate ||
+            mediaTypeNeedsUpdate ||
+            flairNeedsUpdate ||
+            subTypeNeedsUpdate) {
+          updatedCount++;
+          toUpsert.add(
+            companion.copyWith(
+              isStarred: Value(existing.isStarred || companionStarred),
+              isArchived: Value(existing.isArchived || companionArchived),
+              userNote: noteNeedsUpdate
+                  ? Value(companionNote)
+                  : Value(existing.userNote),
+              title: titleNeedsUpdate
+                  ? Value(companionTitle)
+                  : Value(existing.title),
+              enrichmentStatus: enrichmentNeedsUpdate
+                  ? Value(companionEnrichment ?? existing.enrichmentStatus)
+                  : Value(existing.enrichmentStatus),
+              score: scoreNeedsUpdate
+                  ? Value(companionScore)
+                  : Value(existing.score),
+              numComments: commentsNeedsUpdate
+                  ? Value(companionNumComments)
+                  : Value(existing.numComments),
+              body: bodyNeedsUpdate
+                  ? Value(companionBody)
+                  : Value(existing.body),
+              author: authorNeedsUpdate
+                  ? Value(companionAuthor)
+                  : Value(existing.author),
+              mediaUrl: mediaNeedsUpdate
+                  ? Value(companionMediaUrl)
+                  : Value(existing.mediaUrl),
+              mediaType: mediaTypeNeedsUpdate
+                  ? Value(companionMediaType)
+                  : Value(existing.mediaType),
+              postFlair: flairNeedsUpdate
+                  ? Value(companionPostFlair)
+                  : Value(existing.postFlair),
+              subredditType: subTypeNeedsUpdate
+                  ? Value(companionSubredditType)
+                  : Value(existing.subredditType),
+              createdAtUtc: existing.createdAtUtc != null
+                  ? Value(existing.createdAtUtc)
+                  : (companion.createdAtUtc.present
+                        ? companion.createdAtUtc
+                        : const Value.absent()),
+              savedAtUtc: Value(existing.savedAtUtc),
+              importOrder: existing.importOrder > 0
+                  ? Value(existing.importOrder)
+                  : (companion.importOrder.present
+                        ? companion.importOrder
+                        : const Value.absent()),
+            ),
+          );
+        } else {
+          skippedCount++;
+        }
+      }
+    }
+
+    await db.transaction(() async {
+      if (toUpsert.isNotEmpty) {
+        await db.upsertBatch(toUpsert);
+      }
+
+      if (payload.itemTags.isNotEmpty) {
+        final existingTags = await db.select(db.tagsTable).get();
+        final tagNameToId = <String, int>{};
+        for (final t in existingTags) {
+          tagNameToId[t.name.toLowerCase()] = t.id;
+        }
+
+        for (final tags in payload.itemTags.values) {
+          for (final tag in tags) {
+            final lower = tag.name.toLowerCase();
+            if (!tagNameToId.containsKey(lower)) {
+              final insertedId = await db
+                  .into(db.tagsTable)
+                  .insert(
+                    TagsTableCompanion.insert(
+                      name: tag.name,
+                      colorValue: Value(tag.colorValue),
+                    ),
+                    mode: InsertMode.insertOrIgnore,
+                  );
+              if (insertedId > 0) {
+                tagNameToId[lower] = insertedId;
+              } else {
+                final found = await (db.select(
+                  db.tagsTable,
+                )..where((t) => t.name.equals(tag.name))).getSingleOrNull();
+                if (found != null) {
+                  tagNameToId[lower] = found.id;
+                }
+              }
+            }
+          }
+        }
+
+        final linkCompanions = <ItemTagsTableCompanion>[];
+        for (final entry in payload.itemTags.entries) {
+          final itemId = entry.key;
+          for (final tag in entry.value) {
+            final tagId = tagNameToId[tag.name.toLowerCase()];
+            if (tagId != null) {
+              linkCompanions.add(
+                ItemTagsTableCompanion.insert(itemId: itemId, tagId: tagId),
+              );
+            }
+          }
+        }
+
+        if (linkCompanions.isNotEmpty) {
+          const linkChunkSize = 200;
+          for (var i = 0; i < linkCompanions.length; i += linkChunkSize) {
+            final chunk = linkCompanions.sublist(
+              i,
+              i + linkChunkSize > linkCompanions.length
+                  ? linkCompanions.length
+                  : i + linkChunkSize,
+            );
+            await db.batch((batch) {
+              batch.insertAll(
+                db.itemTagsTable,
+                chunk,
+                mode: InsertMode.insertOrIgnore,
+              );
+            });
+          }
+        }
+      }
+    });
+
+    final totalInDb = await getTotalCount();
+    stopwatch.stop();
+
+    return ImportSummary(
+      totalFound: payload.items.length,
+      newItemsImported: newCount,
+      updatedItems: updatedCount,
+      skippedItems: skippedCount,
+      duration: stopwatch.elapsed,
+      sourceFile: sourceName,
+      totalInDatabase: totalInDb,
     );
   }
 
@@ -126,6 +490,7 @@ class SavedItemRepository {
       skipped += summary.skippedItems;
     }
 
+    final totalInDb = await getTotalCount();
     stopwatch.stop();
     return ImportSummary(
       totalFound: totalFound,
@@ -134,6 +499,7 @@ class SavedItemRepository {
       skippedItems: skipped,
       duration: stopwatch.elapsed,
       sourceFile: 'Reddit Takeout ZIP',
+      totalInDatabase: totalInDb,
     );
   }
 

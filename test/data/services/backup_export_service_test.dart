@@ -187,17 +187,53 @@ void main() {
         post.title.value,
         equals('It might be a real grimoire this time (99% chance of mimic)'),
       );
+      expect(
+        post.body.value,
+        equals(
+          'Dark! It is so dark and terrifying! Fern, help me out of here!',
+        ),
+      );
+      expect(post.mediaType.value, equals(MediaType.video));
+      expect(
+        post.thumbnailUrl.value,
+        equals('https://grimoires.org/mimic_preview.png'),
+      );
+      expect(
+        post.mediaUrl.value,
+        equals('https://grimoires.org/frieren_stuck_in_mimic.mp4'),
+      );
+      expect(post.postFlair.value, equals('Grimoire Hunting'));
       expect(post.isStarred.value, isTrue);
       expect(
         post.userNote.value,
         equals('Grimoire that sees through clothes found on floor 48'),
       );
+      expect(post.enrichmentStatus.value, equals(EnrichmentStatus.enriched));
+
+      final comment = payload.items.firstWhere(
+        (i) => i.id.value == 'comment_luffy_reddit_app',
+      );
+      expect(comment.parentPostId.value, equals('t3_official_reddit_app'));
+      expect(
+        comment.parentPostTitle.value,
+        equals('State of the Official Reddit App'),
+      );
+      expect(comment.itemType.value, equals(ItemType.comment));
+      expect(comment.isArchived.value, isTrue);
 
       final tags = payload.itemTags['post_frieren_mimic'];
       expect(tags, isNotNull);
       expect(
         tags!.map((t) => t.name).toList(),
         containsAll(['Frieren', 'Mimic']),
+      );
+      expect(
+        tags.firstWhere((t) => t.name == 'Frieren').colorValue,
+        equals(0xFF87CEEB),
+      );
+      expect(
+        tags.firstWhere((t) => t.name == 'Mimic').colorValue,
+        equals(0xFFFF4500),
       );
     });
 
@@ -239,6 +275,27 @@ void main() {
           bytes: compressedBytes,
         ),
         equals(BackupFileType.savedex),
+      );
+    });
+
+    test('isSavedexJson accurately detects Savedex headers and rejects random JSON', () {
+      final validJson = service.exportToJson(sampleItems);
+      expect(BackupExportService.isSavedexJson(validJson), isTrue);
+
+      const randomJson = '{"name": "my-project", "version": "1.0.0"}';
+      expect(BackupExportService.isSavedexJson(randomJson), isFalse);
+
+      expect(
+        BackupExportService.detectFileType(
+          filename: 'random.json',
+          content: randomJson,
+        ),
+        equals(BackupFileType.unknown),
+      );
+
+      expect(
+        () => service.parseBackup(utf8.encode(randomJson)),
+        throwsA(isA<FormatException>()),
       );
     });
   });

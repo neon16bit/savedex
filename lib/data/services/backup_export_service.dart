@@ -39,7 +39,17 @@ class BackupExportService {
   }) {
     final lower = filename.toLowerCase();
     if (lower.endsWith('.savedex')) return BackupFileType.savedex;
-    if (lower.endsWith('.json')) return BackupFileType.json;
+    if (lower.endsWith('.json')) {
+      final text =
+          content ??
+          (bytes != null
+              ? utf8.decode(bytes.take(500).toList(), allowMalformed: true)
+              : null);
+      if (text != null && !isSavedexJson(text)) {
+        return BackupFileType.unknown;
+      }
+      return BackupFileType.json;
+    }
     if (lower.endsWith('.zip')) return BackupFileType.redditZip;
     if (lower.endsWith('.csv')) {
       final text =
@@ -59,7 +69,7 @@ class BackupExportService {
       final preview = utf8
           .decode(bytes.take(500).toList(), allowMalformed: true)
           .trimLeft();
-      if (preview.startsWith('{') || preview.startsWith('[')) {
+      if (preview.startsWith('{') && isSavedexJson(preview)) {
         return BackupFileType.json;
       }
       if (isSavedexBackupCsv(preview)) {
@@ -68,6 +78,16 @@ class BackupExportService {
     }
 
     return BackupFileType.unknown;
+  }
+
+  // check if json is a savedex backup without full decoding
+  static bool isSavedexJson(String content) {
+    if (content.trim().isEmpty) return false;
+    final preview = content.length > 500 ? content.substring(0, 500) : content;
+    final clean = preview.trimLeft();
+    return clean.startsWith('{') &&
+        (clean.contains('"app": "savedex"') ||
+            clean.contains('"app":"savedex"'));
   }
 
   // check csv type, backup/reddit export
@@ -101,13 +121,26 @@ class BackupExportService {
         'title',
         'subreddit',
         'author',
+        'body',
+        'url',
+        'thumbnail_url',
+        'media_url',
+        'media_type',
         'score',
+        'num_comments',
+        'is_nsfw',
         'is_starred',
-        'tags',
+        'is_archived',
         'user_note',
+        'tags',
+        'tag_colors',
+        'post_flair',
+        'parent_post_id',
+        'parent_post_title',
+        'subreddit_type',
+        'enrichment_status',
         'saved_at',
         'created_at',
-        'media_url',
       ],
     ];
 
@@ -119,13 +152,26 @@ class BackupExportService {
         item.title,
         item.subreddit,
         item.author ?? '',
+        item.body ?? '',
+        item.url ?? '',
+        item.thumbnailUrl ?? '',
+        item.mediaUrl ?? '',
+        item.mediaType.name,
         item.score,
+        item.numComments,
+        item.isNsfw ? 'true' : 'false',
         item.isStarred ? 'true' : 'false',
-        item.tags.map((t) => t.name).join(';'),
+        item.isArchived ? 'true' : 'false',
         item.userNote ?? '',
+        item.tags.map((t) => t.name).join(';'),
+        item.tags.map((t) => t.colorValue.toString()).join(';'),
+        item.postFlair ?? '',
+        item.parentPostId ?? '',
+        item.parentPostTitle ?? '',
+        item.subredditType,
+        item.enrichmentStatus.name,
         item.savedAtUtc.toIso8601String(),
         item.createdAtUtc?.toIso8601String() ?? '',
-        item.mediaUrl ?? item.url ?? '',
       ]);
     }
 
@@ -140,6 +186,10 @@ class BackupExportService {
       jsonString = utf8.decode(decompressed);
     } else {
       jsonString = utf8.decode(bytes);
+    }
+
+    if (!isSavedexJson(jsonString)) {
+      throw const FormatException('Invalid Savedex backup format!');
     }
 
     final decoded = jsonDecode(jsonString);
@@ -201,13 +251,26 @@ class BackupExportService {
     final titleIndex = headerRow.indexOf('title');
     final subredditIndex = headerRow.indexOf('subreddit');
     final authorIndex = headerRow.indexOf('author');
+    final bodyIndex = headerRow.indexOf('body');
+    final urlIndex = headerRow.indexOf('url');
+    final thumbnailUrlIndex = headerRow.indexOf('thumbnail_url');
+    final mediaUrlIndex = headerRow.indexOf('media_url');
+    final mediaTypeIndex = headerRow.indexOf('media_type');
     final scoreIndex = headerRow.indexOf('score');
+    final numCommentsIndex = headerRow.indexOf('num_comments');
+    final isNsfwIndex = headerRow.indexOf('is_nsfw');
     final isStarredIndex = headerRow.indexOf('is_starred');
-    final tagsIndex = headerRow.indexOf('tags');
+    final isArchivedIndex = headerRow.indexOf('is_archived');
     final userNoteIndex = headerRow.indexOf('user_note');
+    final tagsIndex = headerRow.indexOf('tags');
+    final tagColorsIndex = headerRow.indexOf('tag_colors');
+    final postFlairIndex = headerRow.indexOf('post_flair');
+    final parentPostIdIndex = headerRow.indexOf('parent_post_id');
+    final parentPostTitleIndex = headerRow.indexOf('parent_post_title');
+    final subredditTypeIndex = headerRow.indexOf('subreddit_type');
+    final enrichmentStatusIndex = headerRow.indexOf('enrichment_status');
     final savedAtIndex = headerRow.indexOf('saved_at');
     final createdAtIndex = headerRow.indexOf('created_at');
-    final mediaUrlIndex = headerRow.indexOf('media_url');
 
     final List<SavedItemsTableCompanion> companions = [];
     final Map<String, List<SavedexTagBackup>> itemTags = {};
@@ -241,17 +304,88 @@ class BackupExportService {
       final author = authorIndex != -1 && authorIndex < row.length
           ? row[authorIndex].trim()
           : null;
+      final body = bodyIndex != -1 && bodyIndex < row.length
+          ? row[bodyIndex].trim()
+          : null;
+      final url = urlIndex != -1 && urlIndex < row.length
+          ? row[urlIndex].trim()
+          : null;
+      final thumbnailUrl =
+          thumbnailUrlIndex != -1 && thumbnailUrlIndex < row.length
+          ? row[thumbnailUrlIndex].trim()
+          : null;
+      final mediaUrl = mediaUrlIndex != -1 && mediaUrlIndex < row.length
+          ? row[mediaUrlIndex].trim()
+          : null;
+
+      final mediaTypeStr = mediaTypeIndex != -1 && mediaTypeIndex < row.length
+          ? row[mediaTypeIndex].trim().toLowerCase()
+          : '';
+      final mediaType = MediaType.values.firstWhere(
+        (m) => m.name.toLowerCase() == mediaTypeStr,
+        orElse: () => itemType == ItemType.comment
+            ? MediaType.comment
+            : (mediaUrl != null && mediaUrl.isNotEmpty
+                  ? MediaType.link
+                  : MediaType.text),
+      );
+
       final scoreStr = scoreIndex != -1 && scoreIndex < row.length
           ? row[scoreIndex].trim()
           : '';
       final score = int.tryParse(scoreStr) ?? 0;
+
+      final numCommentsStr =
+          numCommentsIndex != -1 && numCommentsIndex < row.length
+          ? row[numCommentsIndex].trim()
+          : '';
+      final numComments = int.tryParse(numCommentsStr) ?? 0;
+
+      final isNsfwStr = isNsfwIndex != -1 && isNsfwIndex < row.length
+          ? row[isNsfwIndex].trim().toLowerCase()
+          : 'false';
+      final isNsfw = isNsfwStr == 'true' || isNsfwStr == '1';
+
       final isStarredStr = isStarredIndex != -1 && isStarredIndex < row.length
           ? row[isStarredIndex].trim().toLowerCase()
           : 'false';
       final isStarred = isStarredStr == 'true' || isStarredStr == '1';
+
+      final isArchivedStr =
+          isArchivedIndex != -1 && isArchivedIndex < row.length
+          ? row[isArchivedIndex].trim().toLowerCase()
+          : 'false';
+      final isArchived = isArchivedStr == 'true' || isArchivedStr == '1';
+
       final userNote = userNoteIndex != -1 && userNoteIndex < row.length
           ? row[userNoteIndex].trim()
           : null;
+
+      final postFlair = postFlairIndex != -1 && postFlairIndex < row.length
+          ? row[postFlairIndex].trim()
+          : null;
+      final parentPostId =
+          parentPostIdIndex != -1 && parentPostIdIndex < row.length
+          ? row[parentPostIdIndex].trim()
+          : null;
+      final parentPostTitle =
+          parentPostTitleIndex != -1 && parentPostTitleIndex < row.length
+          ? row[parentPostTitleIndex].trim()
+          : null;
+      final subredditType =
+          subredditTypeIndex != -1 && subredditTypeIndex < row.length
+          ? row[subredditTypeIndex].trim()
+          : 'public';
+
+      final enrichmentStatusStr =
+          enrichmentStatusIndex != -1 && enrichmentStatusIndex < row.length
+          ? row[enrichmentStatusIndex].trim().toLowerCase()
+          : '';
+      final enrichmentStatus = EnrichmentStatus.values.firstWhere(
+        (e) => e.name.toLowerCase() == enrichmentStatusStr,
+        orElse: () => EnrichmentStatus.enriched,
+      );
+
       final savedAtStr = savedAtIndex != -1 && savedAtIndex < row.length
           ? row[savedAtIndex].trim()
           : '';
@@ -261,30 +395,41 @@ class BackupExportService {
           ? row[createdAtIndex].trim()
           : '';
       final createdAtUtc = DateTime.tryParse(createdAtStr)?.toUtc();
-      final mediaUrl = mediaUrlIndex != -1 && mediaUrlIndex < row.length
-          ? row[mediaUrlIndex].trim()
-          : null;
-
-      final mediaType = itemType == ItemType.comment
-          ? MediaType.comment
-          : (mediaUrl != null && mediaUrl.isNotEmpty
-                ? MediaType.link
-                : MediaType.text);
 
       companions.add(
         SavedItemsTableCompanion(
           id: Value(id),
           permalink: Value(permalink),
           itemType: Value(itemType),
+          parentPostId: Value(
+            parentPostId != null && parentPostId.isNotEmpty
+                ? parentPostId
+                : null,
+          ),
+          parentPostTitle: Value(
+            parentPostTitle != null && parentPostTitle.isNotEmpty
+                ? parentPostTitle
+                : null,
+          ),
           title: Value(title.isNotEmpty ? title : 'Untitled Post'),
           subreddit: Value(subreddit.isNotEmpty ? subreddit : 'reddit'),
           author: Value(author != null && author.isNotEmpty ? author : null),
+          body: Value(body != null && body.isNotEmpty ? body : null),
+          url: Value(url != null && url.isNotEmpty ? url : null),
+          thumbnailUrl: Value(
+            thumbnailUrl != null && thumbnailUrl.isNotEmpty
+                ? thumbnailUrl
+                : null,
+          ),
           mediaUrl: Value(
             mediaUrl != null && mediaUrl.isNotEmpty ? mediaUrl : null,
           ),
           mediaType: Value(mediaType),
           score: Value(score),
+          numComments: Value(numComments),
+          isNsfw: Value(isNsfw),
           isStarred: Value(isStarred),
+          isArchived: Value(isArchived),
           userNote: Value(
             userNote != null && userNote.isNotEmpty ? userNote : null,
           ),
@@ -292,7 +437,13 @@ class BackupExportService {
           importOrder: Value(orderCounter++),
           savedAtUtc: Value(savedAtUtc),
           createdAtUtc: Value(createdAtUtc),
-          enrichmentStatus: const Value(EnrichmentStatus.enriched),
+          postFlair: Value(
+            postFlair != null && postFlair.isNotEmpty ? postFlair : null,
+          ),
+          subredditType: Value(
+            subredditType.isNotEmpty ? subredditType : 'public',
+          ),
+          enrichmentStatus: Value(enrichmentStatus),
         ),
       );
 
@@ -302,12 +453,28 @@ class BackupExportService {
           final tagNames = rawTagsStr
               .split(';')
               .map((s) => s.trim())
-              .where((s) => s.isNotEmpty);
-          itemTags[id] = tagNames
-              .map(
-                (name) => SavedexTagBackup(name: name, colorValue: 0xFFFF4500),
-              )
+              .where((s) => s.isNotEmpty)
               .toList();
+
+          final rawColorsStr =
+              tagColorsIndex != -1 && tagColorsIndex < row.length
+              ? row[tagColorsIndex].trim()
+              : '';
+          final colorValues = rawColorsStr.isNotEmpty
+              ? rawColorsStr
+                    .split(';')
+                    .map((s) => int.tryParse(s.trim()) ?? 0xFFFF4500)
+                    .toList()
+              : <int>[];
+
+          final tagsList = <SavedexTagBackup>[];
+          for (int t = 0; t < tagNames.length; t++) {
+            final color = t < colorValues.length ? colorValues[t] : 0xFFFF4500;
+            tagsList.add(
+              SavedexTagBackup(name: tagNames[t], colorValue: color),
+            );
+          }
+          itemTags[id] = tagsList;
         }
       }
     }

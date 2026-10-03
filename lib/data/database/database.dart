@@ -305,9 +305,17 @@ class AppDatabase extends _$AppDatabase {
 
   // bulk upsert items nondestructively using ON CONFLICT DO UPDATE
   Future<void> upsertBatch(List<SavedItemsTableCompanion> entries) async {
-    await batch((batch) {
-      batch.insertAllOnConflictUpdate(savedItemsTable, entries);
-    });
+    if (entries.isEmpty) return;
+    const chunkSize = 100;
+    for (var i = 0; i < entries.length; i += chunkSize) {
+      final chunk = entries.sublist(
+        i,
+        i + chunkSize > entries.length ? entries.length : i + chunkSize,
+      );
+      await batch((batch) {
+        batch.insertAllOnConflictUpdate(savedItemsTable, chunk);
+      });
+    }
   }
 
   Future<List<(String, int)>> getSubredditsWithCounts() async {

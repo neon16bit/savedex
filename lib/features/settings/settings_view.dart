@@ -51,11 +51,11 @@ class SettingsView extends ConsumerWidget {
                     ),
                   ),
                   title: const Text(
-                    'Import Reddit Takeout',
+                    'Import & Export Data',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: const Text(
-                    'Load saved_posts.csv, saved_comments.csv, or ZIP archive',
+                    'Reddit Takeout, API sync, backups, and exports',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () {
@@ -63,58 +63,6 @@ class SettingsView extends ConsumerWidget {
                       MaterialPageRoute(builder: (_) => const ImportView()),
                     );
                   },
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Backup & Export Library',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Export your organized library with custom tags, personal notes, and stars.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _handleExport(context, ref, asJson: true),
-                              icon: const Icon(
-                                Icons.data_object_rounded,
-                                size: 17,
-                              ),
-                              label: const Text('Export JSON'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () =>
-                                  _handleExport(context, ref, asJson: false),
-                              icon: const Icon(
-                                Icons.table_chart_outlined,
-                                size: 17,
-                              ),
-                              label: const Text('Export CSV'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
                 ),
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(
@@ -525,26 +473,6 @@ class SettingsView extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _handleExport(
-    BuildContext context,
-    WidgetRef ref, {
-    required bool asJson,
-  }) async {
-    final viewModel = ref.read(importExportViewModelProvider.notifier);
-    final output = await viewModel.exportLibrary(asJson: asJson);
-    if (output != null && context.mounted) {
-      Clipboard.setData(ClipboardData(text: output));
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Exported ${asJson ? "JSON" : "CSV"} copied to clipboard!',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
   }
 
   void _confirmClearDatabase(BuildContext context, WidgetRef ref) {
