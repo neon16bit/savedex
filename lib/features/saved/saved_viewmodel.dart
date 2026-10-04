@@ -89,17 +89,31 @@ final savedViewModelProvider = NotifierProvider<SavedViewModel, void>(() {
 });
 
 class SavedViewModel extends Notifier<void> {
+  final _busyItemIds = <String>{};
+
   @override
-  void build() {}
+  void build() {
+    _busyItemIds.clear();
+  }
 
   Future<void> toggleStar(SavedItem item) async {
-    final repo = ref.read(savedItemRepositoryProvider);
-    await repo.toggleStar(item.id, !item.isStarred);
+    if (!_busyItemIds.add(item.id)) return;
+    try {
+      final repo = ref.read(savedItemRepositoryProvider);
+      await repo.toggleStar(item.id, !item.isStarred);
+    } finally {
+      _busyItemIds.remove(item.id);
+    }
   }
 
   Future<void> deleteItem(SavedItem item) async {
-    final repo = ref.read(savedItemRepositoryProvider);
-    await repo.deleteItem(item.id);
+    if (!_busyItemIds.add(item.id)) return;
+    try {
+      final repo = ref.read(savedItemRepositoryProvider);
+      await repo.deleteItem(item.id);
+    } finally {
+      _busyItemIds.remove(item.id);
+    }
   }
 
   Future<void> enrichItem(SavedItem item) async {

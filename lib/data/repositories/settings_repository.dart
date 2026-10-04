@@ -93,6 +93,7 @@ class UserSettings {
 class SettingsRepository {
   final SharedPreferences? _prefs;
   late UserSettings _settings;
+  Future<void> _writeQueue = Future.value();
 
   SettingsRepository([this._prefs]) {
     _settings = _loadSettings();
@@ -149,86 +150,97 @@ class SettingsRepository {
     );
   }
 
-  Future<void> updateSettings(UserSettings newSettings) async {
+  Future<void> updateSettings(UserSettings newSettings) {
     _settings = newSettings;
-    if (_prefs == null) return;
+    if (_prefs == null) return Future.value();
 
-    await _prefs.setInt('theme_mode', newSettings.themeMode.index);
-    await _prefs.setInt('seed_color_index', newSettings.seedColorIndex);
-    await _prefs.setBool('is_amoled', newSettings.isAmoled);
-    await _prefs.setBool('use_dynamic_color', newSettings.useDynamicColor);
-    await _prefs.setInt('feed_layout_mode', newSettings.feedLayoutMode.index);
+    return _writeQueue = _writeQueue
+        .then((_) => _persistSettings(newSettings))
+        .catchError((e) {
+          debugPrint('[SettingsRepository] Error persisting settings: $e');
+        });
+  }
+
+  Future<void> _persistSettings(UserSettings newSettings) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+
+    await prefs.setInt('theme_mode', newSettings.themeMode.index);
+    await prefs.setInt('seed_color_index', newSettings.seedColorIndex);
+    await prefs.setBool('is_amoled', newSettings.isAmoled);
+    await prefs.setBool('use_dynamic_color', newSettings.useDynamicColor);
+    await prefs.setInt('feed_layout_mode', newSettings.feedLayoutMode.index);
 
     if (newSettings.redditClientId != null &&
         newSettings.redditClientId!.isNotEmpty) {
-      await _prefs.setString('reddit_client_id', newSettings.redditClientId!);
+      await prefs.setString('reddit_client_id', newSettings.redditClientId!);
     } else {
-      await _prefs.remove('reddit_client_id');
+      await prefs.remove('reddit_client_id');
     }
 
     if (newSettings.redditClientSecret != null &&
         newSettings.redditClientSecret!.isNotEmpty) {
-      await _prefs.setString(
+      await prefs.setString(
         'reddit_client_secret',
         newSettings.redditClientSecret!,
       );
     } else {
-      await _prefs.remove('reddit_client_secret');
+      await prefs.remove('reddit_client_secret');
     }
 
     if (newSettings.redditRedirectUri != null &&
         newSettings.redditRedirectUri!.isNotEmpty) {
-      await _prefs.setString(
+      await prefs.setString(
         'reddit_redirect_uri',
         newSettings.redditRedirectUri!,
       );
     } else {
-      await _prefs.remove('reddit_redirect_uri');
+      await prefs.remove('reddit_redirect_uri');
     }
 
     if (newSettings.userAgent != null && newSettings.userAgent!.isNotEmpty) {
-      await _prefs.setString('user_agent', newSettings.userAgent!);
+      await prefs.setString('user_agent', newSettings.userAgent!);
     } else {
-      await _prefs.remove('user_agent');
+      await prefs.remove('user_agent');
     }
 
     if (newSettings.redditRefreshToken != null &&
         newSettings.redditRefreshToken!.isNotEmpty) {
-      await _prefs.setString(
+      await prefs.setString(
         'reddit_refresh_token',
         newSettings.redditRefreshToken!,
       );
     } else {
-      await _prefs.remove('reddit_refresh_token');
+      await prefs.remove('reddit_refresh_token');
     }
 
     if (newSettings.redditAccessToken != null &&
         newSettings.redditAccessToken!.isNotEmpty) {
-      await _prefs.setString(
+      await prefs.setString(
         'reddit_access_token',
         newSettings.redditAccessToken!,
       );
     } else {
-      await _prefs.remove('reddit_access_token');
+      await prefs.remove('reddit_access_token');
     }
 
     if (newSettings.redditTokenExpiry != null) {
-      await _prefs.setInt(
+      await prefs.setInt(
         'reddit_token_expiry',
         newSettings.redditTokenExpiry!.millisecondsSinceEpoch,
       );
     } else {
-      await _prefs.remove('reddit_token_expiry');
+      await prefs.remove('reddit_token_expiry');
     }
 
     if (newSettings.redditUsername != null &&
         newSettings.redditUsername!.isNotEmpty) {
-      await _prefs.setString('reddit_username', newSettings.redditUsername!);
+      await prefs.setString('reddit_username', newSettings.redditUsername!);
     } else {
-      await _prefs.remove('reddit_username');
+      await prefs.remove('reddit_username');
     }
 
-    await _prefs.setBool(
+    await prefs.setBool(
       'auto_enrich_on_import',
       newSettings.autoEnrichOnImport,
     );
@@ -237,7 +249,7 @@ class SettingsRepository {
   Future<void> updateOAuthTokens({
     required String accessToken,
     required int expiresIn,
-  }) async {
+  }) {
     final expiry = DateTime.now().toUtc().add(
       Duration(seconds: expiresIn - 60),
     );
@@ -245,8 +257,19 @@ class SettingsRepository {
       redditAccessToken: accessToken,
       redditTokenExpiry: expiry,
     );
-    if (_prefs == null) return;
-    await _prefs.setString('reddit_access_token', accessToken);
-    await _prefs.setInt('reddit_token_expiry', expiry.millisecondsSinceEpoch);
+    final prefs = _prefs;
+    if (prefs == null) return Future.value();
+
+    return _writeQueue = _writeQueue
+        .then((_) async {
+          await prefs.setString('reddit_access_token', accessToken);
+          await prefs.setInt(
+            'reddit_token_expiry',
+            expiry.millisecondsSinceEpoch,
+          );
+        })
+        .catchError((e) {
+          debugPrint('[SettingsRepository] Error updating OAuth tokens: $e');
+        });
   }
 }

@@ -15,18 +15,30 @@ final itemDetailActionsProvider = Provider((ref) => ItemDetailActions(ref));
 
 class ItemDetailActions {
   final Ref _ref;
+  final _busyItemIds = <String>{};
+
   ItemDetailActions(this._ref);
 
   Future<void> toggleStar(SavedItem item) async {
-    final repo = _ref.read(savedItemRepositoryProvider);
-    await repo.toggleStar(item.id, !item.isStarred);
-    _ref.invalidate(itemDetailProvider(item.id));
+    if (!_busyItemIds.add(item.id)) return;
+    try {
+      final repo = _ref.read(savedItemRepositoryProvider);
+      await repo.toggleStar(item.id, !item.isStarred);
+      _ref.invalidate(itemDetailProvider(item.id));
+    } finally {
+      _busyItemIds.remove(item.id);
+    }
   }
 
   Future<void> updateNote(String id, String? note) async {
-    final repo = _ref.read(savedItemRepositoryProvider);
-    await repo.updateUserNote(id, note);
-    _ref.invalidate(itemDetailProvider(id));
+    if (!_busyItemIds.add(id)) return;
+    try {
+      final repo = _ref.read(savedItemRepositoryProvider);
+      await repo.updateUserNote(id, note);
+      _ref.invalidate(itemDetailProvider(id));
+    } finally {
+      _busyItemIds.remove(id);
+    }
   }
 
   Future<({bool success, String? error})> reEnrich(SavedItem item) async {
@@ -38,7 +50,12 @@ class ItemDetailActions {
   }
 
   Future<void> deleteItem(String id) async {
-    final repo = _ref.read(savedItemRepositoryProvider);
-    await repo.deleteItem(id);
+    if (!_busyItemIds.add(id)) return;
+    try {
+      final repo = _ref.read(savedItemRepositoryProvider);
+      await repo.deleteItem(id);
+    } finally {
+      _busyItemIds.remove(id);
+    }
   }
 }

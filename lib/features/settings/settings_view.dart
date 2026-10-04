@@ -791,6 +791,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
   }
 
   Future<void> _handleAuthorize() async {
+    if (_isConnecting) return;
     final clientId = _clientIdController.text.trim();
     final redirectUri = _redirectUriController.text.trim();
 
@@ -815,12 +816,14 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     String authUrl,
     String redirectUri,
   ) async {
-    try {
-      setState(() {
-        _errorMessage = null;
-        _successMessage = null;
-      });
+    if (_isConnecting) return;
+    setState(() {
+      _isConnecting = true;
+      _errorMessage = null;
+      _successMessage = null;
+    });
 
+    try {
       final parsed = Uri.tryParse(redirectUri);
       final scheme = (parsed != null && parsed.scheme.isNotEmpty)
           ? parsed.scheme
@@ -835,13 +838,14 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       final code = RedditApiService.parseCodeFromRedirectUrl(callbackUrl);
       if (code != null && code.isNotEmpty) {
         if (mounted) {
-          await _exchangeCode(code);
+          await _exchangeCode(code, isInternal: true);
         }
       } else {
         if (mounted) {
           setState(() {
             _errorMessage =
                 'Could not find authorization code in callback URL.';
+            _isConnecting = false;
           });
         }
       }
@@ -850,6 +854,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
         if (mounted) {
           setState(() {
             _errorMessage = 'Authorization was canceled.';
+            _isConnecting = false;
           });
         }
       } else {
@@ -857,6 +862,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
           setState(() {
             _errorMessage =
                 'Custom Tab failed (${e.code}). Try copying the authorization URL below.';
+            _isConnecting = false;
           });
         }
       }
@@ -864,6 +870,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       if (mounted) {
         setState(() {
           _errorMessage = 'Custom Tab error: $e';
+          _isConnecting = false;
         });
       }
     }
@@ -897,24 +904,31 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     }
   }
 
-  Future<void> _exchangeCode(String code) async {
+  Future<void> _exchangeCode(String code, {bool isInternal = false}) async {
+    if (!isInternal && _isConnecting) return;
+
     final clientId = _clientIdController.text.trim();
     final redirectUri = _redirectUriController.text.trim();
     final userAgent = _userAgentController.text.trim();
 
     if (clientId.isEmpty || redirectUri.isEmpty || userAgent.isEmpty) {
-      setState(() {
-        _errorMessage = 'OAuth Client ID, Redirect URI, and User Agent must all be provided.';
-        _successMessage = null;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'OAuth Client ID, Redirect URI, and User Agent must all be provided.';
+          _successMessage = null;
+          _isConnecting = false;
+        });
+      }
       return;
     }
 
-    setState(() {
-      _isConnecting = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
+    if (!_isConnecting) {
+      setState(() {
+        _isConnecting = true;
+        _errorMessage = null;
+        _successMessage = null;
+      });
+    }
 
     try {
       final apiService = ref.read(redditApiServiceProvider);
@@ -958,7 +972,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
         if (mounted) {
           setState(() {
-            _isConnecting = false;
             _successMessage =
                 'Successfully authenticated with Reddit OAuth$usernameInfo!';
           });
@@ -966,7 +979,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       } else {
         if (mounted) {
           setState(() {
-            _isConnecting = false;
             _errorMessage = 'Token exchange failed. Please verify that your Client ID matches the app, Redirect URI is identical, and the code was not already used.';
           });
         }
@@ -974,8 +986,13 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isConnecting = false;
           _errorMessage = 'Error during token exchange: $e';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
         });
       }
     }
