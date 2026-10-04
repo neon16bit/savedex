@@ -5,6 +5,7 @@ import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/theme/app_theme.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/data/services/reddit_auth_service.dart';
+import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
@@ -260,6 +261,208 @@ class SettingsView extends ConsumerWidget {
                     value: settings.autoEnrichOnImport,
                     onChanged: (val) => viewModel.toggleAutoEnrich(val),
                   ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final pendingCount =
+                        ref
+                            .watch(pendingEnrichmentCountProvider)
+                            .asData
+                            ?.value ??
+                        0;
+                    final enrichState = ref.watch(enrichmentViewModelProvider);
+                    final enrichVm = ref.read(
+                      enrichmentViewModelProvider.notifier,
+                    );
+                    final isEnriching =
+                        enrichState.isRunning || enrichState.isPaused;
+
+                    final formattedCount = pendingCount
+                        .toString()
+                        .replaceAllMapped(
+                          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+                          (m) => '${m[1]},',
+                        );
+
+                    String subtitle;
+                    if (isEnriching) {
+                      final total = enrichState.totalToEnrich > 0
+                          ? enrichState.totalToEnrich
+                          : (enrichState.processedCount +
+                                enrichState.totalPending);
+                      final percent = total > 0
+                          ? ((enrichState.processedCount / total) * 100)
+                                .toInt()
+                                .clamp(0, 100)
+                          : 0;
+                      subtitle = enrichState.isPaused
+                          ? 'Enrichment paused (${enrichState.processedCount}/$total · $percent%)'
+                          : 'Downloading metadata (${enrichState.processedCount}/$total · $percent%)';
+                    } else if (pendingCount > 0) {
+                      subtitle =
+                          '$formattedCount ${pendingCount == 1 ? "item needs" : "items need"} metadata & images';
+                    } else {
+                      subtitle = 'All items in library are fully enriched';
+                    }
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: pendingCount > 0 || isEnriching
+                                  ? colorScheme.primaryContainer
+                                  : colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              Icons.auto_awesome_rounded,
+                              color: pendingCount > 0 || isEnriching
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          title: const Text(
+                            'Enrich Library Metadata',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(subtitle),
+                          trailing: FilledButton.tonal(
+                            onPressed: (pendingCount == 0 || isEnriching)
+                                ? null
+                                : () => enrichVm.startEnrichment(),
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: Text(
+                              isEnriching
+                                  ? (enrichState.isPaused
+                                        ? 'Paused'
+                                        : 'Running...')
+                                  : 'Enrich Now',
+                            ),
+                          ),
+                        ),
+                        AnimatedSize(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeInOut,
+                          child: isEnriching
+                              ? Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    10,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(
+                                          100,
+                                        ),
+                                        child: LinearProgressIndicator(
+                                          value: enrichState.isPaused
+                                              ? null
+                                              : enrichState.progress,
+                                          minHeight: 5,
+                                          backgroundColor: colorScheme
+                                              .surfaceContainerHighest,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                enrichState.isPaused
+                                                    ? colorScheme.outline
+                                                    : colorScheme.primary,
+                                              ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              enrichState.currentItemTitle !=
+                                                          null &&
+                                                      enrichState
+                                                          .currentItemTitle!
+                                                          .isNotEmpty
+                                                  ? enrichState
+                                                        .currentItemTitle!
+                                                  : (enrichState.isPaused
+                                                        ? 'Enrichment paused'
+                                                        : 'Downloading metadata...'),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            iconSize: 18,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 32,
+                                              minHeight: 32,
+                                            ),
+                                            tooltip: enrichState.isPaused
+                                                ? 'Resume'
+                                                : 'Pause',
+                                            icon: Icon(
+                                              enrichState.isPaused
+                                                  ? Icons.play_arrow_rounded
+                                                  : Icons.pause_rounded,
+                                              color: colorScheme.primary,
+                                            ),
+                                            onPressed: () {
+                                              if (enrichState.isPaused) {
+                                                enrichVm.resumeEnrichment();
+                                              } else {
+                                                enrichVm.pauseEnrichment();
+                                              }
+                                            },
+                                          ),
+                                          const SizedBox(width: 4),
+                                          IconButton(
+                                            iconSize: 18,
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 32,
+                                              minHeight: 32,
+                                            ),
+                                            tooltip: 'Stop Enrichment',
+                                            icon: Icon(
+                                              Icons.close_rounded,
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                            ),
+                                            onPressed: () =>
+                                                enrichVm.stopEnrichment(),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(

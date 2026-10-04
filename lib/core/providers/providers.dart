@@ -54,3 +54,8 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return SettingsRepository(prefs);
 });
+
+final pendingEnrichmentCountProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(savedItemRepositoryProvider);
+  return repo.watchPendingEnrichmentCount();
+});

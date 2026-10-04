@@ -101,15 +101,34 @@ class BackupExportService {
 
   // create compressed .savedex backup
   Uint8List createBackup(List<SavedItem> items) {
-    final jsonString = _buildJsonString(items, pretty: false);
-    final utf8Bytes = utf8.encode(jsonString);
+    final payload = _buildJsonPayload(items);
+    final utf8Bytes = json.fuse(utf8).encode(payload);
     final compressedBytes = gzip.encode(utf8Bytes);
-    return Uint8List.fromList(compressedBytes);
+    return compressedBytes is Uint8List
+        ? compressedBytes
+        : Uint8List.fromList(compressedBytes);
   }
 
   // exports saved items in json // still no jdaughter :(
   String exportToJson(List<SavedItem> items) {
     return _buildJsonString(items, pretty: true);
+  }
+
+  Uint8List exportToJsonBytes(List<SavedItem> items, {bool pretty = true}) {
+    final payload = _buildJsonPayload(items);
+    if (pretty) {
+      const encoder = JsonEncoder.withIndent('  ');
+      final jsonString = encoder.convert(payload);
+      return utf8.encode(jsonString);
+    } else {
+      final bytes = json.fuse(utf8).encode(payload);
+      return bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    }
+  }
+
+  Uint8List exportToCsvBytes(List<SavedItem> items) {
+    final csvString = exportToCsv(items);
+    return utf8.encode(csvString);
   }
 
   String exportToCsv(List<SavedItem> items) {
@@ -178,23 +197,33 @@ class BackupExportService {
     return CsvHelper.encodeCsv(rows);
   }
 
-  SavedexBackupPayload parseBackup(List<int> bytes) {
-    String jsonString;
-    // check for gzip header bytes: 0x1f, 0x8b
-    if (bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
-      final decompressed = gzip.decode(bytes);
-      jsonString = utf8.decode(decompressed);
-    } else {
-      jsonString = utf8.decode(bytes);
+  static List<int> _stripBom(List<int> bytes) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
+      return bytes.sublist(3);
     }
+    return bytes;
+  }
 
-    if (!isSavedexJson(jsonString)) {
+  SavedexBackupPayload parseBackup(List<int> bytes) {
+    final dynamic decoded;
+    try {
+      // check for gzip header bytes: 0x1f, 0x8b
+      if (bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+        final decompressed = _stripBom(gzip.decode(bytes));
+        decoded = json.fuse(utf8).decode(decompressed);
+      } else {
+        final uncompressed = _stripBom(bytes);
+        decoded = json.fuse(utf8).decode(uncompressed);
+      }
+    } catch (_) {
       throw const FormatException('Invalid Savedex backup format!');
     }
 
-    final decoded = jsonDecode(jsonString);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('Invalid Savedex backup format');
+    if (decoded is! Map<String, dynamic> || decoded['app'] != 'savedex') {
+      throw const FormatException('Invalid Savedex backup format!');
     }
 
     final version = (decoded['version'] as num?)?.toInt() ?? 1;
@@ -486,7 +515,7 @@ class BackupExportService {
     );
   }
 
-  String _buildJsonString(List<SavedItem> items, {required bool pretty}) {
+  Map<String, dynamic> _buildJsonPayload(List<SavedItem> items) {
     final list = items.map((item) {
       return {
         'id': item.id,
@@ -523,7 +552,7 @@ class BackupExportService {
       };
     }).toList();
 
-    final payload = {
+    return {
       'app': 'savedex',
       'version': 1,
       'type': 'backup',
@@ -531,7 +560,10 @@ class BackupExportService {
       'itemCount': items.length,
       'items': list,
     };
+  }
 
+  String _buildJsonString(List<SavedItem> items, {required bool pretty}) {
+    final payload = _buildJsonPayload(items);
     if (pretty) {
       const encoder = JsonEncoder.withIndent('  ');
       return encoder.convert(payload);

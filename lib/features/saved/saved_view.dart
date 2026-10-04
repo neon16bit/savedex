@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
-import 'package:savedex/features/enrichment/widgets/enrichment_progress_card.dart';
 import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
+import 'package:savedex/features/import_export/widgets/import_export_progress_card.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/features/saved/widgets/comment_card.dart';
 import 'package:savedex/features/saved/widgets/compact_list_item.dart';
@@ -238,7 +238,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     final summary = await ref
                         .read(importExportViewModelProvider.notifier)
                         .pullSavedFromReddit();
-                    if (context.mounted && summary != null) {
+                    if (!context.mounted) return;
+                    if (summary != null) {
                       final message = _formatSyncMessage(summary);
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -246,6 +247,21 @@ class _SavedViewState extends ConsumerState<SavedView> {
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
+                    } else {
+                      final error = ref
+                          .read(importExportViewModelProvider)
+                          .errorMessage;
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(error),
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .error,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     }
                   },
                 );
@@ -257,7 +273,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
       body: Column(
         children: [
           _buildQuickFilterBar(context, filter, filterVm, colorScheme),
-          const EnrichmentProgressCard(
+          const ImportExportProgressCard(
             margin: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             isDense: true,
           ),
@@ -606,14 +622,19 @@ class _SavedViewState extends ConsumerState<SavedView> {
                           behavior: SnackBarBehavior.floating,
                         ),
                       );
-                    } else if (importState.errorMessage != null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(importState.errorMessage!),
-                          backgroundColor: colorScheme.error,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                    } else {
+                      final error = ref
+                          .read(importExportViewModelProvider)
+                          .errorMessage;
+                      if (error != null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(error),
+                            backgroundColor: colorScheme.error,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     }
                   }
                 },

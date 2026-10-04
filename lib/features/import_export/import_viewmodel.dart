@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -12,55 +11,97 @@ import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
+enum ImportExportType {
+  none,
+  restore,
+  backup,
+  takeoutImport,
+  redditSync,
+  export,
+}
+
+enum ImportExportCardStatus { idle, running, completed, failed }
+
 class ImportExportState {
-  final bool isImporting;
-  final bool isSyncingReddit;
-  final bool isExporting;
-  final bool isBackingUp;
-  final bool isRestoring;
   final String? statusMessage;
+  final double? progress;
   final ImportSummary? lastImportSummary;
   final String? errorMessage;
+  final ImportExportType activeType;
+  final ImportExportCardStatus cardStatus;
+  final String? lastSavedFilePath;
+  final bool isEnrichmentSuggestionDismissed;
+  final bool enrichQueued;
 
   const ImportExportState({
-    this.isImporting = false,
-    this.isSyncingReddit = false,
-    this.isExporting = false,
-    this.isBackingUp = false,
-    this.isRestoring = false,
     this.statusMessage,
+    this.progress,
     this.lastImportSummary,
     this.errorMessage,
+    this.activeType = ImportExportType.none,
+    this.cardStatus = ImportExportCardStatus.idle,
+    this.lastSavedFilePath,
+    this.isEnrichmentSuggestionDismissed = false,
+    this.enrichQueued = false,
   });
 
-  bool get isBusy =>
-      isImporting ||
-      isSyncingReddit ||
-      isExporting ||
-      isBackingUp ||
-      isRestoring;
+  bool get isImporting =>
+      cardStatus == ImportExportCardStatus.running &&
+      (activeType == ImportExportType.takeoutImport ||
+          activeType == ImportExportType.redditSync);
+
+  bool get isSyncingReddit =>
+      cardStatus == ImportExportCardStatus.running &&
+      activeType == ImportExportType.redditSync;
+
+  bool get isExporting =>
+      cardStatus == ImportExportCardStatus.running &&
+      activeType == ImportExportType.export;
+
+  bool get isBackingUp =>
+      cardStatus == ImportExportCardStatus.running &&
+      activeType == ImportExportType.backup;
+
+  bool get isRestoring =>
+      cardStatus == ImportExportCardStatus.running &&
+      activeType == ImportExportType.restore;
+
+  bool get isBusy => cardStatus == ImportExportCardStatus.running;
+
+  bool get showCard => cardStatus != ImportExportCardStatus.idle;
 
   ImportExportState copyWith({
-    bool? isImporting,
-    bool? isSyncingReddit,
-    bool? isExporting,
-    bool? isBackingUp,
-    bool? isRestoring,
     String? statusMessage,
+    double? progress,
     ImportSummary? lastImportSummary,
     String? errorMessage,
+    ImportExportType? activeType,
+    ImportExportCardStatus? cardStatus,
+    String? lastSavedFilePath,
+    bool? isEnrichmentSuggestionDismissed,
+    bool? enrichQueued,
     bool clearStatus = false,
+    bool clearProgress = false,
     bool clearError = false,
+    bool clearSummary = false,
+    bool clearSavedFilePath = false,
   }) {
     return ImportExportState(
-      isImporting: isImporting ?? this.isImporting,
-      isSyncingReddit: isSyncingReddit ?? this.isSyncingReddit,
-      isExporting: isExporting ?? this.isExporting,
-      isBackingUp: isBackingUp ?? this.isBackingUp,
-      isRestoring: isRestoring ?? this.isRestoring,
       statusMessage: clearStatus ? null : (statusMessage ?? this.statusMessage),
-      lastImportSummary: lastImportSummary ?? this.lastImportSummary,
+      progress: clearProgress ? null : (progress ?? this.progress),
+      lastImportSummary: clearSummary
+          ? null
+          : (lastImportSummary ?? this.lastImportSummary),
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      activeType: activeType ?? this.activeType,
+      cardStatus: cardStatus ?? this.cardStatus,
+      lastSavedFilePath: clearSavedFilePath
+          ? null
+          : (lastSavedFilePath ?? this.lastSavedFilePath),
+      isEnrichmentSuggestionDismissed:
+          isEnrichmentSuggestionDismissed ??
+          this.isEnrichmentSuggestionDismissed,
+      enrichQueued: enrichQueued ?? this.enrichQueued,
     );
   }
 }
@@ -71,20 +112,99 @@ final importExportViewModelProvider =
     });
 
 class ImportExportViewModel extends Notifier<ImportExportState> {
+  bool _isOperationBusy = false;
+
   @override
   ImportExportState build() {
+    ref.onDispose(() {
+      _isOperationBusy = false;
+    });
     return const ImportExportState();
   }
 
-  Future<String?> createBackup() async {
+  bool _acquireLock() {
+    if (_isOperationBusy || state.isBusy) {
+      return false;
+    }
+    _isOperationBusy = true;
+    return true;
+  }
+
+  void _releaseLock() {
+    _isOperationBusy = false;
+  }
+
+  void queueEnrichmentAfterImport() {
+    state = state.copyWith(enrichQueued: true);
+  }
+
+  void dismissEnrichmentSuggestion() {
+    state = state.copyWith(isEnrichmentSuggestionDismissed: true);
+  }
+
+  void dismissCard() {
     state = state.copyWith(
-      isBackingUp: true,
-      statusMessage: 'Creating backup...',
+      cardStatus: ImportExportCardStatus.idle,
+      activeType: ImportExportType.none,
+      isEnrichmentSuggestionDismissed: true,
+      enrichQueued: false,
+      clearStatus: true,
+      clearProgress: true,
       clearError: true,
-      clearStatus: false,
+      clearSummary: true,
+      clearSavedFilePath: true,
+    );
+  }
+
+  Future<String?> _saveFilePickerResult({
+    required String dialogTitle,
+    required String fileName,
+    required String mimeType,
+    required Uint8List bytes,
+  }) async {
+    final saveUri = await FilePickerPlatform.instance.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: fileName,
+      mimeType: mimeType,
+      bytes: bytes,
     );
 
+    if (saveUri == null) {
+      state = state.copyWith(
+        cardStatus: ImportExportCardStatus.idle,
+        activeType: ImportExportType.none,
+        clearStatus: true,
+      );
+      return null;
+    }
+
+    if (saveUri.scheme == 'file') {
+      final filePath = saveUri.toFilePath();
+      final file = File(filePath);
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        await file.writeAsBytes(bytes);
+      }
+      return filePath;
+    } else {
+      return saveUri.pathSegments.isNotEmpty
+          ? saveUri.pathSegments.last
+          : fileName;
+    }
+  }
+
+  Future<String?> createBackup() async {
+    if (!_acquireLock()) return null;
     try {
+      state = state.copyWith(
+        cardStatus: ImportExportCardStatus.running,
+        activeType: ImportExportType.backup,
+        statusMessage: 'Creating backup...',
+        clearError: true,
+        clearProgress: true,
+        clearSummary: true,
+        clearSavedFilePath: true,
+      );
+
       final repo = ref.read(savedItemRepositoryProvider);
       final allItems = await repo
           .watchSavedItems(const FilterCriteria(isArchived: null))
@@ -92,64 +212,50 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
 
       if (allItems.isEmpty) {
         state = state.copyWith(
-          isBackingUp: false,
+          cardStatus: ImportExportCardStatus.failed,
           errorMessage: 'No items in library to backup.',
         );
         return null;
       }
 
-      // background isolate
-      final bytes = await Isolate.run(() {
-        final service = BackupExportService();
-        return service.createBackup(allItems);
-      });
+      final service = ref.read(backupExportServiceProvider);
+      final bytes = service.createBackup(allItems);
 
       final now = DateTime.now();
       final dateStr =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       final fileName = 'savedex_backup_$dateStr.savedex';
 
-      final saveUri = await FilePickerPlatform.instance.saveFile(
+      final savedDisplayPath = await _saveFilePickerResult(
         dialogTitle: 'Save Savedex Backup',
         fileName: fileName,
         mimeType: 'application/octet-stream',
         bytes: bytes,
       );
 
-      if (saveUri == null) {
-        state = state.copyWith(isBackingUp: false, clearStatus: true);
+      if (savedDisplayPath == null) {
         return null;
       }
 
-      String savedDisplayPath;
-      if (saveUri.scheme == 'file') {
-        final filePath = saveUri.toFilePath();
-        final file = File(filePath);
-        if (!file.existsSync() || file.lengthSync() == 0) {
-          await file.writeAsBytes(bytes);
-        }
-        savedDisplayPath = filePath;
-      } else {
-        savedDisplayPath = saveUri.pathSegments.isNotEmpty
-            ? saveUri.pathSegments.last
-            : fileName;
-      }
-
       state = state.copyWith(
-        isBackingUp: false,
+        cardStatus: ImportExportCardStatus.completed,
         statusMessage: 'Backup saved successfully!',
+        lastSavedFilePath: savedDisplayPath,
       );
       return savedDisplayPath;
     } catch (e) {
       state = state.copyWith(
-        isBackingUp: false,
+        cardStatus: ImportExportCardStatus.failed,
         errorMessage: 'Backup failed: $e',
       );
       return null;
+    } finally {
+      _releaseLock();
     }
   }
 
   Future<ImportSummary?> restoreBackup() async {
+    if (!_acquireLock()) return null;
     try {
       final isMobile = Platform.isAndroid || Platform.isIOS;
       final files = await FilePickerPlatform.instance.pickFiles(
@@ -170,28 +276,40 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
 
       if (isMobile && ext != 'savedex' && ext != 'json' && ext != 'csv') {
         state = state.copyWith(
-          isRestoring: false,
+          cardStatus: ImportExportCardStatus.failed,
+          activeType: ImportExportType.restore,
           errorMessage: 'Please select a valid .savedex, .json, or .csv file.',
         );
         return null;
       }
 
       state = state.copyWith(
-        isRestoring: true,
-        statusMessage: 'Restoring library...',
+        cardStatus: ImportExportCardStatus.running,
+        activeType: ImportExportType.restore,
+        statusMessage: 'Reading backup file...',
+        isEnrichmentSuggestionDismissed: false,
+        clearProgress: true,
         clearError: true,
+        clearSummary: true,
+        clearSavedFilePath: true,
       );
 
       if (pickedFile.path == null) {
         state = state.copyWith(
-          isRestoring: false,
+          cardStatus: ImportExportCardStatus.failed,
           errorMessage: 'Could not access file path.',
+          clearProgress: true,
         );
         return null;
       }
 
       final file = File(pickedFile.path!);
       final bytes = await file.readAsBytes();
+
+      state = state.copyWith(
+        statusMessage: 'Decompressing backup...',
+        clearProgress: true,
+      );
 
       final fileType = BackupExportService.detectFileType(
         filename: pickedFile.name,
@@ -201,28 +319,34 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       final repo = ref.read(savedItemRepositoryProvider);
       ImportSummary summary;
 
+      void onProgress(double p, String msg) {
+        state = state.copyWith(
+          progress: p,
+          statusMessage: msg,
+          cardStatus: ImportExportCardStatus.running,
+        );
+      }
+
       switch (fileType) {
         case BackupFileType.savedex:
         case BackupFileType.json:
-          final payload = await Isolate.run(() {
-            final service = BackupExportService();
-            return service.parseBackup(bytes);
-          });
+          final service = ref.read(backupExportServiceProvider);
+          final payload = service.parseBackup(bytes);
           summary = await repo.restoreFromPayload(
             payload,
             sourceName: pickedFile.name,
+            onProgress: onProgress,
           );
           break;
 
         case BackupFileType.savedexCsv:
           final content = utf8.decode(bytes, allowMalformed: true);
-          final payload = await Isolate.run(() {
-            final service = BackupExportService();
-            return service.parseSavedexCsv(content);
-          });
+          final service = ref.read(backupExportServiceProvider);
+          final payload = service.parseSavedexCsv(content);
           summary = await repo.restoreFromPayload(
             payload,
             sourceName: pickedFile.name,
+            onProgress: onProgress,
           );
           break;
 
@@ -242,8 +366,9 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       }
 
       state = state.copyWith(
-        isRestoring: false,
+        cardStatus: ImportExportCardStatus.completed,
         statusMessage: 'Restore completed successfully!',
+        progress: 1.0,
         lastImportSummary: summary,
       );
 
@@ -253,7 +378,11 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       ref.invalidate(availableFlairsProvider);
 
       final settings = ref.read(settingsViewModelProvider);
-      if (settings.autoEnrichOnImport && summary.newItemsImported > 0) {
+      final shouldEnrich =
+          (settings.autoEnrichOnImport && summary.newItemsImported > 0) ||
+          state.enrichQueued;
+      if (shouldEnrich) {
+        state = state.copyWith(enrichQueued: false);
         ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
       }
 
@@ -264,14 +393,18 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
           .replaceFirst('FormatException: ', '')
           .replaceFirst('Exception: ', '');
       state = state.copyWith(
-        isRestoring: false,
+        cardStatus: ImportExportCardStatus.failed,
         errorMessage: 'Restore failed: $msg',
+        clearProgress: true,
       );
       return null;
+    } finally {
+      _releaseLock();
     }
   }
 
   Future<ImportSummary?> pickAndImportFiles() async {
+    if (!_acquireLock()) return null;
     try {
       final files = await FilePickerPlatform.instance.pickFiles(
         type: FileType.custom,
@@ -283,9 +416,14 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       }
 
       state = state.copyWith(
-        isImporting: true,
+        cardStatus: ImportExportCardStatus.running,
+        activeType: ImportExportType.takeoutImport,
         statusMessage: 'Reading selected files...',
+        isEnrichmentSuggestionDismissed: false,
+        clearProgress: true,
         clearError: true,
+        clearSummary: true,
+        clearSavedFilePath: true,
       );
 
       final repo = ref.read(savedItemRepositoryProvider);
@@ -295,8 +433,17 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       int skipped = 0;
       final stopwatch = Stopwatch()..start();
 
-      for (final pickedFile in files) {
-        state = state.copyWith(statusMessage: 'Parsing ${pickedFile.name}...');
+      for (var idx = 0; idx < files.length; idx++) {
+        final pickedFile = files[idx];
+        final currentFileNum = idx + 1;
+        final startProgress = files.length > 1
+            ? (idx + 0.1) / files.length
+            : 0.1;
+        state = state.copyWith(
+          statusMessage:
+              'Parsing ${pickedFile.name} ($currentFileNum of ${files.length})...',
+          progress: startProgress,
+        );
 
         if (pickedFile.path == null) continue;
         final file = File(pickedFile.path!);
@@ -314,6 +461,11 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         newImported += summary.newItemsImported;
         updated += summary.updatedItems;
         skipped += summary.skippedItems;
+
+        final stepProgress = files.length > 1
+            ? (idx + 1.0) / files.length
+            : 0.9;
+        state = state.copyWith(progress: stepProgress);
       }
 
       stopwatch.stop();
@@ -326,8 +478,9 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       );
 
       state = state.copyWith(
-        isImporting: false,
-        statusMessage: 'Import completed successfully!',
+        cardStatus: ImportExportCardStatus.completed,
+        statusMessage: 'Takeout imported successfully!',
+        progress: 1.0,
         lastImportSummary: totalSummary,
       );
 
@@ -337,40 +490,54 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       ref.invalidate(availableFlairsProvider);
 
       final settings = ref.read(settingsViewModelProvider);
-      if (settings.autoEnrichOnImport && newImported > 0) {
+      final shouldEnrich =
+          (settings.autoEnrichOnImport && newImported > 0) ||
+          state.enrichQueued;
+      if (shouldEnrich) {
+        state = state.copyWith(enrichQueued: false);
         ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
       }
 
       return totalSummary;
     } catch (e) {
       state = state.copyWith(
-        isImporting: false,
+        cardStatus: ImportExportCardStatus.failed,
         errorMessage: 'Import failed: $e',
+        clearProgress: true,
       );
       return null;
+    } finally {
+      _releaseLock();
     }
   }
 
   Future<ImportSummary?> pullSavedFromReddit() async {
+    if (!_acquireLock()) return null;
     try {
       state = state.copyWith(
-        isImporting: true,
-        isSyncingReddit: true,
+        cardStatus: ImportExportCardStatus.running,
+        activeType: ImportExportType.redditSync,
         statusMessage: 'Connecting to Reddit...',
+        clearProgress: true,
         clearError: true,
+        clearSummary: true,
+        clearSavedFilePath: true,
       );
 
       final repo = ref.read(savedItemRepositoryProvider);
       final summary = await repo.pullSavedFromReddit(
         onProgress: (count, status) {
-          state = state.copyWith(statusMessage: status);
+          state = state.copyWith(
+            statusMessage: status,
+            cardStatus: ImportExportCardStatus.running,
+          );
         },
       );
 
       state = state.copyWith(
-        isImporting: false,
-        isSyncingReddit: false,
+        cardStatus: ImportExportCardStatus.completed,
         statusMessage: 'Sync completed successfully!',
+        progress: 1.0,
         lastImportSummary: summary,
       );
 
@@ -392,11 +559,13 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       return summary;
     } catch (e) {
       state = state.copyWith(
-        isImporting: false,
-        isSyncingReddit: false,
+        cardStatus: ImportExportCardStatus.failed,
         errorMessage: e.toString().replaceFirst('Exception: ', ''),
+        clearProgress: true,
       );
       return null;
+    } finally {
+      _releaseLock();
     }
   }
 
@@ -404,12 +573,18 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
     required bool asJson,
     bool includeArchived = true,
   }) async {
-    state = state.copyWith(
-      isExporting: true,
-      statusMessage: 'Exporting data...',
-      clearError: true,
-    );
+    if (!_acquireLock()) return null;
     try {
+      state = state.copyWith(
+        cardStatus: ImportExportCardStatus.running,
+        activeType: ImportExportType.export,
+        statusMessage: 'Exporting data...',
+        clearProgress: true,
+        clearError: true,
+        clearSummary: true,
+        clearSavedFilePath: true,
+      );
+
       final repo = ref.read(savedItemRepositoryProvider);
 
       final filter = includeArchived
@@ -419,61 +594,49 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
 
       if (allItems.isEmpty) {
         state = state.copyWith(
-          isExporting: false,
+          cardStatus: ImportExportCardStatus.failed,
           errorMessage: 'No items in library to export.',
         );
         return null;
       }
 
-      final String output = await Isolate.run(() {
-        final service = BackupExportService();
-        return asJson
-            ? service.exportToJson(allItems)
-            : service.exportToCsv(allItems);
-      });
+      final service = ref.read(backupExportServiceProvider);
+      final Uint8List bytes = asJson
+          ? service.exportToJsonBytes(allItems)
+          : service.exportToCsvBytes(allItems);
 
       final now = DateTime.now();
       final dateStr =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       final ext = asJson ? 'json' : 'csv';
       final fileName = 'savedex_export_$dateStr.$ext';
-      final bytes = Uint8List.fromList(utf8.encode(output));
-
       final mimeType = asJson ? 'application/json' : 'text/csv';
-      final saveUri = await FilePickerPlatform.instance.saveFile(
+
+      final savedDisplayPath = await _saveFilePickerResult(
         dialogTitle: 'Save ${asJson ? "JSON" : "CSV"} Export',
         fileName: fileName,
         mimeType: mimeType,
         bytes: bytes,
       );
 
-      if (saveUri == null) {
-        state = state.copyWith(isExporting: false, clearStatus: true);
+      if (savedDisplayPath == null) {
         return null;
       }
 
-      String savedDisplayPath;
-      if (saveUri.scheme == 'file') {
-        final filePath = saveUri.toFilePath();
-        final file = File(filePath);
-        if (!file.existsSync() || file.lengthSync() == 0) {
-          await file.writeAsBytes(bytes);
-        }
-        savedDisplayPath = filePath;
-      } else {
-        savedDisplayPath = saveUri.pathSegments.isNotEmpty
-            ? saveUri.pathSegments.last
-            : fileName;
-      }
-
-      state = state.copyWith(isExporting: false, clearStatus: true);
+      state = state.copyWith(
+        cardStatus: ImportExportCardStatus.completed,
+        statusMessage: 'Export saved successfully!',
+        lastSavedFilePath: savedDisplayPath,
+      );
       return savedDisplayPath;
     } catch (e) {
       state = state.copyWith(
-        isExporting: false,
+        cardStatus: ImportExportCardStatus.failed,
         errorMessage: 'Export failed: $e',
       );
       return null;
+    } finally {
+      _releaseLock();
     }
   }
 }

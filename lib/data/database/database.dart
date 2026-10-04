@@ -401,14 +401,19 @@ class AppDatabase extends _$AppDatabase {
     return query.map((r) => r.readTable(tagsTable)).get();
   }
 
-  Future<List<SavedItemEntry>> getPendingEnrichmentItems({int limit = 50}) {
+  Future<List<SavedItemEntry>> getPendingEnrichmentItems({
+    int limit = 50,
+    List<String> excludeIds = const [],
+  }) {
+    Expression<bool> predicate = savedItemsTable.enrichmentStatus.isIn([
+      EnrichmentStatus.slugOnly.index,
+      EnrichmentStatus.pending.index,
+    ]);
+    if (excludeIds.isNotEmpty) {
+      predicate = predicate & savedItemsTable.id.isNotIn(excludeIds);
+    }
     return (select(savedItemsTable)
-          ..where(
-            (tbl) => tbl.enrichmentStatus.isIn([
-              EnrichmentStatus.slugOnly.index,
-              EnrichmentStatus.pending.index,
-            ]),
-          )
+          ..where((tbl) => predicate)
           ..orderBy([
             (tbl) => OrderingTerm(
               expression: tbl.importOrder,
@@ -431,6 +436,19 @@ class AppDatabase extends _$AppDatabase {
       );
     final row = await query.getSingleOrNull();
     return row?.read(countExp) ?? 0;
+  }
+
+  Stream<int> watchPendingEnrichmentCount() {
+    final countExp = savedItemsTable.id.count();
+    final query = selectOnly(savedItemsTable)
+      ..addColumns([countExp])
+      ..where(
+        savedItemsTable.enrichmentStatus.isIn([
+          EnrichmentStatus.slugOnly.index,
+          EnrichmentStatus.pending.index,
+        ]),
+      );
+    return query.watchSingle().map((row) => row.read(countExp) ?? 0);
   }
 
   Future<int> getTotalCount() async {

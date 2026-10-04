@@ -68,17 +68,21 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
   bool _stopRequested = false;
   bool _isDisposed = false;
   Completer<void>? _resumeCompleter;
+  Future<void>? _runFuture;
 
   @override
   EnrichmentState build() {
     _isDisposed = false;
     _stopRequested = false;
+    _runFuture = null;
     ref.onDispose(() {
       _isDisposed = true;
       _stopRequested = true;
       if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
         _resumeCompleter!.complete();
+        _resumeCompleter = null;
       }
+      _runFuture = null;
     });
     return const EnrichmentState();
   }
@@ -86,10 +90,51 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
   bool get _isMounted => !_isDisposed && !_stopRequested;
 
   Future<void> startEnrichment() async {
-    if (state.isRunning && !state.isPaused) return;
+    if (_stopRequested && _runFuture != null) {
+      try {
+        await _runFuture;
+      } catch (_) {}
+    }
 
+    // if a run is active, return the existing run future
+    if (_runFuture != null) {
+      if (state.isPaused) {
+        resumeEnrichment();
+      }
+      return _runFuture!;
+    }
+
+    if (state.isRunning && !state.isPaused) {
+      return;
+    }
+
+    final completer = Completer<void>();
+    _runFuture = completer.future;
     _stopRequested = false;
 
+    if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
+      _resumeCompleter!.complete();
+    }
+    _resumeCompleter = null;
+
+    () async {
+      try {
+        await _executeEnrichmentLoop();
+      } finally {
+        _runFuture = null;
+        if (!_isDisposed) {
+          _stopRequested = false;
+        }
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      }
+    }();
+
+    return _runFuture!;
+  }
+
+  Future<void> _executeEnrichmentLoop() async {
     final repo = ref.read(savedItemRepositoryProvider);
     final settings = ref.read(settingsViewModelProvider);
 
@@ -190,14 +235,21 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
         if (!_isMounted) break;
       }
     }
+
+    if (!_isDisposed && !state.isPaused) {
+      state = state.copyWith(isRunning: false, clearTitle: true);
+    }
   }
 
   void pauseEnrichment() {
-    if (_isDisposed) return;
-    if (!state.isPaused) {
-      _resumeCompleter = Completer<void>();
-      state = state.copyWith(isPaused: true);
+    if (_isDisposed ||
+        !state.isRunning ||
+        state.isPaused ||
+        _runFuture == null) {
+      return;
     }
+    _resumeCompleter = Completer<void>();
+    state = state.copyWith(isPaused: true);
   }
 
   void resumeEnrichment() {
@@ -209,7 +261,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
         _resumeCompleter = null;
       }
     }
-    if (!state.isRunning) {
+    if (_runFuture == null) {
       startEnrichment();
     }
   }
@@ -220,6 +272,8 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       _resumeCompleter!.complete();
       _resumeCompleter = null;
     }
+
+    // _runFuture is retained until _executeEnrichmentLoop() finishes
     if (!_isDisposed) {
       state = const EnrichmentState();
     }

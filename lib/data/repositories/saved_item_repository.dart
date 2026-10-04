@@ -15,6 +15,8 @@ class SavedItemRepository {
   final CsvParserService _csvParser;
   final RedditApiService _redditApi;
   final BackupExportService _backupExport;
+  final Map<String, Future<({bool success, String? error})>>
+  _inFlightEnrichments = {};
 
   SavedItemRepository({
     required this.db,
@@ -165,9 +167,11 @@ class SavedItemRepository {
   Future<ImportSummary> restoreFromPayload(
     SavedexBackupPayload payload, {
     String sourceName = 'Savedex Backup',
+    void Function(double progress, String status)? onProgress,
   }) async {
     final stopwatch = Stopwatch()..start();
-    if (payload.items.isEmpty) {
+    final total = payload.items.length;
+    if (total == 0) {
       stopwatch.stop();
       final totalInDb = await getTotalCount();
       return ImportSummary(
@@ -181,210 +185,223 @@ class SavedItemRepository {
       );
     }
 
-    final ids = payload.items
-        .map((c) => c.id.present ? c.id.value : '')
-        .where((id) => id.isNotEmpty)
-        .toList();
+    String fmt(int n) => n.toString().replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
 
-    final existingMap = <String, SavedItemEntry>{};
-    const chunkSize = 200;
-    for (var i = 0; i < ids.length; i += chunkSize) {
-      final chunk = ids.sublist(
-        i,
-        i + chunkSize > ids.length ? ids.length : i + chunkSize,
-      );
-      final entries = await (db.select(
-        db.savedItemsTable,
-      )..where((t) => t.id.isIn(chunk))).get();
-      for (final e in entries) {
-        existingMap[e.id] = e;
-      }
-    }
+    onProgress?.call(0.0, 'Restoring 0 of ${fmt(total)} items...');
 
     int newCount = 0;
     int updatedCount = 0;
     int skippedCount = 0;
+    int processed = 0;
 
-    final List<SavedItemsTableCompanion> toUpsert = [];
-
-    for (final companion in payload.items) {
-      final id = companion.id.present ? companion.id.value : '';
-      if (id.isEmpty) continue;
-      final existing = existingMap[id];
-
-      if (existing == null) {
-        newCount++;
-        toUpsert.add(companion);
-      } else {
-        final companionStarred = companion.isStarred.present
-            ? companion.isStarred.value
-            : false;
-        final companionArchived = companion.isArchived.present
-            ? companion.isArchived.value
-            : false;
-        final companionNote = companion.userNote.present
-            ? companion.userNote.value
-            : null;
-        final companionTitle = companion.title.present
-            ? companion.title.value
-            : null;
-        final companionEnrichment = companion.enrichmentStatus.present
-            ? companion.enrichmentStatus.value
-            : null;
-        final companionScore = companion.score.present
-            ? companion.score.value
-            : null;
-        final companionNumComments = companion.numComments.present
-            ? companion.numComments.value
-            : null;
-        final companionBody = companion.body.present
-            ? companion.body.value
-            : null;
-        final companionAuthor = companion.author.present
-            ? companion.author.value
-            : null;
-        final companionMediaUrl = companion.mediaUrl.present
-            ? companion.mediaUrl.value
-            : null;
-        final companionMediaType = companion.mediaType.present
-            ? companion.mediaType.value
-            : null;
-        final companionPostFlair = companion.postFlair.present
-            ? companion.postFlair.value
-            : null;
-        final companionSubredditType = companion.subredditType.present
-            ? companion.subredditType.value
-            : null;
-
-        final starNeedsUpdate = !existing.isStarred && companionStarred;
-        final archiveNeedsUpdate = !existing.isArchived && companionArchived;
-        final noteNeedsUpdate =
-            (existing.userNote == null || existing.userNote!.isEmpty) &&
-            companionNote != null &&
-            companionNote.isNotEmpty;
-        final titleNeedsUpdate =
-            (existing.title == 'Untitled Post' || existing.title.isEmpty) &&
-            companionTitle != null &&
-            companionTitle.isNotEmpty &&
-            companionTitle != 'Untitled Post' &&
-            companionTitle != '[deleted]' &&
-            companionTitle != '[removed]';
-        final enrichmentNeedsUpdate =
-            existing.enrichmentStatus != EnrichmentStatus.enriched &&
-            companionEnrichment == EnrichmentStatus.enriched;
-        final scoreNeedsUpdate =
-            existing.score == 0 &&
-            companionScore != null &&
-            companionScore != 0;
-        final commentsNeedsUpdate =
-            existing.numComments == 0 &&
-            companionNumComments != null &&
-            companionNumComments != 0;
-        final bodyNeedsUpdate =
-            (existing.body == null || existing.body!.isEmpty) &&
-            companionBody != null &&
-            companionBody.isNotEmpty &&
-            companionBody != '[deleted]' &&
-            companionBody != '[removed]';
-        final authorNeedsUpdate =
-            (existing.author == null ||
-                existing.author!.isEmpty ||
-                existing.author == '[deleted]') &&
-            companionAuthor != null &&
-            companionAuthor.isNotEmpty &&
-            companionAuthor != '[deleted]';
-        final mediaNeedsUpdate =
-            (existing.mediaUrl == null || existing.mediaUrl!.isEmpty) &&
-            companionMediaUrl != null &&
-            companionMediaUrl.isNotEmpty;
-        final mediaTypeNeedsUpdate =
-            existing.mediaType == MediaType.text &&
-            companionMediaType != null &&
-            companionMediaType != MediaType.text;
-        final flairNeedsUpdate =
-            (existing.postFlair == null || existing.postFlair!.isEmpty) &&
-            companionPostFlair != null &&
-            companionPostFlair.isNotEmpty;
-        final subTypeNeedsUpdate =
-            (existing.subredditType.isEmpty ||
-                existing.subredditType == 'public') &&
-            companionSubredditType != null &&
-            companionSubredditType.isNotEmpty &&
-            companionSubredditType != 'public';
-
-        if (starNeedsUpdate ||
-            archiveNeedsUpdate ||
-            noteNeedsUpdate ||
-            titleNeedsUpdate ||
-            enrichmentNeedsUpdate ||
-            scoreNeedsUpdate ||
-            commentsNeedsUpdate ||
-            bodyNeedsUpdate ||
-            authorNeedsUpdate ||
-            mediaNeedsUpdate ||
-            mediaTypeNeedsUpdate ||
-            flairNeedsUpdate ||
-            subTypeNeedsUpdate) {
-          updatedCount++;
-          toUpsert.add(
-            companion.copyWith(
-              isStarred: Value(existing.isStarred || companionStarred),
-              isArchived: Value(existing.isArchived || companionArchived),
-              userNote: noteNeedsUpdate
-                  ? Value(companionNote)
-                  : Value(existing.userNote),
-              title: titleNeedsUpdate
-                  ? Value(companionTitle)
-                  : Value(existing.title),
-              enrichmentStatus: enrichmentNeedsUpdate
-                  ? Value(companionEnrichment ?? existing.enrichmentStatus)
-                  : Value(existing.enrichmentStatus),
-              score: scoreNeedsUpdate
-                  ? Value(companionScore)
-                  : Value(existing.score),
-              numComments: commentsNeedsUpdate
-                  ? Value(companionNumComments)
-                  : Value(existing.numComments),
-              body: bodyNeedsUpdate
-                  ? Value(companionBody)
-                  : Value(existing.body),
-              author: authorNeedsUpdate
-                  ? Value(companionAuthor)
-                  : Value(existing.author),
-              mediaUrl: mediaNeedsUpdate
-                  ? Value(companionMediaUrl)
-                  : Value(existing.mediaUrl),
-              mediaType: mediaTypeNeedsUpdate
-                  ? Value(companionMediaType)
-                  : Value(existing.mediaType),
-              postFlair: flairNeedsUpdate
-                  ? Value(companionPostFlair)
-                  : Value(existing.postFlair),
-              subredditType: subTypeNeedsUpdate
-                  ? Value(companionSubredditType)
-                  : Value(existing.subredditType),
-              createdAtUtc: existing.createdAtUtc != null
-                  ? Value(existing.createdAtUtc)
-                  : (companion.createdAtUtc.present
-                        ? companion.createdAtUtc
-                        : const Value.absent()),
-              savedAtUtc: Value(existing.savedAtUtc),
-              importOrder: existing.importOrder > 0
-                  ? Value(existing.importOrder)
-                  : (companion.importOrder.present
-                        ? companion.importOrder
-                        : const Value.absent()),
-            ),
-          );
-        } else {
-          skippedCount++;
-        }
-      }
-    }
+    const chunkSize = 200;
 
     await db.transaction(() async {
-      if (toUpsert.isNotEmpty) {
-        await db.upsertBatch(toUpsert);
+      for (var i = 0; i < total; i += chunkSize) {
+        final end = (i + chunkSize > total) ? total : i + chunkSize;
+        final chunk = payload.items.sublist(i, end);
+
+        final chunkIds = chunk
+            .map((c) => c.id.present ? c.id.value : '')
+            .where((id) => id.isNotEmpty)
+            .toList();
+
+        final entries = await (db.select(
+          db.savedItemsTable,
+        )..where((t) => t.id.isIn(chunkIds))).get();
+        final existingMap = {for (final e in entries) e.id: e};
+
+        final toUpsert = <SavedItemsTableCompanion>[];
+
+        for (final companion in chunk) {
+          final id = companion.id.present ? companion.id.value : '';
+          if (id.isEmpty) continue;
+          final existing = existingMap[id];
+
+          if (existing == null) {
+            newCount++;
+            toUpsert.add(companion);
+          } else {
+            final companionStarred = companion.isStarred.present
+                ? companion.isStarred.value
+                : false;
+            final companionArchived = companion.isArchived.present
+                ? companion.isArchived.value
+                : false;
+            final companionNote = companion.userNote.present
+                ? companion.userNote.value
+                : null;
+            final companionTitle = companion.title.present
+                ? companion.title.value
+                : null;
+            final companionEnrichment = companion.enrichmentStatus.present
+                ? companion.enrichmentStatus.value
+                : null;
+            final companionScore = companion.score.present
+                ? companion.score.value
+                : null;
+            final companionNumComments = companion.numComments.present
+                ? companion.numComments.value
+                : null;
+            final companionBody = companion.body.present
+                ? companion.body.value
+                : null;
+            final companionAuthor = companion.author.present
+                ? companion.author.value
+                : null;
+            final companionMediaUrl = companion.mediaUrl.present
+                ? companion.mediaUrl.value
+                : null;
+            final companionMediaType = companion.mediaType.present
+                ? companion.mediaType.value
+                : null;
+            final companionPostFlair = companion.postFlair.present
+                ? companion.postFlair.value
+                : null;
+            final companionSubredditType = companion.subredditType.present
+                ? companion.subredditType.value
+                : null;
+
+            final starNeedsUpdate = !existing.isStarred && companionStarred;
+            final archiveNeedsUpdate =
+                !existing.isArchived && companionArchived;
+            final noteNeedsUpdate =
+                (existing.userNote == null || existing.userNote!.isEmpty) &&
+                companionNote != null &&
+                companionNote.isNotEmpty;
+            final titleNeedsUpdate =
+                (existing.title == 'Untitled Post' || existing.title.isEmpty) &&
+                companionTitle != null &&
+                companionTitle.isNotEmpty &&
+                companionTitle != 'Untitled Post' &&
+                companionTitle != '[deleted]' &&
+                companionTitle != '[removed]';
+            final enrichmentNeedsUpdate =
+                existing.enrichmentStatus != EnrichmentStatus.enriched &&
+                companionEnrichment == EnrichmentStatus.enriched;
+            final scoreNeedsUpdate =
+                existing.score == 0 &&
+                companionScore != null &&
+                companionScore != 0;
+            final commentsNeedsUpdate =
+                existing.numComments == 0 &&
+                companionNumComments != null &&
+                companionNumComments != 0;
+            final bodyNeedsUpdate =
+                (existing.body == null || existing.body!.isEmpty) &&
+                companionBody != null &&
+                companionBody.isNotEmpty &&
+                companionBody != '[deleted]' &&
+                companionBody != '[removed]';
+            final authorNeedsUpdate =
+                (existing.author == null ||
+                    existing.author!.isEmpty ||
+                    existing.author == '[deleted]') &&
+                companionAuthor != null &&
+                companionAuthor.isNotEmpty &&
+                companionAuthor != '[deleted]';
+            final mediaNeedsUpdate =
+                (existing.mediaUrl == null || existing.mediaUrl!.isEmpty) &&
+                companionMediaUrl != null &&
+                companionMediaUrl.isNotEmpty;
+            final mediaTypeNeedsUpdate =
+                existing.mediaType == MediaType.text &&
+                companionMediaType != null &&
+                companionMediaType != MediaType.text;
+            final flairNeedsUpdate =
+                (existing.postFlair == null || existing.postFlair!.isEmpty) &&
+                companionPostFlair != null &&
+                companionPostFlair.isNotEmpty;
+            final subTypeNeedsUpdate =
+                (existing.subredditType.isEmpty ||
+                    existing.subredditType == 'public') &&
+                companionSubredditType != null &&
+                companionSubredditType.isNotEmpty &&
+                companionSubredditType != 'public';
+
+            if (starNeedsUpdate ||
+                archiveNeedsUpdate ||
+                noteNeedsUpdate ||
+                titleNeedsUpdate ||
+                enrichmentNeedsUpdate ||
+                scoreNeedsUpdate ||
+                commentsNeedsUpdate ||
+                bodyNeedsUpdate ||
+                authorNeedsUpdate ||
+                mediaNeedsUpdate ||
+                mediaTypeNeedsUpdate ||
+                flairNeedsUpdate ||
+                subTypeNeedsUpdate) {
+              updatedCount++;
+              toUpsert.add(
+                companion.copyWith(
+                  isStarred: Value(existing.isStarred || companionStarred),
+                  isArchived: Value(existing.isArchived || companionArchived),
+                  userNote: noteNeedsUpdate
+                      ? Value(companionNote)
+                      : Value(existing.userNote),
+                  title: titleNeedsUpdate
+                      ? Value(companionTitle)
+                      : Value(existing.title),
+                  enrichmentStatus: enrichmentNeedsUpdate
+                      ? Value(companionEnrichment ?? existing.enrichmentStatus)
+                      : Value(existing.enrichmentStatus),
+                  score: scoreNeedsUpdate
+                      ? Value(companionScore)
+                      : Value(existing.score),
+                  numComments: commentsNeedsUpdate
+                      ? Value(companionNumComments)
+                      : Value(existing.numComments),
+                  body: bodyNeedsUpdate
+                      ? Value(companionBody)
+                      : Value(existing.body),
+                  author: authorNeedsUpdate
+                      ? Value(companionAuthor)
+                      : Value(existing.author),
+                  mediaUrl: mediaNeedsUpdate
+                      ? Value(companionMediaUrl)
+                      : Value(existing.mediaUrl),
+                  mediaType: mediaTypeNeedsUpdate
+                      ? Value(companionMediaType)
+                      : Value(existing.mediaType),
+                  postFlair: flairNeedsUpdate
+                      ? Value(companionPostFlair)
+                      : Value(existing.postFlair),
+                  subredditType: subTypeNeedsUpdate
+                      ? Value(companionSubredditType)
+                      : Value(existing.subredditType),
+                  createdAtUtc: existing.createdAtUtc != null
+                      ? Value(existing.createdAtUtc)
+                      : (companion.createdAtUtc.present
+                            ? companion.createdAtUtc
+                            : const Value.absent()),
+                  savedAtUtc: Value(existing.savedAtUtc),
+                  importOrder: existing.importOrder > 0
+                      ? Value(existing.importOrder)
+                      : (companion.importOrder.present
+                            ? companion.importOrder
+                            : const Value.absent()),
+                ),
+              );
+            } else {
+              skippedCount++;
+            }
+          }
+        }
+
+        if (toUpsert.isNotEmpty) {
+          await db.upsertBatch(toUpsert);
+        }
+
+        processed = end;
+        final prog = processed / total;
+        onProgress?.call(
+          prog,
+          'Restoring ${fmt(processed)} of ${fmt(total)} items...',
+        );
       }
 
       if (payload.itemTags.isNotEmpty) {
@@ -455,6 +472,7 @@ class SavedItemRepository {
       }
     });
 
+    onProgress?.call(1.0, 'Restore complete!');
     final totalInDb = await getTotalCount();
     stopwatch.stop();
 
@@ -897,6 +915,27 @@ class SavedItemRepository {
     SavedItem item, {
     String? clientId,
     String? clientSecret,
+  }) {
+    final existing = _inFlightEnrichments[item.id];
+    if (existing != null) {
+      return existing;
+    }
+
+    final future = _executeEnrichItem(
+      item,
+      clientId: clientId,
+      clientSecret: clientSecret,
+    );
+    _inFlightEnrichments[item.id] = future;
+    return future.whenComplete(() {
+      _inFlightEnrichments.remove(item.id);
+    });
+  }
+
+  Future<({bool success, String? error})> _executeEnrichItem(
+    SavedItem item, {
+    String? clientId,
+    String? clientSecret,
   }) async {
     try {
       final meta = await _redditApi.fetchMetadata(
@@ -951,11 +990,16 @@ class SavedItemRepository {
   }
 
   Future<List<SavedItem>> getPendingEnrichmentItems({int limit = 50}) async {
-    final entries = await db.getPendingEnrichmentItems(limit: limit);
+    final entries = await db.getPendingEnrichmentItems(
+      limit: limit,
+      excludeIds: _inFlightEnrichments.keys.toList(),
+    );
     return entries.map((e) => e.toDomain()).toList();
   }
 
   Future<int> getPendingEnrichmentCount() => db.getPendingEnrichmentCount();
+
+  Stream<int> watchPendingEnrichmentCount() => db.watchPendingEnrichmentCount();
 
   Future<List<(String, int)>> getSubredditsWithCounts() =>
       db.getSubredditsWithCounts();
