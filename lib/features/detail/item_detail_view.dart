@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
@@ -40,7 +41,10 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
 
         if (rawItem.itemType == ItemType.comment && threadAsync.isLoading) {
           return Scaffold(
-            appBar: AppBar(title: Text('r/${rawItem.subreddit}')),
+            appBar: AppBar(
+              titleSpacing: 0,
+              title: Text('r/${rawItem.subreddit}'),
+            ),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
@@ -53,128 +57,44 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
           appBar: AppBar(
             elevation: 0,
             scrolledUnderElevation: 2,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.7,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.reddit, size: 16, color: colorScheme.primary),
-                      const SizedBox(width: 6),
-                      Text(
-                        'r/${item.subreddit}',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            titleSpacing: 0,
+            title: Text(
+              'r/${item.subreddit}',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             actions: [
-              IconButton.filledTonal(
+              IconButton(
                 icon: Icon(
                   item.isStarred
                       ? Icons.star_rounded
                       : Icons.star_border_rounded,
                   color: item.isStarred ? Colors.amber : null,
-                  size: 20,
                 ),
                 tooltip: item.isStarred ? 'Starred' : 'Star',
                 onPressed: () => actions.toggleStar(item),
               ),
-              const SizedBox(width: 4),
-              IconButton.filledTonal(
+              PopupMenuButton<String>(
                 icon: _isEnriching
                     ? SizedBox(
-                        width: 18,
-                        height: 18,
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: colorScheme.primary,
                         ),
                       )
-                    : const Icon(Icons.sync_rounded, size: 20),
-                tooltip: 'Refresh metadata',
-                onPressed: _isEnriching
-                    ? null
-                    : () async {
-                        setState(() => _isEnriching = true);
-                        try {
-                          final result = await actions.reEnrich(item);
-                          if (!context.mounted) return;
-                          if (result.success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Metadata refreshed successfully',
-                                ),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  result.error ?? 'Failed to refresh metadata',
-                                ),
-                                backgroundColor: colorScheme.error,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Error: $e'),
-                              backgroundColor: colorScheme.error,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isEnriching = false);
-                          }
-                        }
-                      },
-              ),
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
-                    ),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.more_vert_rounded, size: 18),
-                ),
+                    : const Icon(Icons.more_vert_rounded),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
                 onSelected: (val) {
-                  if (val == 'open_reddit') {
-                    _openReddit(item.permalink);
+                  if (val == 'refresh') {
+                    _refreshMetadata(actions, item, colorScheme);
+                  } else if (val == 'open_reddit') {
+                    _openReddit(item.fullPermalink);
                   } else if (val == 'copy_link') {
-                    Clipboard.setData(ClipboardData(text: item.permalink));
+                    Clipboard.setData(ClipboardData(text: item.fullPermalink));
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Permalink copied to clipboard'),
@@ -186,6 +106,19 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'refresh',
+                    enabled: !_isEnriching,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.sync_rounded, size: 18),
+                        const SizedBox(width: 10),
+                        Text(
+                          _isEnriching ? 'Refreshing...' : 'Refresh Metadata',
+                        ),
+                      ],
+                    ),
+                  ),
                   const PopupMenuItem(
                     value: 'open_reddit',
                     child: Row(
@@ -226,7 +159,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                   ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
             ],
           ),
           bottomNavigationBar: SafeArea(
@@ -250,7 +183,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      onPressed: () => _openReddit(item.permalink),
+                      onPressed: () => _openReddit(item.fullPermalink),
                       icon: const Icon(Icons.open_in_browser_rounded, size: 18),
                       label: const Text(
                         'Open on Reddit',
@@ -291,7 +224,9 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     icon: const Icon(Icons.share_outlined, size: 20),
                     tooltip: 'Share',
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: item.permalink));
+                      Clipboard.setData(
+                        ClipboardData(text: item.fullPermalink),
+                      );
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Link copied to clipboard'),
@@ -305,21 +240,14 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             ),
           ),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.only(top: 8, bottom: 32),
             children: [
               if (isComment) ...[
                 _buildThreadDiscussionHeader(context, item, colorScheme, theme),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
               ],
-              Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainer,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-                  ),
-                ),
-                padding: const EdgeInsets.all(18),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -329,7 +257,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       runSpacing: 6,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        // post/commnet
+                        // post/comment
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -442,12 +370,6 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.person_outline_rounded,
-                                  size: 14,
-                                  color: colorScheme.primary,
-                                ),
-                                const SizedBox(width: 5),
                                 Text(
                                   'u/${item.author}',
                                   style: TextStyle(
@@ -795,91 +717,88 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                             ),
                       ),
                     ],
-                  ],
-                ),
-              ),
 
-              if (item.userNote != null && item.userNote!.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainer,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-                    ),
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.sticky_note_2_outlined,
-                                size: 18,
+                    if (item.userNote != null && item.userNote!.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer.withValues(
+                            alpha: 0.18,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border(
+                            left: BorderSide(
+                              color: colorScheme.primary,
+                              width: 3.5,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
+                              child: Icon(
+                                Icons.sticky_note_2_rounded,
+                                size: 16,
                                 color: colorScheme.primary,
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Personal Note',
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => _editNoteDialog(
+                                  context,
+                                  actions,
+                                  item.id,
+                                  item.userNote,
+                                ),
+                                child: Text(
+                                  item.userNote!,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontStyle: FontStyle.italic,
+                                    height: 1.35,
+                                    color: colorScheme.onSurface,
+                                  ),
                                 ),
                               ),
-                            ],
-                          ),
-                          TextButton.icon(
-                            style: TextButton.styleFrom(
+                            ),
+                            IconButton(
                               visualDensity: VisualDensity.compact,
+                              iconSize: 16,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 24,
+                                minHeight: 24,
+                              ),
+                              icon: Icon(
+                                Icons.edit_outlined,
+                                color: colorScheme.primary.withValues(
+                                  alpha: 0.8,
+                                ),
+                              ),
+                              tooltip: 'Edit Note',
+                              onPressed: () => _editNoteDialog(
+                                context,
+                                actions,
+                                item.id,
+                                item.userNote,
+                              ),
                             ),
-                            icon: const Icon(Icons.edit_outlined, size: 16),
-                            label: const Text('Edit'),
-                            onPressed: () => _editNoteDialog(
-                              context,
-                              actions,
-                              item.id,
-                              item.userNote,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _editNoteDialog(
-                          context,
-                          actions,
-                          item.id,
-                          item.userNote,
-                        ),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            item.userNote!,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontStyle: FontStyle.italic,
-                              height: 1.4,
-                            ),
-                          ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-              ],
+              ),
               _buildThreadCommentsSection(
                 context,
                 item,
@@ -941,10 +860,74 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     );
   }
 
-  void _openReddit(String permalink) async {
-    final uri = Uri.parse(permalink);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.platformDefault);
+  Future<void> _refreshMetadata(
+    ItemDetailActions actions,
+    SavedItem item,
+    ColorScheme colorScheme,
+  ) async {
+    if (_isEnriching) return;
+    setState(() => _isEnriching = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Refreshing metadata...'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 1),
+      ),
+    );
+    try {
+      final result = await actions.reEnrich(item);
+      if (!mounted) return;
+      if (result.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Metadata refreshed successfully'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.error ?? 'Failed to refresh metadata'),
+            backgroundColor: colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isEnriching = false);
+      }
+    }
+  }
+
+  void _openReddit(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (_) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not open Reddit link: $e'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -971,46 +954,49 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   ) {
     if (commentItem.parentPostTitle != null &&
         commentItem.parentPostTitle!.isNotEmpty) {
-      return Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            Icon(Icons.forum_outlined, size: 18, color: colorScheme.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'THREAD DISCUSSION',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    commentItem.parentPostTitle!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      height: 1.25,
-                    ),
-                  ),
-                ],
-              ),
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        child: Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.3),
             ),
-          ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.forum_outlined, size: 16, color: colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'THREAD DISCUSSION',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      commentItem.parentPostTitle!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1036,36 +1022,93 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       return const SizedBox.shrink();
     }
 
-    final title = isComment
-        ? 'Other Saved Comments in this Thread (${relevantComments.length})'
-        : 'Saved Comments in this Thread (${relevantComments.length})';
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainer.withValues(alpha: 0.5),
+            border: Border(
+              top: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+                width: 1,
+              ),
+              bottom: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+                width: 1,
+              ),
+            ),
+          ),
           child: Row(
             children: [
-              Icon(
-                Icons.chat_bubble_outline_rounded,
-                size: 18,
-                color: colorScheme.primary,
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.forum_rounded,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.2,
-                  color: colorScheme.onSurface,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          isComment
+                              ? 'Other Saved Comments'
+                              : 'Saved Comments in Thread',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${relevantComments.length}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      'Saved in your library from this discussion',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         ...relevantComments.map(
           (comment) => _buildInlineCommentCard(
             context,
@@ -1076,6 +1119,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             isHighlighted: comment.id == highlightedCommentId,
           ),
         ),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -1089,220 +1133,68 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     bool isHighlighted = false,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: isHighlighted
-            ? colorScheme.primaryContainer.withValues(alpha: 0.15)
-            : colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
+            ? colorScheme.primaryContainer.withValues(alpha: 0.22)
+            : colorScheme.surfaceContainerLow.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isHighlighted
-              ? colorScheme.primary
+              ? colorScheme.primary.withValues(alpha: 0.7)
               : colorScheme.outlineVariant.withValues(alpha: 0.35),
           width: isHighlighted ? 1.5 : 1,
         ),
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                width: 22,
-                height: 22,
+                width: 3,
+                height: 13,
+                margin: const EdgeInsets.only(right: 7),
                 decoration: BoxDecoration(
-                  color: colorScheme.tertiaryContainer.withValues(alpha: 0.7),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  (comment.author != null && comment.author!.isNotEmpty)
-                      ? comment.author![0].toUpperCase()
-                      : 'U',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: colorScheme.onTertiaryContainer,
-                  ),
+                  color: isHighlighted
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        comment.author != null
-                            ? 'u/${comment.author}'
-                            : 'u/[deleted]',
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                    if (comment.createdAtUtc != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        '•',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.outlineVariant,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        DateFormatter.timeAgo(comment.createdAtUtc),
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
+              Text(
+                comment.author != null ? 'u/${comment.author}' : 'u/[deleted]',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: isHighlighted
+                      ? colorScheme.primary
+                      : colorScheme.onSurface,
                 ),
               ),
-              if (comment.score > 0) ...[
+              if (comment.createdAtUtc != null) ...[
                 const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
+                Text(
+                  '•',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.outlineVariant,
                   ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.arrow_upward_rounded,
-                        size: 11,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        DateFormatter.compactNumber(comment.score),
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.primary,
-                        ),
-                      ),
-                    ],
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  DateFormatter.timeAgo(comment.createdAtUtc),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
-              const SizedBox(width: 4),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                icon: Icon(
-                  comment.userNote != null && comment.userNote!.isNotEmpty
-                      ? Icons.edit_note_rounded
-                      : Icons.note_add_outlined,
-                  color:
-                      comment.userNote != null && comment.userNote!.isNotEmpty
-                      ? colorScheme.primary
-                      : null,
-                ),
-                tooltip:
-                    comment.userNote != null && comment.userNote!.isNotEmpty
-                    ? 'Edit Note'
-                    : 'Add Note',
-                onPressed: () => _editNoteDialog(
-                  context,
-                  actions,
-                  comment.id,
-                  comment.userNote,
-                ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                icon: Icon(
-                  comment.isStarred
-                      ? Icons.star_rounded
-                      : Icons.star_border_rounded,
-                  color: comment.isStarred ? Colors.amber : null,
-                ),
-                tooltip: comment.isStarred ? 'Starred' : 'Star',
-                onPressed: () => actions.toggleStar(comment),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-                icon: const Icon(Icons.open_in_new_rounded),
-                tooltip: 'Open in Reddit',
-                onPressed: () => _openReddit(comment.permalink),
-              ),
             ],
           ),
-          if (comment.userNote != null && comment.userNote!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _editNoteDialog(
-                context,
-                actions,
-                comment.id,
-                comment.userNote,
-              ),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withValues(alpha: 0.25),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: colorScheme.primary.withValues(alpha: 0.2),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.sticky_note_2_rounded,
-                      size: 15,
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        comment.userNote!,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontStyle: FontStyle.italic,
-                          color: colorScheme.onSurface,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: colorScheme.primary.withValues(alpha: 0.7),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
           if (comment.body != null && comment.body!.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             MarkdownBody(
               data: comment.body!,
               selectable: true,
@@ -1316,12 +1208,250 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
               },
               styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
                 p: theme.textTheme.bodyMedium?.copyWith(
-                  height: 1.5,
+                  height: 1.45,
                   fontSize: 13.5,
                 ),
               ),
             ),
           ],
+          if (comment.userNote != null && comment.userNote!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _editNoteDialog(
+                context,
+                actions,
+                comment.id,
+                comment.userNote,
+              ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border(
+                    left: BorderSide(color: colorScheme.primary, width: 3),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Icon(
+                        Icons.sticky_note_2_rounded,
+                        size: 13,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        comment.userNote!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                          color: colorScheme.onSurface,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.edit_outlined,
+                      size: 13,
+                      color: colorScheme.primary.withValues(alpha: 0.7),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 4),
+          //const Divider(height: 1),
+          Row(
+            children: [
+              if (comment.score > 0)
+                Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.arrow_upward_rounded,
+                        size: 14,
+                        color: colorScheme.primary,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        DateFormatter.compactNumber(comment.score),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const Spacer(),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                icon: Icon(
+                  comment.userNote != null && comment.userNote!.isNotEmpty
+                      ? Icons.sticky_note_2_rounded
+                      : Icons.note_add_outlined,
+                  color:
+                      comment.userNote != null && comment.userNote!.isNotEmpty
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+                tooltip:
+                    comment.userNote != null && comment.userNote!.isNotEmpty
+                    ? 'Edit Note'
+                    : 'Add Note',
+                onPressed: () => _editNoteDialog(
+                  context,
+                  actions,
+                  comment.id,
+                  comment.userNote,
+                ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                icon: Icon(
+                  comment.isStarred
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
+                  color: comment.isStarred
+                      ? Colors.amber
+                      : colorScheme.onSurfaceVariant,
+                ),
+                tooltip: comment.isStarred ? 'Starred' : 'Star',
+                onPressed: () => actions.toggleStar(comment),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                iconSize: 18,
+                icon: SvgPicture.asset(
+                  'assets/icons/reddit.svg',
+                  width: 17,
+                  height: 17,
+                  colorFilter: ColorFilter.mode(
+                    colorScheme.onSurfaceVariant,
+                    BlendMode.srcIn,
+                  ),
+                ),
+                tooltip: 'Open in Reddit',
+                onPressed: () => _openReddit(comment.fullPermalink),
+              ),
+              const SizedBox(width: 2),
+              PopupMenuButton<String>(
+                tooltip: 'More options',
+                iconSize: 18,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                icon: Icon(
+                  Icons.more_vert_rounded,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                onSelected: (val) {
+                  if (val == 'copy_text') {
+                    if (comment.body != null && comment.body!.isNotEmpty) {
+                      Clipboard.setData(ClipboardData(text: comment.body!));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Comment text copied to clipboard'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  } else if (val == 'copy_link') {
+                    Clipboard.setData(
+                      ClipboardData(text: comment.fullPermalink),
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Permalink copied to clipboard'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  } else if (val == 'open_reddit') {
+                    _openReddit(comment.fullPermalink);
+                  } else if (val == 'delete') {
+                    _confirmDelete(
+                      context,
+                      actions,
+                      comment.id,
+                      isComment: true,
+                    );
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  if (comment.body != null && comment.body!.isNotEmpty)
+                    const PopupMenuItem(
+                      value: 'copy_text',
+                      child: Row(
+                        children: [
+                          Icon(Icons.content_copy_rounded, size: 18),
+                          SizedBox(width: 10),
+                          Text('Copy Text'),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuItem(
+                    value: 'copy_link',
+                    child: Row(
+                      children: [
+                        Icon(Icons.link_rounded, size: 18),
+                        SizedBox(width: 10),
+                        Text('Copy Link'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'open_reddit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.open_in_browser_rounded, size: 18),
+                        SizedBox(width: 10),
+                        Text('Open in Reddit'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: Colors.red,
+                        ),
+                        SizedBox(width: 10),
+                        Text(
+                          'Delete Comment',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1330,15 +1460,18 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   void _confirmDelete(
     BuildContext context,
     ItemDetailActions actions,
-    String itemId,
-  ) {
+    String itemId, {
+    bool isComment = false,
+  }) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Delete Item?'),
-        content: const Text(
-          'This will remove the item from your Savedex library.',
+        title: Text(isComment ? 'Delete Comment?' : 'Delete Item?'),
+        content: Text(
+          isComment
+              ? 'This will remove the comment from your Savedex library.'
+              : 'This will remove the item from your Savedex library.',
         ),
         actions: [
           TextButton(
@@ -1356,7 +1489,16 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
               Navigator.pop(ctx);
               await actions.deleteItem(itemId);
               if (context.mounted) {
-                Navigator.of(context).pop();
+                if (itemId == widget.itemId) {
+                  Navigator.of(context).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Comment removed from saved items'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
               }
             },
             child: const Text('Delete'),

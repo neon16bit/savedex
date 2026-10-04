@@ -61,6 +61,15 @@ class SavedItem {
 
   bool get isComment => itemType == ItemType.comment;
   bool get isPost => itemType == ItemType.post;
+
+  String get fullPermalink {
+    if (permalink.startsWith('http://') || permalink.startsWith('https://')) {
+      return permalink;
+    }
+    final clean = permalink.startsWith('/') ? permalink : '/$permalink';
+    return 'https://www.reddit.com$clean';
+  }
+
   bool get hasMedia =>
       thumbnailUrl != null ||
       mediaUrl != null ||
