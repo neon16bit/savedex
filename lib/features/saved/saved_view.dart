@@ -9,7 +9,6 @@ import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/features/saved/widgets/comment_card.dart';
 import 'package:savedex/features/saved/widgets/compact_list_item.dart';
 import 'package:savedex/features/saved/widgets/gallery_item.dart';
-import 'package:savedex/features/saved/widgets/grouped_comments_card.dart';
 import 'package:savedex/features/saved/widgets/post_card.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/search/widgets/filter_sheet.dart';
@@ -62,7 +61,6 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
   @override
   Widget build(BuildContext context) {
-    final feedEntries = ref.watch(groupedFeedItemsProvider);
     final rawItemsAsync = ref.watch(feedItemsStreamProvider);
     final filter = ref.watch(searchFilterViewModelProvider);
     final filterVm = ref.read(searchFilterViewModelProvider.notifier);
@@ -295,18 +293,13 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     content = ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(top: 4, bottom: 28),
-                      itemCount: feedEntries.length,
+                      itemCount: items.length,
                       itemBuilder: (context, index) {
-                        final entry = feedEntries[index];
-                        if (entry is SingleFeedEntry) {
-                          if (entry.item.itemType == ItemType.comment) {
-                            return CommentCard(item: entry.item);
-                          }
-                          return PostCard(item: entry.item);
-                        } else if (entry is GroupedCommentsFeedEntry) {
-                          return GroupedCommentsCard(group: entry);
+                        final item = items[index];
+                        if (item.itemType == ItemType.comment) {
+                          return CommentCard(item: item);
                         }
-                        return const SizedBox.shrink();
+                        return PostCard(item: item);
                       },
                     );
                     break;

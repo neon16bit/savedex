@@ -11,6 +11,17 @@ final itemDetailProvider = FutureProvider.family<SavedItem?, String>((
   return repo.getItemById(id);
 });
 
+final relatedThreadProvider =
+    FutureProvider.family<
+      ({SavedItem? parentPost, List<SavedItem> comments}),
+      String
+    >((ref, id) async {
+      final item = await ref.watch(itemDetailProvider(id).future);
+      if (item == null) return (parentPost: null, comments: <SavedItem>[]);
+      final repo = ref.watch(savedItemRepositoryProvider);
+      return repo.getRelatedThreadItems(item);
+    });
+
 final itemDetailActionsProvider = Provider((ref) => ItemDetailActions(ref));
 
 class ItemDetailActions {
@@ -25,6 +36,7 @@ class ItemDetailActions {
       final repo = _ref.read(savedItemRepositoryProvider);
       await repo.toggleStar(item.id, !item.isStarred);
       _ref.invalidate(itemDetailProvider(item.id));
+      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(item.id);
     }
@@ -36,6 +48,7 @@ class ItemDetailActions {
       final repo = _ref.read(savedItemRepositoryProvider);
       await repo.updateUserNote(id, note);
       _ref.invalidate(itemDetailProvider(id));
+      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(id);
     }
@@ -46,6 +59,7 @@ class ItemDetailActions {
         .read(enrichmentViewModelProvider.notifier)
         .enrichSingleItem(item);
     _ref.invalidate(itemDetailProvider(item.id));
+    _ref.invalidate(relatedThreadProvider);
     return result;
   }
 
@@ -54,6 +68,7 @@ class ItemDetailActions {
     try {
       final repo = _ref.read(savedItemRepositoryProvider);
       await repo.deleteItem(id);
+      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(id);
     }

@@ -67,6 +67,55 @@ class SavedItemRepository {
     return entry.toDomain(tags: tags);
   }
 
+  Future<({SavedItem? parentPost, List<SavedItem> comments})>
+  getRelatedThreadItems(SavedItem item) async {
+    final isComment = item.itemType == ItemType.comment;
+    final rawPostId = isComment ? item.parentPostId : item.id;
+
+    if (rawPostId == null || rawPostId.isEmpty) {
+      return (parentPost: isComment ? null : item, comments: <SavedItem>[]);
+    }
+
+    final cleanPostId = rawPostId.startsWith('t3_')
+        ? rawPostId.substring(3)
+        : rawPostId;
+    final candidatePostIds = [cleanPostId, 't3_$cleanPostId'];
+
+    SavedItem? parentPost;
+    if (!isComment) {
+      parentPost = item;
+    } else {
+      final postEntry =
+          await (db.select(db.savedItemsTable)..where(
+                (t) =>
+                    t.id.isIn(candidatePostIds) &
+                    t.itemType.equals(ItemType.post.index),
+              ))
+              .getSingleOrNull();
+      if (postEntry != null) {
+        parentPost = postEntry.toDomain();
+      }
+    }
+
+    final commentEntries =
+        await (db.select(db.savedItemsTable)
+              ..where(
+                (t) =>
+                    t.parentPostId.isIn(candidatePostIds) &
+                    t.itemType.equals(ItemType.comment.index),
+              )
+              ..orderBy([
+                (t) => OrderingTerm(
+                  expression: t.createdAtUtc,
+                  mode: OrderingMode.asc,
+                ),
+              ]))
+            .get();
+
+    final comments = commentEntries.map((e) => e.toDomain()).toList();
+    return (parentPost: parentPost, comments: comments);
+  }
+
   Future<void> toggleStar(String id, bool isStarred) async {
     await (db.update(db.savedItemsTable)..where((t) => t.id.equals(id))).write(
       SavedItemsTableCompanion(isStarred: Value(isStarred)),
