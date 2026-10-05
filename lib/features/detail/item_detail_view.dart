@@ -20,7 +20,8 @@ class ItemDetailView extends ConsumerStatefulWidget {
 }
 
 class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
-  bool _isEnriching = false;
+  final Set<String> _enrichingIds = {};
+  bool _isEnriching(String id) => _enrichingIds.contains(id);
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +76,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 onPressed: () => actions.toggleStar(item),
               ),
               PopupMenuButton<String>(
-                icon: _isEnriching
+                icon: _isEnriching(item.id)
                     ? SizedBox(
                         width: 20,
                         height: 20,
@@ -108,13 +109,15 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 itemBuilder: (ctx) => [
                   PopupMenuItem(
                     value: 'refresh',
-                    enabled: !_isEnriching,
+                    enabled: !_isEnriching(item.id),
                     child: Row(
                       children: [
                         const Icon(Icons.sync_rounded, size: 18),
                         const SizedBox(width: 10),
                         Text(
-                          _isEnriching ? 'Refreshing...' : 'Refresh Metadata',
+                          _isEnriching(item.id)
+                              ? 'Refreshing...'
+                              : 'Refresh Metadata',
                         ),
                       ],
                     ),
@@ -251,6 +254,15 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(
+                      item.title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        height: 1.3,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     // badge row
                     Wrap(
                       spacing: 6,
@@ -329,121 +341,30 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                               ),
                             ),
                           ),
-                        // Time Ago
-                        if (item.createdAtUtc != null)
+                      ],
+                    ),
+                    if (item.author != null && item.author!.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
                           Text(
-                            '• ${DateFormatter.timeAgo(item.createdAtUtc)}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
+                            'u/${item.author}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onSurface,
                             ),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    Text(
-                      item.title,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
-                        height: 1.3,
+                          if (item.createdAtUtc != null)
+                            Text(
+                              ' • ${DateFormatter.timeAgo(item.createdAtUtc)}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (item.author != null && item.author!.isNotEmpty)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'u/${item.author}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: colorScheme.onSurface,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.arrow_upward_rounded,
-                                size: 14,
-                                color: colorScheme.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                DateFormatter.compactNumber(item.score),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: colorScheme.primary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (!isComment && item.numComments > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.chat_bubble_outline_rounded,
-                                  size: 13,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  DateFormatter.compactNumber(item.numComments),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
+                    ],
 
                     // media container
                     if (item.hasDisplayImage) ...[
@@ -795,7 +716,76 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.arrow_upward_rounded,
+                                size: 14,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                DateFormatter.compactNumber(item.score),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!isComment && item.numComments > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.chat_bubble_outline_rounded,
+                                  size: 13,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  DateFormatter.compactNumber(item.numComments),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -865,8 +855,8 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     SavedItem item,
     ColorScheme colorScheme,
   ) async {
-    if (_isEnriching) return;
-    setState(() => _isEnriching = true);
+    if (_isEnriching(item.id)) return;
+    setState(() => _enrichingIds.add(item.id));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Refreshing metadata...'),
@@ -904,7 +894,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       );
     } finally {
       if (mounted) {
-        setState(() => _isEnriching = false);
+        setState(() => _enrichingIds.remove(item.id));
       }
     }
   }
@@ -1361,13 +1351,24 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  size: 18,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+                icon: _isEnriching(comment.id)
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colorScheme.primary,
+                        ),
+                      )
+                    : Icon(
+                        Icons.more_vert_rounded,
+                        size: 18,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                 onSelected: (val) {
-                  if (val == 'copy_text') {
+                  if (val == 'refresh') {
+                    _refreshMetadata(actions, comment, colorScheme);
+                  } else if (val == 'copy_text') {
                     if (comment.body != null && comment.body!.isNotEmpty) {
                       Clipboard.setData(ClipboardData(text: comment.body!));
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1399,6 +1400,21 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                   }
                 },
                 itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'refresh',
+                    enabled: !_isEnriching(comment.id),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.sync_rounded, size: 18),
+                        const SizedBox(width: 10),
+                        Text(
+                          _isEnriching(comment.id)
+                              ? 'Refreshing...'
+                              : 'Refresh Metadata',
+                        ),
+                      ],
+                    ),
+                  ),
                   if (comment.body != null && comment.body!.isNotEmpty)
                     const PopupMenuItem(
                       value: 'copy_text',
