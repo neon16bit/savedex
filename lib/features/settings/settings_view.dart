@@ -569,27 +569,35 @@ class SettingsView extends ConsumerWidget {
                                               ? 'Reddit sync: ${summary.newItemsImported} new items added$dbSuffix!'
                                               : 'Library is up to date$dbSuffix!';
                                           ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                                SnackBar(
-                                                  content: Text(msg),
-                                                  behavior:
-                                                      SnackBarBehavior.floating,
+                                            ..clearSnackBars()
+                                            ..showSnackBar(
+                                              SnackBar(
+                                                content: Text(msg),
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                                duration: const Duration(
+                                                  seconds: 2,
                                                 ),
-                                              );
+                                              ),
+                                            );
                                         } else if (importState.errorMessage !=
                                             null) {
                                           ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    importState.errorMessage!,
-                                                  ),
-                                                  backgroundColor:
-                                                      colorScheme.error,
-                                                  behavior:
-                                                      SnackBarBehavior.floating,
+                                            ..clearSnackBars()
+                                            ..showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  importState.errorMessage!,
                                                 ),
-                                              );
+                                                backgroundColor:
+                                                    colorScheme.error,
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                                duration: const Duration(
+                                                  seconds: 2,
+                                                ),
+                                              ),
+                                            );
                                         }
                                       }
                                     },
@@ -717,12 +725,15 @@ class SettingsView extends ConsumerWidget {
               Navigator.pop(ctx);
               await ref.read(savedItemRepositoryProvider).clearAllData();
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Database cleared successfully'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                ScaffoldMessenger.of(context)
+                  ..clearSnackBars()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text('Database cleared successfully'),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
               }
             },
             child: const Text('Delete Everything'),
@@ -895,12 +906,15 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
     await Clipboard.setData(ClipboardData(text: authUrl));
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Authorization URL copied to clipboard!'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Authorization URL copied to clipboard!'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
     }
   }
 

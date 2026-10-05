@@ -239,26 +239,32 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     if (!context.mounted) return;
                     if (summary != null) {
                       final message = _formatSyncMessage(summary);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(message),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      ScaffoldMessenger.of(context)
+                        ..clearSnackBars()
+                        ..showSnackBar(
+                          SnackBar(
+                            content: Text(message),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
                     } else {
                       final error = ref
                           .read(importExportViewModelProvider)
                           .errorMessage;
                       if (error != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(error),
-                            backgroundColor: Theme.of(context)
-                                .colorScheme
-                                .error,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(error),
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .error,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
                       }
                     }
                   },
@@ -345,12 +351,15 @@ class _SavedViewState extends ConsumerState<SavedView> {
                           .pullSavedFromReddit();
                       if (context.mounted && summary != null) {
                         final message = _formatSyncMessage(summary);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(message),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(message),
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
                       }
                     } else {
                       ref.invalidate(feedItemsStreamProvider);
@@ -609,24 +618,30 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   if (context.mounted) {
                     if (summary != null) {
                       final message = _formatSyncMessage(summary);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(message),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
+                      ScaffoldMessenger.of(context)
+                        ..clearSnackBars()
+                        ..showSnackBar(
+                          SnackBar(
+                            content: Text(message),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
                     } else {
                       final error = ref
                           .read(importExportViewModelProvider)
                           .errorMessage;
                       if (error != null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(error),
-                            backgroundColor: colorScheme.error,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(error),
+                              backgroundColor: colorScheme.error,
+                              behavior: SnackBarBehavior.floating,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
                       }
                     }
                   }

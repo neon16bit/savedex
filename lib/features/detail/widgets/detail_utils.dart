@@ -12,12 +12,15 @@ Future<void> openRedditUrl(BuildContext context, String url) async {
       await launchUrl(uri, mode: LaunchMode.platformDefault);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open Reddit link: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('Could not open Reddit link: $e'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
       }
     }
   }

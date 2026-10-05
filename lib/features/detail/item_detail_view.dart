@@ -32,41 +32,52 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     final notifier = ref.read(enrichingItemsProvider.notifier);
     if (notifier.isEnriching(item.id)) return;
     notifier.add(item.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Refreshing metadata...'),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 1),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Refreshing metadata...'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 1),
+        ),
+      );
     try {
       final result = await actions.reEnrich(item);
       if (!mounted) return;
       if (result.success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Metadata refreshed successfully'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Metadata refreshed successfully'),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result.error ?? 'Failed to refresh metadata'),
-            backgroundColor: colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(result.error ?? 'Failed to refresh metadata'),
+              backgroundColor: colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
     } finally {
       notifier.remove(item.id);
     }
@@ -164,12 +175,15 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                         Clipboard.setData(
                           ClipboardData(text: item.fullPermalink),
                         );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Permalink copied to clipboard'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            const SnackBar(
+                              content: Text('Permalink copied to clipboard'),
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
                       } else if (val == 'delete') {
                         showConfirmDeleteDialog(
                           context,
@@ -324,17 +338,10 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                             ),
                             onDelete: () {
                               actions.updateNote(item.id, null);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Note removed'),
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 4),
-                                  action: SnackBarAction(
-                                    label: 'Undo',
-                                    onPressed: () =>
-                                        actions.updateNote(item.id, note),
-                                  ),
-                                ),
+                              showNoteSnackBar(
+                                context,
+                                message: 'Note removed',
+                                onUndo: () => actions.updateNote(item.id, note),
                               );
                             },
                           ),

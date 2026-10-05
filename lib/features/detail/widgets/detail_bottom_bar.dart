@@ -18,12 +18,15 @@ class DetailBottomBar extends StatelessWidget {
 
   void _share(BuildContext context) {
     Clipboard.setData(ClipboardData(text: item.fullPermalink));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Link copied to clipboard'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Link copied to clipboard'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
   }
 
   @override

@@ -310,16 +310,10 @@ class DetailCommentCard extends StatelessWidget {
                       showEditNoteDialog(context, actions, comment.id, note),
                   onDelete: () {
                     actions.updateNote(comment.id, null);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text('Note removed'),
-                        behavior: SnackBarBehavior.floating,
-                        duration: const Duration(seconds: 4),
-                        action: SnackBarAction(
-                          label: 'Undo',
-                          onPressed: () => actions.updateNote(comment.id, note),
-                        ),
-                      ),
+                    showNoteSnackBar(
+                      context,
+                      message: 'Note removed',
+                      onUndo: () => actions.updateNote(comment.id, note),
                     );
                   },
                 ),
@@ -445,23 +439,31 @@ class DetailCommentCard extends StatelessWidget {
                       } else if (val == 'copy_text') {
                         if (comment.body != null && comment.body!.isNotEmpty) {
                           Clipboard.setData(ClipboardData(text: comment.body!));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Comment text copied to clipboard'),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
+                          ScaffoldMessenger.of(context)
+                            ..clearSnackBars()
+                            ..showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Comment text copied to clipboard',
+                                ),
+                                behavior: SnackBarBehavior.floating,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
                         }
                       } else if (val == 'copy_link') {
                         Clipboard.setData(
                           ClipboardData(text: comment.fullPermalink),
                         );
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Permalink copied to clipboard'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            const SnackBar(
+                              content: Text('Permalink copied to clipboard'),
+                              behavior: SnackBarBehavior.floating,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
                       } else if (val == 'open_reddit') {
                         openRedditUrl(context, comment.fullPermalink);
                       } else if (val == 'delete') {

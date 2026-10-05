@@ -561,23 +561,25 @@ class ImportView extends ConsumerWidget {
     if (savedPath == null) {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error == null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: Colors.white70,
-                ),
-                SizedBox(width: 10),
-                Text('Backup cancelled: no save location selected'),
-              ],
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Colors.white70,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Backup cancelled: no save location selected'),
+                ],
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
             ),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+          );
       }
     }
   }
@@ -589,23 +591,25 @@ class ImportView extends ConsumerWidget {
     if (summary == null) {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error == null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: Colors.white70,
-                ),
-                SizedBox(width: 10),
-                Text('Restore cancelled: no file selected'),
-              ],
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Colors.white70,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Restore cancelled: no file selected'),
+                ],
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
             ),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+          );
       }
     }
   }
@@ -621,23 +625,25 @@ class ImportView extends ConsumerWidget {
     if (savedPath == null) {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error == null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: Colors.white70,
-                ),
-                SizedBox(width: 10),
-                Text('Export cancelled: no save location selected'),
-              ],
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Colors.white70,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Export cancelled: no save location selected'),
+                ],
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
             ),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+          );
       }
     }
   }
@@ -649,23 +655,25 @@ class ImportView extends ConsumerWidget {
     if (summary == null) {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error == null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: Colors.white70,
-                ),
-                SizedBox(width: 10),
-                Text('Import cancelled: no file selected'),
-              ],
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 18,
+                    color: Colors.white70,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Import cancelled: no file selected'),
+                ],
+              ),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
             ),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+          );
       }
     }
   }

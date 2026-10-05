@@ -1,6 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:savedex/features/detail/item_detail_viewmodel.dart';
 
+void showNoteSnackBar(
+  BuildContext context, {
+  required String message,
+  VoidCallback? onUndo,
+  Duration duration = const Duration(seconds: 2),
+}) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+
+  late final ScaffoldFeatureController<SnackBar, SnackBarClosedReason>
+  controller;
+  controller = messenger.showSnackBar(
+    SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+      duration: duration,
+      action: onUndo != null
+          ? SnackBarAction(
+              label: 'Undo',
+              onPressed: () {
+                controller.close();
+                onUndo();
+              },
+            )
+          : null,
+    ),
+  );
+
+  Future.delayed(duration, () {
+    try {
+      controller.close();
+    } catch (_) {}
+  });
+}
+
 void showEditNoteDialog(
   BuildContext context,
   ItemDetailActions actions,
@@ -17,39 +52,28 @@ void showEditNoteDialog(
             : note.trim();
         await actions.updateNote(itemId, cleanNote);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(cleanNote == null ? 'Note removed' : 'Note saved'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-              action:
-                  cleanNote == null &&
-                      currentNote != null &&
-                      currentNote.trim().isNotEmpty
-                  ? SnackBarAction(
-                      label: 'Undo',
-                      onPressed: () => actions.updateNote(itemId, currentNote),
-                    )
-                  : null,
-            ),
+          final isRemoved = cleanNote == null;
+          showNoteSnackBar(
+            context,
+            message: isRemoved ? 'Note removed' : 'Note saved',
+            onUndo:
+                isRemoved &&
+                    currentNote != null &&
+                    currentNote.trim().isNotEmpty
+                ? () => actions.updateNote(itemId, currentNote)
+                : null,
           );
         }
       },
       onDelete: () async {
         await actions.updateNote(itemId, null);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Note removed'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-              action: currentNote != null && currentNote.trim().isNotEmpty
-                  ? SnackBarAction(
-                      label: 'Undo',
-                      onPressed: () => actions.updateNote(itemId, currentNote),
-                    )
-                  : null,
-            ),
+          showNoteSnackBar(
+            context,
+            message: 'Note removed',
+            onUndo: currentNote != null && currentNote.trim().isNotEmpty
+                ? () => actions.updateNote(itemId, currentNote)
+                : null,
           );
         }
       },
@@ -93,16 +117,19 @@ void showConfirmDeleteDialog(
               if (onDeletedSelf != null) {
                 onDeletedSelf();
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isComment
-                          ? 'Comment removed from saved items'
-                          : 'Item removed from saved items',
+                ScaffoldMessenger.of(context)
+                  ..clearSnackBars()
+                  ..showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isComment
+                            ? 'Comment removed from saved items'
+                            : 'Item removed from saved items',
+                      ),
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 2),
                     ),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                  );
               }
             }
           },
