@@ -66,8 +66,15 @@ class DetailBottomBar extends StatelessWidget {
                   itemNoteProvider((id: item.id, initialNote: item.userNote)),
                 );
                 final hasNote = note != null && note.isNotEmpty;
+                final colorScheme = Theme.of(context).colorScheme;
                 return IconButton.filledTonal(
                   style: IconButton.styleFrom(
+                    backgroundColor: hasNote
+                        ? colorScheme.primaryContainer
+                        : null,
+                    foregroundColor: hasNote
+                        ? colorScheme.onPrimaryContainer
+                        : null,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -79,7 +86,7 @@ class DetailBottomBar extends StatelessWidget {
                         : Icons.note_add_outlined,
                     size: 20,
                   ),
-                  tooltip: 'Personal Note',
+                  tooltip: hasNote ? 'Edit Note' : 'Add Note',
                   onPressed: () => onEditNote(note),
                 );
               },

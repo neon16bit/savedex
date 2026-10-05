@@ -322,6 +322,21 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                               item.id,
                               note,
                             ),
+                            onDelete: () {
+                              actions.updateNote(item.id, null);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Note removed'),
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 4),
+                                  action: SnackBarAction(
+                                    label: 'Undo',
+                                    onPressed: () =>
+                                        actions.updateNote(item.id, note),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         );
                       },

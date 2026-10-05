@@ -306,9 +306,22 @@ class DetailCommentCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 8),
                 child: DetailUserNoteCard(
                   note: note,
-                  isCompact: true,
                   onTap: () =>
                       showEditNoteDialog(context, actions, comment.id, note),
+                  onDelete: () {
+                    actions.updateNote(comment.id, null);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Note removed'),
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 4),
+                        action: SnackBarAction(
+                          label: 'Undo',
+                          onPressed: () => actions.updateNote(comment.id, note),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
             },

@@ -90,9 +90,12 @@ class ItemDetailActions {
   Future<void> updateNote(String id, String? note) async {
     if (!_busyItemIds.add(id)) return;
     try {
+      final cleanNote = (note == null || note.trim().isEmpty)
+          ? null
+          : note.trim();
       final repo = _ref.read(savedItemRepositoryProvider);
-      await repo.updateUserNote(id, note);
-      _ref.read(itemNotesProvider.notifier).setNote(id, note);
+      await repo.updateUserNote(id, cleanNote);
+      _ref.read(itemNotesProvider.notifier).setNote(id, cleanNote);
     } finally {
       _busyItemIds.remove(id);
     }
