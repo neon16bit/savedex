@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/features/detail/item_detail_viewmodel.dart';
 
 class DetailBottomBar extends StatelessWidget {
   final SavedItem item;
   final VoidCallback onOpenReddit;
-  final VoidCallback onEditNote;
+  final void Function(String? currentNote) onEditNote;
 
   const DetailBottomBar({
     super.key,
@@ -58,21 +60,29 @@ class DetailBottomBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            IconButton.filledTonal(
-              style: IconButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.all(13),
-              ),
-              icon: Icon(
-                item.userNote != null && item.userNote!.isNotEmpty
-                    ? Icons.sticky_note_2_rounded
-                    : Icons.note_add_outlined,
-                size: 20,
-              ),
-              tooltip: 'Personal Note',
-              onPressed: onEditNote,
+            Consumer(
+              builder: (context, ref, _) {
+                final note = ref.watch(
+                  itemNoteProvider((id: item.id, initialNote: item.userNote)),
+                );
+                final hasNote = note != null && note.isNotEmpty;
+                return IconButton.filledTonal(
+                  style: IconButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: const EdgeInsets.all(13),
+                  ),
+                  icon: Icon(
+                    hasNote
+                        ? Icons.sticky_note_2_rounded
+                        : Icons.note_add_outlined,
+                    size: 20,
+                  ),
+                  tooltip: 'Personal Note',
+                  onPressed: () => onEditNote(note),
+                );
+              },
             ),
             const SizedBox(width: 8),
             IconButton.filledTonal(

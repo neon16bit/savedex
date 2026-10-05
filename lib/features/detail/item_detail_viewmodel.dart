@@ -22,6 +22,51 @@ final relatedThreadProvider =
       return repo.getRelatedThreadItems(item);
     });
 
+final enrichingItemsProvider =
+    NotifierProvider<EnrichingItemsNotifier, Set<String>>(
+      EnrichingItemsNotifier.new,
+    );
+
+class EnrichingItemsNotifier extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => {};
+
+  void add(String id) => state = {...state, id};
+
+  void remove(String id) {
+    final next = Set<String>.from(state);
+    next.remove(id);
+    state = next;
+  }
+
+  bool isEnriching(String id) => state.contains(id);
+}
+
+final itemNotesProvider =
+    NotifierProvider<ItemNotesNotifier, Map<String, String?>>(
+      ItemNotesNotifier.new,
+    );
+
+class ItemNotesNotifier extends Notifier<Map<String, String?>> {
+  @override
+  Map<String, String?> build() => {};
+
+  void setNote(String id, String? note) {
+    state = {...state, id: note};
+  }
+}
+
+final itemNoteProvider =
+    Provider.family<String?, ({String id, String? initialNote})>((ref, arg) {
+      final hasOverride = ref.watch(
+        itemNotesProvider.select((m) => m.containsKey(arg.id)),
+      );
+      if (hasOverride) {
+        return ref.watch(itemNotesProvider.select((m) => m[arg.id]));
+      }
+      return arg.initialNote;
+    });
+
 final itemDetailActionsProvider = Provider((ref) => ItemDetailActions(ref));
 
 class ItemDetailActions {
@@ -47,8 +92,7 @@ class ItemDetailActions {
     try {
       final repo = _ref.read(savedItemRepositoryProvider);
       await repo.updateUserNote(id, note);
-      _ref.invalidate(itemDetailProvider(id));
-      _ref.invalidate(relatedThreadProvider);
+      _ref.read(itemNotesProvider.notifier).setNote(id, note);
     } finally {
       _busyItemIds.remove(id);
     }

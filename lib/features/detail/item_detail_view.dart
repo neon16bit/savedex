@@ -24,16 +24,14 @@ class ItemDetailView extends ConsumerStatefulWidget {
 }
 
 class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
-  final Set<String> _enrichingIds = {};
-  bool _isEnriching(String id) => _enrichingIds.contains(id);
-
   Future<void> _refreshMetadata(
     ItemDetailActions actions,
     SavedItem item,
     ColorScheme colorScheme,
   ) async {
-    if (_isEnriching(item.id)) return;
-    setState(() => _enrichingIds.add(item.id));
+    final notifier = ref.read(enrichingItemsProvider.notifier);
+    if (notifier.isEnriching(item.id)) return;
+    notifier.add(item.id);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Refreshing metadata...'),
@@ -70,21 +68,19 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _enrichingIds.remove(item.id));
-      }
+      notifier.remove(item.id);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final itemAsync = ref.watch(itemDetailProvider(widget.itemId));
-    final threadAsync = ref.watch(relatedThreadProvider(widget.itemId));
     final actions = ref.read(itemDetailActionsProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return itemAsync.when(
+      skipLoadingOnReload: true,
       data: (rawItem) {
         if (rawItem == null) {
           return Scaffold(
@@ -93,7 +89,14 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
           );
         }
 
-        if (rawItem.itemType == ItemType.comment && threadAsync.isLoading) {
+        final threadLoading = rawItem.itemType == ItemType.comment
+            ? ref.watch(
+                relatedThreadProvider(widget.itemId)
+                    .select((a) => !a.hasValue && a.isLoading),
+              )
+            : false;
+
+        if (threadLoading) {
           return Scaffold(
             appBar: AppBar(
               titleSpacing: 0,
@@ -103,7 +106,12 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
           );
         }
 
-        final parentPost = threadAsync.asData?.value.parentPost;
+        final parentPost = rawItem.itemType == ItemType.comment
+            ? ref.watch(
+                relatedThreadProvider(widget.itemId)
+                    .select((a) => a.asData?.value.parentPost),
+              )
+            : null;
         final item = parentPost ?? rawItem;
         final isComment = item.itemType == ItemType.comment;
 
@@ -128,97 +136,106 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 tooltip: item.isStarred ? 'Starred' : 'Star',
                 onPressed: () => actions.toggleStar(item),
               ),
-              PopupMenuButton<String>(
-                icon: _isEnriching(item.id)
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colorScheme.primary,
+              Consumer(
+                builder: (context, ref, _) {
+                  final isEnriching = ref.watch(
+                    enrichingItemsProvider.select((s) => s.contains(item.id)),
+                  );
+                  return PopupMenuButton<String>(
+                    icon: isEnriching
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.primary,
+                            ),
+                          )
+                        : const Icon(Icons.more_vert_rounded),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    onSelected: (val) {
+                      if (val == 'refresh') {
+                        _refreshMetadata(actions, item, colorScheme);
+                      } else if (val == 'open_reddit') {
+                        openRedditUrl(context, item.fullPermalink);
+                      } else if (val == 'copy_link') {
+                        Clipboard.setData(
+                          ClipboardData(text: item.fullPermalink),
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Permalink copied to clipboard'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      } else if (val == 'delete') {
+                        showConfirmDeleteDialog(
+                          context,
+                          actions,
+                          item.id,
+                          onDeletedSelf: () => Navigator.of(context).pop(),
+                        );
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      PopupMenuItem(
+                        value: 'refresh',
+                        enabled: !isEnriching,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.sync_rounded, size: 18),
+                            const SizedBox(width: 10),
+                            Text(
+                              isEnriching
+                                  ? 'Refreshing...'
+                                  : 'Refresh Metadata',
+                            ),
+                          ],
                         ),
-                      )
-                    : const Icon(Icons.more_vert_rounded),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                onSelected: (val) {
-                  if (val == 'refresh') {
-                    _refreshMetadata(actions, item, colorScheme);
-                  } else if (val == 'open_reddit') {
-                    openRedditUrl(context, item.fullPermalink);
-                  } else if (val == 'copy_link') {
-                    Clipboard.setData(ClipboardData(text: item.fullPermalink));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Permalink copied to clipboard'),
-                        behavior: SnackBarBehavior.floating,
                       ),
-                    );
-                  } else if (val == 'delete') {
-                    showConfirmDeleteDialog(
-                      context,
-                      actions,
-                      item.id,
-                      onDeletedSelf: () => Navigator.of(context).pop(),
-                    );
-                  }
+                      const PopupMenuItem(
+                        value: 'open_reddit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.open_in_browser_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Open in Reddit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'copy_link',
+                        child: Row(
+                          children: [
+                            Icon(Icons.link_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Copy Link'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Delete Item',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
                 },
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(
-                    value: 'refresh',
-                    enabled: !_isEnriching(item.id),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.sync_rounded, size: 18),
-                        const SizedBox(width: 10),
-                        Text(
-                          _isEnriching(item.id)
-                              ? 'Refreshing...'
-                              : 'Refresh Metadata',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'open_reddit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.open_in_browser_rounded, size: 18),
-                        SizedBox(width: 10),
-                        Text('Open in Reddit'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'copy_link',
-                    child: Row(
-                      children: [
-                        Icon(Icons.link_rounded, size: 18),
-                        SizedBox(width: 10),
-                        Text('Copy Link'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
-                          color: Colors.red,
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Delete Item',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
               const SizedBox(width: 8),
             ],
@@ -226,8 +243,8 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
           bottomNavigationBar: DetailBottomBar(
             item: item,
             onOpenReddit: () => openRedditUrl(context, item.fullPermalink),
-            onEditNote: () =>
-                showEditNoteDialog(context, actions, item.id, item.userNote),
+            onEditNote: (currentNote) =>
+                showEditNoteDialog(context, actions, item.id, currentNote),
           ),
           body: ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 32),
@@ -284,18 +301,31 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       const SizedBox(height: 16),
                       DetailMarkdownContent(data: item.body!),
                     ],
-                    if (item.userNote != null && item.userNote!.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      DetailUserNoteCard(
-                        note: item.userNote!,
-                        onTap: () => showEditNoteDialog(
-                          context,
-                          actions,
-                          item.id,
-                          item.userNote,
-                        ),
-                      ),
-                    ],
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final note = ref.watch(
+                          itemNoteProvider((
+                            id: item.id,
+                            initialNote: item.userNote,
+                          )),
+                        );
+                        if (note == null || note.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: DetailUserNoteCard(
+                            note: note,
+                            onTap: () => showEditNoteDialog(
+                              context,
+                              actions,
+                              item.id,
+                              note,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -312,13 +342,12 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 ),
               ),
               DetailCommentsSection(
+                threadRootId: widget.itemId,
                 currentItem: item,
-                allComments: threadAsync.asData?.value.comments ?? const [],
                 actions: actions,
                 highlightedCommentId: widget.itemId != item.id
                     ? widget.itemId
                     : null,
-                isEnriching: _isEnriching,
                 onRefresh: (comment) =>
                     _refreshMetadata(actions, comment, colorScheme),
               ),

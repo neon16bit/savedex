@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
@@ -73,28 +74,30 @@ class DetailDiscussionHeader extends StatelessWidget {
   }
 }
 
-class DetailCommentsSection extends StatelessWidget {
+class DetailCommentsSection extends ConsumerWidget {
+  final String threadRootId;
   final SavedItem currentItem;
-  final List<SavedItem> allComments;
   final ItemDetailActions actions;
   final String? highlightedCommentId;
-  final bool Function(String id) isEnriching;
   final Future<void> Function(SavedItem item) onRefresh;
 
   const DetailCommentsSection({
     super.key,
+    required this.threadRootId,
     required this.currentItem,
-    required this.allComments,
     required this.actions,
     this.highlightedCommentId,
-    required this.isEnriching,
     required this.onRefresh,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final isComment = currentItem.itemType == ItemType.comment;
+    final allComments = ref.watch(
+      relatedThreadProvider(threadRootId)
+          .select((a) => a.asData?.value.comments ?? const <SavedItem>[]),
+    );
     final relevantComments = isComment
         ? allComments.where((c) => c.id != currentItem.id).toList()
         : allComments;
@@ -192,10 +195,10 @@ class DetailCommentsSection extends StatelessWidget {
         const SizedBox(height: 8),
         ...relevantComments.map(
           (comment) => DetailCommentCard(
+            key: ValueKey(comment.id),
             comment: comment,
             actions: actions,
             isHighlighted: comment.id == highlightedCommentId,
-            isEnriching: isEnriching(comment.id),
             onRefresh: () => onRefresh(comment),
           ),
         ),
@@ -209,7 +212,6 @@ class DetailCommentCard extends StatelessWidget {
   final SavedItem comment;
   final ItemDetailActions actions;
   final bool isHighlighted;
-  final bool isEnriching;
   final VoidCallback onRefresh;
 
   const DetailCommentCard({
@@ -217,7 +219,6 @@ class DetailCommentCard extends StatelessWidget {
     required this.comment,
     required this.actions,
     this.isHighlighted = false,
-    this.isEnriching = false,
     required this.onRefresh,
   });
 
@@ -290,19 +291,28 @@ class DetailCommentCard extends StatelessWidget {
             const SizedBox(height: 6),
             DetailMarkdownContent(data: comment.body!, isComment: true),
           ],
-          if (comment.userNote != null && comment.userNote!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            DetailUserNoteCard(
-              note: comment.userNote!,
-              isCompact: true,
-              onTap: () => showEditNoteDialog(
-                context,
-                actions,
-                comment.id,
-                comment.userNote,
-              ),
-            ),
-          ],
+          Consumer(
+            builder: (context, ref, _) {
+              final note = ref.watch(
+                itemNoteProvider((
+                  id: comment.id,
+                  initialNote: comment.userNote,
+                )),
+              );
+              if (note == null || note.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: DetailUserNoteCard(
+                  note: note,
+                  isCompact: true,
+                  onTap: () =>
+                      showEditNoteDialog(context, actions, comment.id, note),
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -330,28 +340,31 @@ class DetailCommentCard extends StatelessWidget {
                   ),
                 ),
               const Spacer(),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                icon: Icon(
-                  comment.userNote != null && comment.userNote!.isNotEmpty
-                      ? Icons.sticky_note_2_rounded
-                      : Icons.note_add_outlined,
-                  color:
-                      comment.userNote != null && comment.userNote!.isNotEmpty
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                ),
-                tooltip:
-                    comment.userNote != null && comment.userNote!.isNotEmpty
-                    ? 'Edit Note'
-                    : 'Add Note',
-                onPressed: () => showEditNoteDialog(
-                  context,
-                  actions,
-                  comment.id,
-                  comment.userNote,
-                ),
+              Consumer(
+                builder: (context, ref, _) {
+                  final note = ref.watch(
+                    itemNoteProvider((
+                      id: comment.id,
+                      initialNote: comment.userNote,
+                    )),
+                  );
+                  final hasNote = note != null && note.isNotEmpty;
+                  return IconButton(
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                    icon: Icon(
+                      hasNote
+                          ? Icons.sticky_note_2_rounded
+                          : Icons.note_add_outlined,
+                      color: hasNote
+                          ? colorScheme.primary
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                    tooltip: hasNote ? 'Edit Note' : 'Add Note',
+                    onPressed: () =>
+                        showEditNoteDialog(context, actions, comment.id, note),
+                  );
+                },
               ),
               const SizedBox(width: 4),
               IconButton(
@@ -385,125 +398,136 @@ class DetailCommentCard extends StatelessWidget {
                 onPressed: () => openRedditUrl(context, comment.fullPermalink),
               ),
               const SizedBox(width: 2),
-              PopupMenuButton<String>(
-                tooltip: 'More options',
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                icon: isEnriching
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colorScheme.primary,
+              Consumer(
+                builder: (context, ref, _) {
+                  final isEnriching = ref.watch(
+                    enrichingItemsProvider.select(
+                      (s) => s.contains(comment.id),
+                    ),
+                  );
+                  return PopupMenuButton<String>(
+                    tooltip: 'More options',
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    icon: isEnriching
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.primary,
+                            ),
+                          )
+                        : Icon(
+                            Icons.more_vert_rounded,
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                    onSelected: (val) {
+                      if (val == 'refresh') {
+                        onRefresh();
+                      } else if (val == 'copy_text') {
+                        if (comment.body != null && comment.body!.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: comment.body!));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Comment text copied to clipboard'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } else if (val == 'copy_link') {
+                        Clipboard.setData(
+                          ClipboardData(text: comment.fullPermalink),
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Permalink copied to clipboard'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      } else if (val == 'open_reddit') {
+                        openRedditUrl(context, comment.fullPermalink);
+                      } else if (val == 'delete') {
+                        showConfirmDeleteDialog(
+                          context,
+                          actions,
+                          comment.id,
+                          isComment: true,
+                        );
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      PopupMenuItem(
+                        value: 'refresh',
+                        enabled: !isEnriching,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.sync_rounded, size: 18),
+                            const SizedBox(width: 10),
+                            Text(
+                              isEnriching
+                                  ? 'Refreshing...'
+                                  : 'Refresh Metadata',
+                            ),
+                          ],
                         ),
-                      )
-                    : Icon(
-                        Icons.more_vert_rounded,
-                        size: 18,
-                        color: colorScheme.onSurfaceVariant,
                       ),
-                onSelected: (val) {
-                  if (val == 'refresh') {
-                    onRefresh();
-                  } else if (val == 'copy_text') {
-                    if (comment.body != null && comment.body!.isNotEmpty) {
-                      Clipboard.setData(ClipboardData(text: comment.body!));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Comment text copied to clipboard'),
-                          behavior: SnackBarBehavior.floating,
+                      if (comment.body != null && comment.body!.isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'copy_text',
+                          child: Row(
+                            children: [
+                              Icon(Icons.content_copy_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Copy Text'),
+                            ],
+                          ),
                         ),
-                      );
-                    }
-                  } else if (val == 'copy_link') {
-                    Clipboard.setData(
-                      ClipboardData(text: comment.fullPermalink),
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Permalink copied to clipboard'),
-                        behavior: SnackBarBehavior.floating,
+                      const PopupMenuItem(
+                        value: 'copy_link',
+                        child: Row(
+                          children: [
+                            Icon(Icons.link_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Copy Link'),
+                          ],
+                        ),
                       ),
-                    );
-                  } else if (val == 'open_reddit') {
-                    openRedditUrl(context, comment.fullPermalink);
-                  } else if (val == 'delete') {
-                    showConfirmDeleteDialog(
-                      context,
-                      actions,
-                      comment.id,
-                      isComment: true,
-                    );
-                  }
+                      const PopupMenuItem(
+                        value: 'open_reddit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.open_in_browser_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Open in Reddit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: Colors.red,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Delete Comment',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
                 },
-                itemBuilder: (ctx) => [
-                  PopupMenuItem(
-                    value: 'refresh',
-                    enabled: !isEnriching,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.sync_rounded, size: 18),
-                        const SizedBox(width: 10),
-                        Text(
-                          isEnriching ? 'Refreshing...' : 'Refresh Metadata',
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (comment.body != null && comment.body!.isNotEmpty)
-                    const PopupMenuItem(
-                      value: 'copy_text',
-                      child: Row(
-                        children: [
-                          Icon(Icons.content_copy_rounded, size: 18),
-                          SizedBox(width: 10),
-                          Text('Copy Text'),
-                        ],
-                      ),
-                    ),
-                  const PopupMenuItem(
-                    value: 'copy_link',
-                    child: Row(
-                      children: [
-                        Icon(Icons.link_rounded, size: 18),
-                        SizedBox(width: 10),
-                        Text('Copy Link'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'open_reddit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.open_in_browser_rounded, size: 18),
-                        SizedBox(width: 10),
-                        Text('Open in Reddit'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
-                          color: Colors.red,
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Delete Comment',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
