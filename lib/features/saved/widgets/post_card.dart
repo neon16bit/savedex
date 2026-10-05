@@ -5,7 +5,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_view.dart';
-import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class PostCard extends ConsumerWidget {
   final SavedItem item;
@@ -16,7 +16,6 @@ class PostCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final viewModel = ref.read(savedViewModelProvider.notifier);
 
     final hasThumbnail = item.hasDisplayImage;
 
@@ -50,12 +49,6 @@ class PostCard extends ConsumerWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.tag_rounded,
-                          size: 13,
-                          color: colorScheme.onSecondaryContainer,
-                        ),
-                        const SizedBox(width: 3),
                         Text(
                           'r/${item.subreddit}',
                           style: TextStyle(
@@ -171,30 +164,6 @@ class PostCard extends ConsumerWidget {
                       ),
                     ),
                   ],
-
-                  const Spacer(),
-
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(100),
-                      onTap: () => viewModel.toggleStar(item),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(
-                          item.isStarred
-                              ? Icons.star_rounded
-                              : Icons.star_outline_rounded,
-                          size: 22,
-                          color: item.isStarred
-                              ? Colors.yellow
-                              : colorScheme.onSurfaceVariant.withValues(
-                                  alpha: 0.6,
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
 
@@ -207,24 +176,6 @@ class PostCard extends ConsumerWidget {
                   child: Row(
                     children: [
                       if (item.author != null && item.author!.isNotEmpty) ...[
-                        Container(
-                          width: 17,
-                          height: 17,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            item.author![0].toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 5),
                         Text(
                           'u/${item.author}',
                           style: TextStyle(
@@ -433,54 +384,16 @@ class PostCard extends ConsumerWidget {
 
               if (!hasThumbnail &&
                   item.body != null &&
-                  item.body!.isNotEmpty) ...[
+                  item.body!.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
-                  item.body!,
+                  item.body!.trim(),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
                     color: colorScheme.onSurfaceVariant,
                     height: 1.4,
-                  ),
-                ),
-              ],
-
-              if (item.userNote != null && item.userNote!.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.edit_note_rounded,
-                        size: 15,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 5),
-                      Flexible(
-                        child: Text(
-                          item.userNote!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontStyle: FontStyle.italic,
-                            fontWeight: FontWeight.w500,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ],
@@ -558,9 +471,8 @@ class PostCard extends ConsumerWidget {
                     ),
                   ),
 
-                  const Spacer(),
-
-                  if (item.mediaType != MediaType.text)
+                  if (item.mediaType != MediaType.text) ...[
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
@@ -591,6 +503,17 @@ class PostCard extends ConsumerWidget {
                         ],
                       ),
                     ),
+                  ],
+
+                  NoteIndicatorBadge(
+                    itemId: item.id,
+                    initialNote: item.userNote,
+                  ),
+
+                  const Spacer(),
+                  ItemStarButton(item: item),
+                  const SizedBox(width: 2),
+                  ItemOptionsMenu(item: item),
                 ],
               ),
             ],

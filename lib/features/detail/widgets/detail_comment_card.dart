@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
@@ -10,6 +9,7 @@ import 'package:savedex/features/detail/widgets/detail_dialogs.dart';
 import 'package:savedex/features/detail/widgets/detail_markdown_content.dart';
 import 'package:savedex/features/detail/widgets/detail_user_note_card.dart';
 import 'package:savedex/features/detail/widgets/detail_utils.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class DetailDiscussionHeader extends StatelessWidget {
   final SavedItem commentItem;
@@ -22,7 +22,7 @@ class DetailDiscussionHeader extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     if (commentItem.parentPostTitle == null ||
-        commentItem.parentPostTitle!.isEmpty) {
+        commentItem.parentPostTitle!.trim().isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -287,9 +287,9 @@ class DetailCommentCard extends StatelessWidget {
               ],
             ],
           ),
-          if (comment.body != null && comment.body!.isNotEmpty) ...[
+          if (comment.body != null && comment.body!.trim().isNotEmpty) ...[
             const SizedBox(height: 6),
-            DetailMarkdownContent(data: comment.body!, isComment: true),
+            DetailMarkdownContent(data: comment.body!.trim(), isComment: true),
           ],
           Consumer(
             builder: (context, ref, _) {
@@ -299,13 +299,13 @@ class DetailCommentCard extends StatelessWidget {
                   initialNote: comment.userNote,
                 )),
               );
-              if (note == null || note.isEmpty) {
+              if (note == null || note.trim().isEmpty) {
                 return const SizedBox.shrink();
               }
               return Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: DetailUserNoteCard(
-                  note: note,
+                  note: note.trim(),
                   onTap: () =>
                       showEditNoteDialog(context, actions, comment.id, note),
                   onDelete: () {
@@ -347,31 +347,15 @@ class DetailCommentCard extends StatelessWidget {
                   ),
                 ),
               const Spacer(),
-              Consumer(
-                builder: (context, ref, _) {
-                  final note = ref.watch(
-                    itemNoteProvider((
-                      id: comment.id,
-                      initialNote: comment.userNote,
-                    )),
-                  );
-                  final hasNote = note != null && note.isNotEmpty;
-                  return IconButton(
-                    visualDensity: VisualDensity.compact,
-                    iconSize: 18,
-                    icon: Icon(
-                      hasNote
-                          ? Icons.sticky_note_2_rounded
-                          : Icons.note_add_outlined,
-                      color: hasNote
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                    tooltip: hasNote ? 'Edit Note' : 'Add Note',
-                    onPressed: () =>
-                        showEditNoteDialog(context, actions, comment.id, note),
-                  );
-                },
+              ItemNoteButton(
+                itemId: comment.id,
+                initialNote: comment.userNote,
+                onEditNote: (currentNote) => showEditNoteDialog(
+                  context,
+                  actions,
+                  comment.id,
+                  currentNote,
+                ),
               ),
               const SizedBox(width: 4),
               IconButton(
@@ -387,22 +371,6 @@ class DetailCommentCard extends StatelessWidget {
                 ),
                 tooltip: comment.isStarred ? 'Starred' : 'Star',
                 onPressed: () => actions.toggleStar(comment),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                iconSize: 18,
-                icon: SvgPicture.asset(
-                  'assets/icons/reddit.svg',
-                  width: 17,
-                  height: 17,
-                  colorFilter: ColorFilter.mode(
-                    colorScheme.onSurfaceVariant,
-                    BlendMode.srcIn,
-                  ),
-                ),
-                tooltip: 'Open in Reddit',
-                onPressed: () => openRedditUrl(context, comment.fullPermalink),
               ),
               const SizedBox(width: 2),
               Consumer(
@@ -437,8 +405,11 @@ class DetailCommentCard extends StatelessWidget {
                       if (val == 'refresh') {
                         onRefresh();
                       } else if (val == 'copy_text') {
-                        if (comment.body != null && comment.body!.isNotEmpty) {
-                          Clipboard.setData(ClipboardData(text: comment.body!));
+                        if (comment.body != null &&
+                            comment.body!.trim().isNotEmpty) {
+                          Clipboard.setData(
+                            ClipboardData(text: comment.body!.trim()),
+                          );
                           ScaffoldMessenger.of(context)
                             ..clearSnackBars()
                             ..showSnackBar(
@@ -491,12 +462,13 @@ class DetailCommentCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      if (comment.body != null && comment.body!.isNotEmpty)
+                      if (comment.body != null &&
+                          comment.body!.trim().isNotEmpty)
                         const PopupMenuItem(
                           value: 'copy_text',
                           child: Row(
                             children: [
-                              Icon(Icons.content_copy_rounded, size: 18),
+                              Icon(Icons.copy_rounded, size: 18),
                               SizedBox(width: 10),
                               Text('Copy Text'),
                             ],
@@ -512,13 +484,16 @@ class DetailCommentCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'open_reddit',
                         child: Row(
                           children: [
-                            Icon(Icons.open_in_browser_rounded, size: 18),
-                            SizedBox(width: 10),
-                            Text('Open in Reddit'),
+                            RedditIcon(
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text('Open in Reddit'),
                           ],
                         ),
                       ),

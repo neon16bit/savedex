@@ -13,6 +13,7 @@ import 'package:savedex/features/detail/widgets/detail_markdown_content.dart';
 import 'package:savedex/features/detail/widgets/detail_media_view.dart';
 import 'package:savedex/features/detail/widgets/detail_user_note_card.dart';
 import 'package:savedex/features/detail/widgets/detail_utils.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class ItemDetailView extends ConsumerStatefulWidget {
   final String itemId;
@@ -152,6 +153,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                   final isEnriching = ref.watch(
                     enrichingItemsProvider.select((s) => s.contains(item.id)),
                   );
+
                   return PopupMenuButton<String>(
                     icon: isEnriching
                         ? SizedBox(
@@ -169,6 +171,25 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     onSelected: (val) {
                       if (val == 'refresh') {
                         _refreshMetadata(actions, item, colorScheme);
+                      } else if (val == 'copy_text') {
+                        if (item.body != null && item.body!.trim().isNotEmpty) {
+                          Clipboard.setData(
+                            ClipboardData(text: item.body!.trim()),
+                          );
+                          ScaffoldMessenger.of(context)
+                            ..clearSnackBars()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  item.isComment
+                                      ? 'Comment text copied to clipboard'
+                                      : 'Post text copied to clipboard',
+                                ),
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                        }
                       } else if (val == 'open_reddit') {
                         openRedditUrl(context, item.fullPermalink);
                       } else if (val == 'copy_link') {
@@ -189,6 +210,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           context,
                           actions,
                           item.id,
+                          isComment: item.isComment,
                           onDeletedSelf: () => Navigator.of(context).pop(),
                         );
                       }
@@ -209,13 +231,27 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           ],
                         ),
                       ),
-                      const PopupMenuItem(
+                      if (item.body != null && item.body!.trim().isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'copy_text',
+                          child: Row(
+                            children: [
+                              Icon(Icons.copy_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Copy Text'),
+                            ],
+                          ),
+                        ),
+                      PopupMenuItem(
                         value: 'open_reddit',
                         child: Row(
                           children: [
-                            Icon(Icons.open_in_browser_rounded, size: 18),
-                            SizedBox(width: 10),
-                            Text('Open in Reddit'),
+                            RedditIcon(
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text('Open in Reddit'),
                           ],
                         ),
                       ),
@@ -230,19 +266,19 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                         ),
                       ),
                       const PopupMenuDivider(),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.delete_outline_rounded,
                               size: 18,
                               color: Colors.red,
                             ),
-                            SizedBox(width: 10),
+                            const SizedBox(width: 10),
                             Text(
-                              'Delete Item',
-                              style: TextStyle(color: Colors.red),
+                              item.isComment ? 'Delete Comment' : 'Delete Item',
+                              style: const TextStyle(color: Colors.red),
                             ),
                           ],
                         ),
@@ -253,12 +289,6 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
               ),
               const SizedBox(width: 8),
             ],
-          ),
-          bottomNavigationBar: DetailBottomBar(
-            item: item,
-            onOpenReddit: () => openRedditUrl(context, item.fullPermalink),
-            onEditNote: (currentNote) =>
-                showEditNoteDialog(context, actions, item.id, currentNote),
           ),
           body: ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 32),
@@ -272,15 +302,19 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.title,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.4,
-                        height: 1.3,
+                    if (!isComment ||
+                        item.parentPostTitle == null ||
+                        item.parentPostTitle!.isEmpty) ...[
+                      Text(
+                        item.title,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          height: 1.3,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
+                    ],
                     DetailBadgeRow(
                       isComment: isComment,
                       isNsfw: item.isNsfw,
@@ -309,11 +343,11 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       ),
                     ],
                     DetailMediaView(item: item),
-                    if (item.body != null && item.body!.isNotEmpty) ...[
+                    if (item.body != null && item.body!.trim().isNotEmpty) ...[
                       const SizedBox(height: 16),
                       const Divider(height: 1),
                       const SizedBox(height: 16),
-                      DetailMarkdownContent(data: item.body!),
+                      DetailMarkdownContent(data: item.body!.trim()),
                     ],
                     Consumer(
                       builder: (context, ref, _) {
@@ -323,13 +357,13 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                             initialNote: item.userNote,
                           )),
                         );
-                        if (note == null || note.isEmpty) {
+                        if (note == null || note.trim().isEmpty) {
                           return const SizedBox.shrink();
                         }
                         return Padding(
                           padding: const EdgeInsets.only(top: 14),
                           child: DetailUserNoteCard(
-                            note: note,
+                            note: note.trim(),
                             onTap: () => showEditNoteDialog(
                               context,
                               actions,
@@ -350,13 +384,24 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     ),
                     const SizedBox(height: 14),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         DetailScoreChip(score: item.score),
                         if (!isComment && item.numComments > 0) ...[
                           const SizedBox(width: 8),
                           DetailCommentsChip(count: item.numComments),
                         ],
+                        const Spacer(),
+                        ItemNoteButton(
+                          itemId: item.id,
+                          initialNote: item.userNote,
+                          showLabel: true,
+                          onEditNote: (currentNote) => showEditNoteDialog(
+                            context,
+                            actions,
+                            item.id,
+                            currentNote,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -374,6 +419,12 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     _refreshMetadata(actions, comment, colorScheme),
               ),
             ],
+          ),
+          bottomNavigationBar: DetailBottomBar(
+            item: item,
+            onOpenReddit: () => openRedditUrl(context, item.fullPermalink),
+            onEditNote: (currentNote) =>
+                showEditNoteDialog(context, actions, item.id, currentNote),
           ),
         );
       },

@@ -4,7 +4,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_view.dart';
-import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class CommentCard extends ConsumerWidget {
   final SavedItem item;
@@ -15,7 +15,6 @@ class CommentCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final viewModel = ref.read(savedViewModelProvider.notifier);
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -47,12 +46,6 @@ class CommentCard extends ConsumerWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.tag_rounded,
-                          size: 13,
-                          color: colorScheme.onSecondaryContainer,
-                        ),
-                        const SizedBox(width: 3),
                         Text(
                           'r/${item.subreddit}',
                           style: TextStyle(
@@ -65,38 +58,32 @@ class CommentCard extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.tertiaryContainer.withValues(
-                        alpha: 0.7,
+                  if (item.isNsfw) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
                       ),
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_rounded,
-                          size: 11,
-                          color: colorScheme.onTertiaryContainer,
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.4),
+                          width: 0.8,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Comment',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onTertiaryContainer,
-                          ),
+                      ),
+                      child: const Text(
+                        'NSFW',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.3,
+                          color: Colors.red,
                         ),
-                      ],
+                      ),
                     ),
-                  ),
+                  ],
                   if (item.enrichmentStatus == EnrichmentStatus.slugOnly) ...[
                     const SizedBox(width: 6),
                     Container(
@@ -142,28 +129,6 @@ class CommentCard extends ConsumerWidget {
                       ),
                     ),
                   ],
-                  const Spacer(),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(100),
-                      onTap: () => viewModel.toggleStar(item),
-                      child: Padding(
-                        padding: const EdgeInsets.all(4),
-                        child: Icon(
-                          item.isStarred
-                              ? Icons.star_rounded
-                              : Icons.star_outline_rounded,
-                          size: 22,
-                          color: item.isStarred
-                              ? Colors.yellow
-                              : colorScheme.onSurfaceVariant.withValues(
-                                  alpha: 0.6,
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
 
@@ -176,24 +141,6 @@ class CommentCard extends ConsumerWidget {
                   child: Row(
                     children: [
                       if (item.author != null && item.author!.isNotEmpty) ...[
-                        Container(
-                          width: 17,
-                          height: 17,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            item.author![0].toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 5),
                         Text(
                           'u/${item.author}',
                           style: TextStyle(
@@ -226,13 +173,16 @@ class CommentCard extends ConsumerWidget {
                   ),
                 ),
 
-              if (item.parentPostTitle != null || item.title.isNotEmpty)
+              if ((item.parentPostTitle != null &&
+                      item.parentPostTitle!.trim().isNotEmpty) ||
+                  item.title.trim().isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
-                    item.parentPostTitle != null
-                        ? 'On: ${item.parentPostTitle}'
-                        : item.title,
+                    (item.parentPostTitle != null &&
+                            item.parentPostTitle!.trim().isNotEmpty)
+                        ? 'On: ${item.parentPostTitle!.trim()}'
+                        : item.title.trim(),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -244,7 +194,7 @@ class CommentCard extends ConsumerWidget {
                   ),
                 ),
 
-              if (item.body != null && item.body!.isNotEmpty)
+              if (item.body != null && item.body!.trim().isNotEmpty)
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -258,7 +208,7 @@ class CommentCard extends ConsumerWidget {
                     ),
                   ),
                   child: Text(
-                    item.body!,
+                    item.body!.trim(),
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -310,40 +260,54 @@ class CommentCard extends ConsumerWidget {
 
               const SizedBox(height: 12),
 
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: item.score > 0
-                      ? colorScheme.primaryContainer.withValues(alpha: 0.4)
-                      : colorScheme.surfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.arrow_upward_rounded,
-                      size: 13,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
                       color: item.score > 0
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
+                          ? colorScheme.primaryContainer.withValues(alpha: 0.4)
+                          : colorScheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(100),
                     ),
-                    const SizedBox(width: 3),
-                    Text(
-                      DateFormatter.compactNumber(item.score),
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: item.score > 0
-                            ? colorScheme.primary
-                            : colorScheme.onSurfaceVariant,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.arrow_upward_rounded,
+                          size: 13,
+                          color: item.score > 0
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          DateFormatter.compactNumber(item.score),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: item.score > 0
+                                ? colorScheme.primary
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+
+                  NoteIndicatorBadge(
+                    itemId: item.id,
+                    initialNote: item.userNote,
+                  ),
+
+                  const Spacer(),
+                  ItemStarButton(item: item),
+                  const SizedBox(width: 2),
+                  ItemOptionsMenu(item: item),
+                ],
               ),
             ],
           ),

@@ -83,8 +83,9 @@ void showEditNoteDialog(
 
 void showConfirmDeleteDialog(
   BuildContext context,
-  ItemDetailActions actions,
-  String itemId, {
+  ItemDetailActions? actions,
+  String? itemId, {
+  Future<void> Function()? onConfirmDelete,
   bool isComment = false,
   VoidCallback? onDeletedSelf,
 }) {
@@ -112,7 +113,11 @@ void showConfirmDeleteDialog(
           ),
           onPressed: () async {
             Navigator.pop(ctx);
-            await actions.deleteItem(itemId);
+            if (actions != null && itemId != null) {
+              await actions.deleteItem(itemId);
+            } else if (onConfirmDelete != null) {
+              await onConfirmDelete();
+            }
             if (context.mounted) {
               if (onDeletedSelf != null) {
                 onDeletedSelf();

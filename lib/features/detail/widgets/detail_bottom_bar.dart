@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class DetailBottomBar extends StatelessWidget {
   final SavedItem item;
@@ -44,69 +45,84 @@ class DetailBottomBar extends StatelessWidget {
             ),
           ),
         ),
-        child: Row(
-          children: [
-            Expanded(
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                onPressed: onOpenReddit,
-                icon: const Icon(Icons.open_in_browser_rounded, size: 18),
-                label: const Text(
-                  'Open on Reddit',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Consumer(
-              builder: (context, ref, _) {
-                final note = ref.watch(
-                  itemNoteProvider((id: item.id, initialNote: item.userNote)),
-                );
-                final hasNote = note != null && note.isNotEmpty;
-                final colorScheme = Theme.of(context).colorScheme;
-                return IconButton.filledTonal(
-                  style: IconButton.styleFrom(
-                    backgroundColor: hasNote
-                        ? colorScheme.primaryContainer
-                        : null,
-                    foregroundColor: hasNote
-                        ? colorScheme.onPrimaryContainer
-                        : null,
+        child: SizedBox(
+          height: 48,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    padding: const EdgeInsets.all(13),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
-                  icon: Icon(
-                    hasNote
-                        ? Icons.sticky_note_2_rounded
-                        : Icons.note_add_outlined,
-                    size: 20,
+                  onPressed: onOpenReddit,
+                  icon: RedditIcon(size: 18, color: colorScheme.onPrimary),
+                  label: const Text(
+                    'Open on Reddit',
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  tooltip: hasNote ? 'Edit Note' : 'Add Note',
-                  onPressed: () => onEditNote(note),
-                );
-              },
-            ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              style: IconButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
                 ),
-                padding: const EdgeInsets.all(13),
               ),
-              icon: const Icon(Icons.share_outlined, size: 20),
-              tooltip: 'Share',
-              onPressed: () => _share(context),
-            ),
-          ],
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: Consumer(
+                  builder: (context, ref, _) {
+                    final note = ref.watch(
+                      itemNoteProvider((
+                        id: item.id,
+                        initialNote: item.userNote,
+                      )),
+                    );
+                    final hasNote = note != null && note.trim().isNotEmpty;
+                    final colorScheme = Theme.of(context).colorScheme;
+                    return IconButton.filledTonal(
+                      style: IconButton.styleFrom(
+                        backgroundColor: hasNote
+                            ? colorScheme.primaryContainer
+                            : null,
+                        foregroundColor: hasNote
+                            ? colorScheme.onPrimaryContainer
+                            : null,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
+                      icon: Icon(
+                        hasNote
+                            ? Icons.sticky_note_2_rounded
+                            : Icons.note_add_outlined,
+                        size: 20,
+                      ),
+                      tooltip: hasNote ? 'Edit Note' : 'Add Note',
+                      onPressed: () => onEditNote(note),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: IconButton.filledTonal(
+                  style: IconButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                  icon: const Icon(Icons.share_outlined, size: 20),
+                  tooltip: 'Share',
+                  onPressed: () => _share(context),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

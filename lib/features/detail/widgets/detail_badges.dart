@@ -59,7 +59,7 @@ class DetailBadgeRow extends StatelessWidget {
               ),
             ),
           ),
-        if (postFlair != null && postFlair!.isNotEmpty)
+        if (postFlair != null && postFlair!.trim().isNotEmpty)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -67,7 +67,7 @@ class DetailBadgeRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              postFlair!,
+              postFlair!.trim(),
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w700,
