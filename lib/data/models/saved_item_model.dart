@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:savedex/core/constants/constants.dart';
 
 class SavedItem {
@@ -203,6 +204,55 @@ class SavedItem {
       tags: tags ?? this.tags,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SavedItem &&
+        other.id == id &&
+        other.permalink == permalink &&
+        other.itemType == itemType &&
+        other.parentPostId == parentPostId &&
+        other.parentPostTitle == parentPostTitle &&
+        other.title == title &&
+        other.subreddit == subreddit &&
+        other.author == author &&
+        other.body == body &&
+        other.url == url &&
+        other.thumbnailUrl == thumbnailUrl &&
+        other.mediaUrl == mediaUrl &&
+        other.mediaType == mediaType &&
+        other.score == score &&
+        other.numComments == numComments &&
+        other.isNsfw == isNsfw &&
+        other.isStarred == isStarred &&
+        other.isArchived == isArchived &&
+        other.userNote == userNote &&
+        other.csvSource == csvSource &&
+        other.importOrder == importOrder &&
+        other.createdAtUtc == createdAtUtc &&
+        other.savedAtUtc == savedAtUtc &&
+        other.postFlair == postFlair &&
+        other.subredditType == subredditType &&
+        other.enrichmentStatus == enrichmentStatus &&
+        listEquals(other.tags, tags);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    itemType,
+    isStarred,
+    isArchived,
+    score,
+    numComments,
+    enrichmentStatus,
+    userNote,
+    body,
+    mediaUrl,
+    thumbnailUrl,
+    postFlair,
+  );
 }
 
 class Tag {
@@ -211,6 +261,17 @@ class Tag {
   final int colorValue;
 
   const Tag({required this.id, required this.name, required this.colorValue});
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Tag &&
+          other.id == id &&
+          other.name == name &&
+          other.colorValue == colorValue;
+
+  @override
+  int get hashCode => Object.hash(id, name, colorValue);
 }
 
 class FilterCriteria {
@@ -312,6 +373,46 @@ class FilterCriteria {
           : (dateRangeEnd ?? this.dateRangeEnd),
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is FilterCriteria &&
+        other.searchQuery == searchQuery &&
+        setEquals(other.selectedSubreddits, selectedSubreddits) &&
+        setEquals(other.selectedAuthors, selectedAuthors) &&
+        setEquals(other.selectedFlairs, selectedFlairs) &&
+        setEquals(other.selectedMediaTypes, selectedMediaTypes) &&
+        other.itemType == itemType &&
+        other.enrichmentStatus == enrichmentStatus &&
+        other.isNsfw == isNsfw &&
+        other.isStarred == isStarred &&
+        other.isArchived == isArchived &&
+        setEquals(other.selectedTagIds, selectedTagIds) &&
+        other.sortOption == sortOption &&
+        other.groupCommentsByPost == groupCommentsByPost &&
+        other.dateRangeStart == dateRangeStart &&
+        other.dateRangeEnd == dateRangeEnd;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    searchQuery,
+    Object.hashAll(selectedSubreddits),
+    Object.hashAll(selectedAuthors),
+    Object.hashAll(selectedFlairs),
+    Object.hashAll(selectedMediaTypes),
+    itemType,
+    enrichmentStatus,
+    isNsfw,
+    isStarred,
+    isArchived,
+    Object.hashAll(selectedTagIds),
+    sortOption,
+    groupCommentsByPost,
+    dateRangeStart,
+    dateRangeEnd,
+  );
 }
 
 class ImportSummary {

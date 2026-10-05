@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
@@ -27,6 +29,7 @@ class SavedView extends ConsumerStatefulWidget {
 class _SavedViewState extends ConsumerState<SavedView> {
   bool _isSearchExpanded = false;
   late final TextEditingController _searchController;
+  Timer? _searchDebounceTimer;
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -64,7 +68,12 @@ class _SavedViewState extends ConsumerState<SavedView> {
     final rawItemsAsync = ref.watch(feedItemsStreamProvider);
     final filter = ref.watch(searchFilterViewModelProvider);
     final filterVm = ref.read(searchFilterViewModelProvider.notifier);
-    final settings = ref.watch(settingsViewModelProvider);
+    final feedLayoutMode = ref.watch(
+      settingsViewModelProvider.select((s) => s.feedLayoutMode),
+    );
+    final isAuthenticatedWithOAuth = ref.watch(
+      settingsViewModelProvider.select((s) => s.isAuthenticatedWithOAuth),
+    );
     final settingsVm = ref.read(settingsViewModelProvider.notifier);
 
     final theme = Theme.of(context);
@@ -91,6 +100,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.close_rounded, size: 18),
                     onPressed: () {
+                      _searchDebounceTimer?.cancel();
                       _searchController.clear();
                       filterVm.setSearchQuery(null);
                       setState(() {
@@ -104,7 +114,23 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     vertical: 10,
                   ),
                 ),
-                onChanged: (val) => filterVm.setSearchQuery(val),
+                onSubmitted: (val) {
+                  _searchDebounceTimer?.cancel();
+                  filterVm.setSearchQuery(val.trim().isEmpty ? null : val);
+                },
+                onChanged: (val) {
+                  _searchDebounceTimer?.cancel();
+                  _searchDebounceTimer = Timer(
+                    const Duration(milliseconds: 250),
+                    () {
+                      if (mounted) {
+                        filterVm.setSearchQuery(
+                          val.trim().isEmpty ? null : val,
+                        );
+                      }
+                    },
+                  );
+                },
               )
             : Row(
                 children: [
@@ -153,11 +179,11 @@ class _SavedViewState extends ConsumerState<SavedView> {
             ),
 
           PopupMenuButton<FeedLayoutMode>(
-            icon: Icon(settings.feedLayoutMode.icon),
+            icon: Icon(feedLayoutMode.icon),
             tooltip: 'Layout Mode',
             onSelected: (mode) => settingsVm.setFeedLayoutMode(mode),
             itemBuilder: (ctx) => FeedLayoutMode.values.map((mode) {
-              final isSelected = settings.feedLayoutMode == mode;
+              final isSelected = feedLayoutMode == mode;
               return PopupMenuItem(
                 value: mode,
                 child: Row(
@@ -213,7 +239,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
             ],
           ),
 
-          if (settings.isAuthenticatedWithOAuth)
+          if (isAuthenticatedWithOAuth)
             Consumer(
               builder: (context, ref, _) {
                 final importState = ref.watch(importExportViewModelProvider);
@@ -294,18 +320,30 @@ class _SavedViewState extends ConsumerState<SavedView> {
                 }
 
                 Widget content;
-                switch (settings.feedLayoutMode) {
+                switch (feedLayoutMode) {
                   case FeedLayoutMode.card:
                     content = ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(top: 4, bottom: 28),
                       itemCount: items.length,
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final index = items.indexWhere(
+                            (it) => it.id == key.value,
+                          );
+                          return index != -1 ? index : null;
+                        }
+                        return null;
+                      },
                       itemBuilder: (context, index) {
                         final item = items[index];
                         if (item.itemType == ItemType.comment) {
-                          return CommentCard(item: item);
+                          return CommentCard(
+                            key: ValueKey(item.id),
+                            item: item,
+                          );
                         }
-                        return PostCard(item: item);
+                        return PostCard(key: ValueKey(item.id), item: item);
                       },
                     );
                     break;
@@ -315,8 +353,21 @@ class _SavedViewState extends ConsumerState<SavedView> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(top: 4, bottom: 28),
                       itemCount: items.length,
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final index = items.indexWhere(
+                            (it) => it.id == key.value,
+                          );
+                          return index != -1 ? index : null;
+                        }
+                        return null;
+                      },
                       itemBuilder: (context, index) {
-                        return CompactListItem(item: items[index]);
+                        final item = items[index];
+                        return CompactListItem(
+                          key: ValueKey(item.id),
+                          item: item,
+                        );
                       },
                     );
                     break;
@@ -336,8 +387,18 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             mainAxisSpacing: 8,
                           ),
                       itemCount: items.length,
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<String>) {
+                          final index = items.indexWhere(
+                            (it) => it.id == key.value,
+                          );
+                          return index != -1 ? index : null;
+                        }
+                        return null;
+                      },
                       itemBuilder: (context, index) {
-                        return GalleryItem(item: items[index]);
+                        final item = items[index];
+                        return GalleryItem(key: ValueKey(item.id), item: item);
                       },
                     );
                     break;
@@ -345,7 +406,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
                 return RefreshIndicator(
                   onRefresh: () async {
-                    if (settings.isAuthenticatedWithOAuth) {
+                    if (isAuthenticatedWithOAuth) {
                       final summary = await ref
                           .read(importExportViewModelProvider.notifier)
                           .pullSavedFromReddit();
@@ -486,6 +547,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
               avatar: const Icon(Icons.close_rounded, size: 14),
               label: const Text('Clear All'),
               onPressed: () {
+                _searchDebounceTimer?.cancel();
                 _searchController.clear();
                 filterVm.clearAllFilters();
               },
@@ -503,7 +565,9 @@ class _SavedViewState extends ConsumerState<SavedView> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final settings = ref.watch(settingsViewModelProvider);
+    final isAuthenticatedWithOAuth = ref.watch(
+      settingsViewModelProvider.select((s) => s.isAuthenticatedWithOAuth),
+    );
     final importState = ref.watch(importExportViewModelProvider);
 
     if (hasActiveFilters) {
@@ -544,6 +608,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
               const SizedBox(height: 20),
               FilledButton.tonal(
                 onPressed: () {
+                  _searchDebounceTimer?.cancel();
                   _searchController.clear();
                   ref
                       .read(searchFilterViewModelProvider.notifier)
@@ -585,7 +650,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
             ),
             const SizedBox(height: 10),
             Text(
-              settings.isAuthenticatedWithOAuth
+              isAuthenticatedWithOAuth
                   ? 'Your Reddit account is connected! Pull your latest saved posts & comments directly from Reddit, or import an export file.'
                   : 'Import your Reddit Takeout CSV/ZIP or connect your Reddit account in Settings to start exploring saved items.',
               textAlign: TextAlign.center,
@@ -609,7 +674,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   fontSize: 13,
                 ),
               ),
-            ] else if (settings.isAuthenticatedWithOAuth) ...[
+            ] else if (isAuthenticatedWithOAuth) ...[
               FilledButton.icon(
                 onPressed: () async {
                   final summary = await ref
