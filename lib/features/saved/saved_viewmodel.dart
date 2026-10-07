@@ -55,8 +55,11 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   static const int _pageSize = 100;
   int _generation = 0;
   int _localMutationsInProgress = 0;
+  final Set<String> _busyItemIds = <String>{};
   StreamSubscription? _dbUpdatesSub;
   Timer? _debounceTimer;
+
+  bool isItemBusy(String id) => _busyItemIds.contains(id);
 
   @override
   Future<SavedFeedState> build() async {
@@ -75,6 +78,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     ref.onDispose(() {
       _dbUpdatesSub?.cancel();
       _debounceTimer?.cancel();
+      _busyItemIds.clear();
     });
 
     final results = await Future.wait([
@@ -265,137 +269,126 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     }
   }
 
-  Future<void> toggleStar(SavedItem item) async {
+  Future<void> _runOptimisticMutation({
+    required String? itemId,
+    required SavedFeedState Function(SavedFeedState current) optimisticUpdate,
+    SavedFeedState Function(SavedFeedState current)? rollback,
+    required Future<void> Function() persist,
+  }) async {
+    if (itemId != null && !_busyItemIds.add(itemId)) {
+      return;
+    }
     final prev = state.value;
+    if (prev != null) {
+      state = AsyncData(optimisticUpdate(prev));
+    }
+    _localMutationsInProgress++;
+    try {
+      await persist();
+    } catch (e) {
+      final current = state.value;
+      if (rollback != null && current != null) {
+        state = AsyncData(rollback(current));
+      } else if (prev != null) {
+        state = AsyncData(prev);
+      }
+      rethrow;
+    } finally {
+      _localMutationsInProgress--;
+      if (itemId != null) {
+        _busyItemIds.remove(itemId);
+      }
+    }
+  }
+
+  Future<void> toggleStar(SavedItem item) async {
     final filter = ref.read(searchFilterViewModelProvider);
     final newStarred = !item.isStarred;
 
-    if (prev != null) {
-      if (filter.isStarred == true && !newStarred) {
-        state = AsyncData(
-          prev.copyWith(
+    await _runOptimisticMutation(
+      itemId: item.id,
+      optimisticUpdate: (prev) {
+        if (filter.isStarred == true && !newStarred) {
+          return prev.copyWith(
             items: prev.items.where((i) => i.id != item.id).toList(),
             totalCount: prev.totalCount > 0 ? prev.totalCount - 1 : 0,
-          ),
-        );
-      } else {
-        state = AsyncData(
-          prev.copyWith(
+          );
+        } else {
+          return prev.copyWith(
             items: prev.items
                 .map(
                   (i) =>
                       i.id == item.id ? i.copyWith(isStarred: newStarred) : i,
                 )
                 .toList(),
-          ),
-        );
-      }
-    }
-
-    _localMutationsInProgress++;
-    try {
-      await ref
-          .read(savedItemRepositoryProvider)
-          .toggleStar(item.id, newStarred);
-    } catch (e) {
-      if (prev != null) state = AsyncData(prev);
-      rethrow;
-    } finally {
-      _localMutationsInProgress--;
-    }
+          );
+        }
+      },
+      persist: () =>
+          ref.read(savedItemRepositoryProvider).toggleStar(item.id, newStarred),
+    );
   }
 
   Future<void> toggleArchive(SavedItem item) async {
-    final prev = state.value;
     final filter = ref.read(searchFilterViewModelProvider);
     final newArchived = !item.isArchived;
 
-    if (prev != null) {
-      if (filter.isArchived != null && filter.isArchived != newArchived) {
-        state = AsyncData(
-          prev.copyWith(
+    await _runOptimisticMutation(
+      itemId: item.id,
+      optimisticUpdate: (prev) {
+        if (filter.isArchived != null && filter.isArchived != newArchived) {
+          return prev.copyWith(
             items: prev.items.where((i) => i.id != item.id).toList(),
             totalCount: prev.totalCount > 0 ? prev.totalCount - 1 : 0,
-          ),
-        );
-      } else {
-        state = AsyncData(
-          prev.copyWith(
+          );
+        } else {
+          return prev.copyWith(
             items: prev.items
                 .map(
                   (i) =>
                       i.id == item.id ? i.copyWith(isArchived: newArchived) : i,
                 )
                 .toList(),
-          ),
-        );
-      }
-    }
-
-    _localMutationsInProgress++;
-    try {
-      await ref
+          );
+        }
+      },
+      persist: () => ref
           .read(savedItemRepositoryProvider)
-          .toggleArchive(item.id, newArchived);
-    } catch (e) {
-      if (prev != null) state = AsyncData(prev);
-      rethrow;
-    } finally {
-      _localMutationsInProgress--;
-    }
+          .toggleArchive(item.id, newArchived),
+    );
   }
 
   Future<void> deleteItemById(String id) async {
-    final prev = state.value;
-    if (prev != null) {
-      final hadItem = prev.items.any((i) => i.id == id);
-      if (hadItem) {
-        state = AsyncData(
-          prev.copyWith(
-            items: prev.items.where((i) => i.id != id).toList(),
-            totalCount: prev.totalCount > 0 ? prev.totalCount - 1 : 0,
-          ),
+    await _runOptimisticMutation(
+      itemId: id,
+      optimisticUpdate: (prev) {
+        final hadItem = prev.items.any((i) => i.id == id);
+        if (!hadItem) return prev;
+        return prev.copyWith(
+          items: prev.items.where((i) => i.id != id).toList(),
+          totalCount: prev.totalCount > 0 ? prev.totalCount - 1 : 0,
         );
-      }
-    }
-
-    _localMutationsInProgress++;
-    try {
-      await ref.read(savedItemRepositoryProvider).deleteItem(id);
-    } catch (e) {
-      if (prev != null) state = AsyncData(prev);
-      rethrow;
-    } finally {
-      _localMutationsInProgress--;
-    }
+      },
+      persist: () => ref.read(savedItemRepositoryProvider).deleteItem(id),
+    );
   }
 
   Future<void> deleteItem(SavedItem item) => deleteItemById(item.id);
 
   Future<void> updateItemNote(String id, String? note) async {
-    final prev = state.value;
     final cleanNote = (note == null || note.trim().isEmpty)
         ? null
         : note.trim();
-    if (prev != null) {
-      state = AsyncData(
-        prev.copyWith(
-          items: prev.items
-              .map((i) => i.id == id ? i.copyWith(userNote: cleanNote) : i)
-              .toList(),
-        ),
-      );
-    }
-
-    _localMutationsInProgress++;
-    try {
-      await ref.read(savedItemRepositoryProvider).updateUserNote(id, cleanNote);
-    } catch (e) {
-      if (prev != null) state = AsyncData(prev);
-      rethrow;
-    } finally {
-      _localMutationsInProgress--;
-    }
+    await _runOptimisticMutation(
+      itemId: id,
+      optimisticUpdate: (prev) => prev.copyWith(
+        items: prev.items
+            .map((i) => i.id == id ? i.copyWith(userNote: cleanNote) : i)
+            .toList(),
+      ),
+      persist: () =>
+          ref.read(savedItemRepositoryProvider).updateUserNote(id, cleanNote),
+    );
   }
 
   void updateItem(SavedItem updatedItem) {
@@ -500,63 +493,32 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 }
 
-final savedViewModelProvider = NotifierProvider<SavedViewModel, void>(() {
-  return SavedViewModel();
-});
+final savedViewModelProvider = NotifierProvider<SavedViewModel, void>(
+  SavedViewModel.new,
+);
 
 class SavedViewModel extends Notifier<void> {
-  final _busyItemIds = <String>{};
-
   @override
-  void build() {
-    _busyItemIds.clear();
-  }
+  void build() {}
 
-  Future<void> toggleStar(SavedItem item) async {
-    if (!_busyItemIds.add(item.id)) return;
-    try {
-      await ref.read(savedFeedPaginationProvider.notifier).toggleStar(item);
-    } finally {
-      _busyItemIds.remove(item.id);
-    }
-  }
+  SavedFeedPaginationNotifier get _feedNotifier =>
+      ref.read(savedFeedPaginationProvider.notifier);
 
-  Future<void> toggleArchive(SavedItem item) async {
-    if (!_busyItemIds.add(item.id)) return;
-    try {
-      await ref.read(savedFeedPaginationProvider.notifier).toggleArchive(item);
-    } finally {
-      _busyItemIds.remove(item.id);
-    }
-  }
+  bool isItemBusy(String id) => _feedNotifier.isItemBusy(id);
 
-  Future<void> deleteItem(SavedItem item) => deleteItemById(item.id);
+  Future<void> toggleStar(SavedItem item) => _feedNotifier.toggleStar(item);
 
-  Future<void> deleteItemById(String id) async {
-    if (!_busyItemIds.add(id)) return;
-    try {
-      await ref.read(savedFeedPaginationProvider.notifier).deleteItemById(id);
-    } finally {
-      _busyItemIds.remove(id);
-    }
-  }
+  Future<void> toggleArchive(SavedItem item) =>
+      _feedNotifier.toggleArchive(item);
 
-  Future<void> updateItemNote(String id, String? note) async {
-    if (!_busyItemIds.add(id)) return;
-    try {
-      await ref
-          .read(savedFeedPaginationProvider.notifier)
-          .updateItemNote(id, note);
-    } finally {
-      _busyItemIds.remove(id);
-    }
-  }
+  Future<void> deleteItem(SavedItem item) => _feedNotifier.deleteItem(item);
 
-  Future<void> enrichItem(SavedItem item) async {
-    await ref.read(enrichmentViewModelProvider.notifier).enrichSingleItem(item);
-  }
+  Future<void> deleteItemById(String id) => _feedNotifier.deleteItemById(id);
 
-  void clearFeed() {
-    ref.read(savedFeedPaginationProvider.notifier).clearFeed();
-  }
+  Future<void> updateItemNote(String id, String? note) =>
+      _feedNotifier.updateItemNote(id, note);
+
+  Future<void> enrichItem(SavedItem item) => _feedNotifier.enrichItem(item);
+
+  void clearFeed() => _feedNotifier.clearFeed();
 }
