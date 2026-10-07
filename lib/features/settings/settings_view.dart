@@ -29,6 +29,7 @@ class SettingsView extends ConsumerWidget {
         scrolledUnderElevation: 2,
       ),
       body: ListView(
+        primary: false,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         children: [
           _buildSectionHeader('Data & Takeout', colorScheme),

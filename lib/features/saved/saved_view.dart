@@ -30,10 +30,12 @@ class _SavedViewState extends ConsumerState<SavedView> {
   bool _isSearchExpanded = false;
   late final TextEditingController _searchController;
   Timer? _searchDebounceTimer;
+  late final ScrollController _scrollController;
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     final initialQuery =
         ref.read(searchFilterViewModelProvider).searchQuery ?? '';
     _searchController = TextEditingController(text: initialQuery);
@@ -46,6 +48,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
   void dispose() {
     _searchDebounceTimer?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -118,9 +121,9 @@ class _SavedViewState extends ConsumerState<SavedView> {
       if (feedState.items.isNotEmpty && feedState.items.length != prevLength) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          final controller = PrimaryScrollController.maybeOf(context);
-          if (controller?.hasClients == true &&
-              controller!.position.maxScrollExtent == 0) {
+          if (_scrollController.hasClients &&
+              _scrollController.positions.length == 1 &&
+              _scrollController.position.maxScrollExtent == 0) {
             ref.read(savedFeedPaginationProvider.notifier).fetchNextPage();
           }
         });
@@ -132,9 +135,10 @@ class _SavedViewState extends ConsumerState<SavedView> {
       if (prev != next) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          final controller = PrimaryScrollController.maybeOf(context);
-          if (controller?.hasClients == true && controller!.offset > 0) {
-            controller.jumpTo(0);
+          if (_scrollController.hasClients &&
+              _scrollController.positions.length == 1 &&
+              _scrollController.offset > 0) {
+            _scrollController.jumpTo(0);
           }
         });
       }
@@ -372,6 +376,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   case FeedLayoutMode.card:
                   case FeedLayoutMode.compact:
                     content = ListView.builder(
+                      controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(top: 4, bottom: 28),
                       itemCount: items.length + (showFooter ? 1 : 0),
@@ -399,6 +404,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
                   case FeedLayoutMode.gallery:
                     content = CustomScrollView(
+                      controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
                       slivers: [
                         SliverPadding(
@@ -595,9 +601,10 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   _isSearchExpanded = false;
                 });
                 filterVm.clearAllFilters();
-                final controller = PrimaryScrollController.maybeOf(context);
-                if (controller?.hasClients == true && controller!.offset > 0) {
-                  controller.jumpTo(0);
+                if (_scrollController.hasClients &&
+                    _scrollController.positions.length == 1 &&
+                    _scrollController.offset > 0) {
+                  _scrollController.jumpTo(0);
                 }
               },
             ),
