@@ -58,9 +58,9 @@ void main() {
           postFlair: 'Recipe / Homemade',
           subredditType: 'public',
           enrichmentStatus: EnrichmentStatus.enriched,
-          tags: const [
-            Tag(id: 1, name: 'Ice Cream', colorValue: 0xFF98FB98),
-            Tag(id: 2, name: 'Desserts', colorValue: 0xFFFFB6C1),
+          collections: const [
+            Collection(id: 1, name: 'Ice Cream', colorValue: 0xFF98FB98),
+            Collection(id: 2, name: 'Desserts', colorValue: 0xFFFFB6C1),
           ],
         );
 
@@ -89,9 +89,9 @@ void main() {
           restored.userNote,
           'Chill the custard base for at least 12 hours before churning',
         );
-        expect(restored.tags.length, 2);
-        final tagNames = restored.tags.map((t) => t.name).toSet();
-        expect(tagNames, containsAll(['Ice Cream', 'Desserts']));
+        expect(restored.collections.length, 2);
+        final collectionNames = restored.collections.map((c) => c.name).toSet();
+        expect(collectionNames, containsAll(['Ice Cream', 'Desserts']));
       },
     );
 
@@ -110,7 +110,9 @@ void main() {
         userNote: 'Architecture reference for offline sync',
         importOrder: 1,
         savedAtUtc: DateTime.utc(2026, 3, 10),
-        tags: const [Tag(id: 1, name: 'Programming', colorValue: 0xFF1E90FF)],
+        collections: const [
+          Collection(id: 1, name: 'Programming', colorValue: 0xFF1E90FF),
+        ],
       );
 
       final jsonString = backupService.exportToJson([sampleItem]);
@@ -129,54 +131,61 @@ void main() {
       expect(restored, isNotNull);
       expect(restored!.title, 'Clean Architecture and State Management Guide');
       expect(restored.isStarred, isTrue);
-      expect(restored.tags.first.name, 'Programming');
+      expect(restored.collections.first.name, 'Programming');
     });
 
-    test('restores rich Savedex CSV backup with tags and notes', () async {
-      final items = [
-        SavedItem(
-          id: 'comment_spaceballs_coffee',
-          permalink: '/r/recipes/comments/french_press/morning_coffee_setup/',
-          itemType: ItemType.comment,
-          title: 'Finally dialed in my French press ratio',
-          subreddit: 'recipes',
-          author: 'spaceballs420',
-          body: 'This is some serious gourmet shit!',
-          score: 420,
-          isStarred: true,
-          userNote:
-              '1:15 ratio with medium coarse grind, steep exactly 4 minutes.',
-          importOrder: 1,
-          savedAtUtc: DateTime.utc(2026, 4, 1),
-          tags: const [
-            Tag(id: 1, name: 'Gourmet Recipes', colorValue: 0xFF8B4513),
-          ],
-        ),
-      ];
+    test(
+      'restores rich Savedex CSV backup with collections and notes',
+      () async {
+        final items = [
+          SavedItem(
+            id: 'comment_spaceballs_coffee',
+            permalink: '/r/recipes/comments/french_press/morning_coffee_setup/',
+            itemType: ItemType.comment,
+            title: 'Finally dialed in my French press ratio',
+            subreddit: 'recipes',
+            author: 'spaceballs420',
+            body: 'This is some serious gourmet shit!',
+            score: 420,
+            isStarred: true,
+            userNote:
+                '1:15 ratio with medium coarse grind, steep exactly 4 minutes.',
+            importOrder: 1,
+            savedAtUtc: DateTime.utc(2026, 4, 1),
+            collections: const [
+              Collection(
+                id: 1,
+                name: 'Gourmet Recipes',
+                colorValue: 0xFF8B4513,
+              ),
+            ],
+          ),
+        ];
 
-      final csvContent = backupService.exportToCsv(items);
-      final csvBytes = utf8.encode(csvContent);
+        final csvContent = backupService.exportToCsv(items);
+        final csvBytes = utf8.encode(csvContent);
 
-      final summary = await repository.restoreFromBackup(
-        csvBytes,
-        sourceName: 'gourmet_recipes.csv',
-      );
+        final summary = await repository.restoreFromBackup(
+          csvBytes,
+          sourceName: 'gourmet_recipes.csv',
+        );
 
-      expect(summary.totalFound, 1);
-      expect(summary.newItemsImported, 1);
+        expect(summary.totalFound, 1);
+        expect(summary.newItemsImported, 1);
 
-      final restored = await repository.getItemById(
-        'comment_spaceballs_coffee',
-      );
-      expect(restored, isNotNull);
-      expect(
-        restored!.userNote,
-        '1:15 ratio with medium coarse grind, steep exactly 4 minutes.',
-      );
-      expect(restored.isStarred, isTrue);
-      expect(restored.tags.length, 1);
-      expect(restored.tags.first.name, 'Gourmet Recipes');
-    });
+        final restored = await repository.getItemById(
+          'comment_spaceballs_coffee',
+        );
+        expect(restored, isNotNull);
+        expect(
+          restored!.userNote,
+          '1:15 ratio with medium coarse grind, steep exactly 4 minutes.',
+        );
+        expect(restored.isStarred, isTrue);
+        expect(restored.collections.length, 1);
+        expect(restored.collections.first.name, 'Gourmet Recipes');
+      },
+    );
 
     test(
       'merges backup data into existing items without overwriting',
@@ -210,7 +219,9 @@ void main() {
           importOrder: 1,
           savedAtUtc: DateTime.utc(2026, 1, 1),
           enrichmentStatus: EnrichmentStatus.enriched,
-          tags: const [Tag(id: 10, name: 'Mimic Trap', colorValue: 0xFFFF4500)],
+          collections: const [
+            Collection(id: 10, name: 'Mimic Trap', colorValue: 0xFFFF4500),
+          ],
         );
 
         final backupBytes = backupService.createBackup([richItem]);
@@ -232,16 +243,16 @@ void main() {
           merged.userNote,
           'Grimoire that sees through clothes found on floor 48',
         );
-        expect(merged.tags.length, 1);
-        expect(merged.tags.first.name, 'Mimic Trap');
+        expect(merged.collections.length, 1);
+        expect(merged.collections.first.name, 'Mimic Trap');
       },
     );
 
-    test('reuses existing tags without violating unique constraint', () async {
-      final existingTagId = await db
-          .into(db.tagsTable)
+    test('reuses existing collections without violating unique constraint', () async {
+      final existingCollectionId = await db
+          .into(db.collectionsTable)
           .insert(
-            TagsTableCompanion.insert(
+            CollectionsTableCompanion.insert(
               name: 'Orange Cat Energy',
               colorValue: const Value(0xFFFF8C00),
             ),
@@ -257,8 +268,8 @@ void main() {
         author: 'purrfect_whiskers',
         importOrder: 1,
         savedAtUtc: DateTime.utc(2026, 2, 1),
-        tags: const [
-          Tag(id: 99, name: 'Orange Cat Energy', colorValue: 0xFFFFA500),
+        collections: const [
+          Collection(id: 99, name: 'Orange Cat Energy', colorValue: 0xFFFFA500),
         ],
       );
 
@@ -267,21 +278,21 @@ void main() {
 
       expect(summary.newItemsImported, 1);
 
-      final allTags = await db.select(db.tagsTable).get();
-      expect(allTags.length, 1);
-      expect(allTags.first.id, existingTagId);
-      expect(allTags.first.name, 'Orange Cat Energy');
+      final allCollections = await db.select(db.collectionsTable).get();
+      expect(allCollections.length, 1);
+      expect(allCollections.first.id, existingCollectionId);
+      expect(allCollections.first.name, 'Orange Cat Energy');
 
       final restored = await repository.getItemById('post_orange_cat_loaf');
-      expect(restored!.tags.length, 1);
-      expect(restored.tags.first.id, existingTagId);
+      expect(restored!.collections.length, 1);
+      expect(restored.collections.first.id, existingCollectionId);
     });
 
     test('handles empty backup', () async {
       const emptyPayload = SavedexBackupPayload(
         version: 1,
         items: [],
-        itemTags: {},
+        itemCollections: {},
       );
 
       final summary = await repository.restoreFromPayload(emptyPayload);

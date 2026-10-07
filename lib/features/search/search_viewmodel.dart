@@ -34,6 +34,11 @@ final availableFlairsProvider = FutureProvider<List<(String, int)>>((
   return repo.getFlairsWithCounts();
 });
 
+final availableCollectionsProvider = StreamProvider<List<Collection>>((ref) {
+  final repo = ref.watch(collectionRepositoryProvider);
+  return repo.watchAllCollections();
+});
+
 class SearchFilterViewModel extends Notifier<FilterCriteria> {
   @override
   FilterCriteria build() {
@@ -143,14 +148,14 @@ class SearchFilterViewModel extends Notifier<FilterCriteria> {
     );
   }
 
-  void toggleTag(int tagId) {
-    final updated = Set<int>.from(state.selectedTagIds);
-    if (updated.contains(tagId)) {
-      updated.remove(tagId);
+  void toggleCollection(int collectionId) {
+    final updated = Set<int>.from(state.selectedCollectionIds);
+    if (updated.contains(collectionId)) {
+      updated.remove(collectionId);
     } else {
-      updated.add(tagId);
+      updated.add(collectionId);
     }
-    state = state.copyWith(selectedTagIds: updated);
+    state = state.copyWith(selectedCollectionIds: updated);
   }
 
   void setSortOption(SortOption sort) {

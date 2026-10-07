@@ -28,7 +28,7 @@ class SavedItem {
   final String? postFlair;
   final String subredditType;
   final EnrichmentStatus enrichmentStatus;
-  final List<Tag> tags;
+  final List<Collection> collections;
 
   const SavedItem({
     required this.id,
@@ -57,7 +57,7 @@ class SavedItem {
     this.postFlair,
     this.subredditType = 'public',
     this.enrichmentStatus = EnrichmentStatus.slugOnly,
-    this.tags = const [],
+    this.collections = const [],
   });
 
   bool get isComment => itemType == ItemType.comment;
@@ -180,7 +180,7 @@ class SavedItem {
     String? postFlair,
     String? subredditType,
     EnrichmentStatus? enrichmentStatus,
-    List<Tag>? tags,
+    List<Collection>? collections,
     bool clearParentPostId = false,
     bool clearParentPostTitle = false,
     bool clearAuthor = false,
@@ -227,7 +227,7 @@ class SavedItem {
       postFlair: clearPostFlair ? null : (postFlair ?? this.postFlair),
       subredditType: subredditType ?? this.subredditType,
       enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
-      tags: tags ?? this.tags,
+      collections: collections ?? this.collections,
     );
   }
 
@@ -261,7 +261,7 @@ class SavedItem {
         other.postFlair == postFlair &&
         other.subredditType == subredditType &&
         other.enrichmentStatus == enrichmentStatus &&
-        listEquals(other.tags, tags);
+        listEquals(other.collections, collections);
   }
 
   @override
@@ -292,27 +292,38 @@ class SavedItem {
     postFlair,
     subredditType,
     enrichmentStatus,
-    Object.hashAll(tags),
+    Object.hashAll(collections),
   ]);
 }
 
-class Tag {
+class Collection {
   final int id;
   final String name;
+  final String? description;
   final int colorValue;
+  final DateTime? createdAtUtc;
 
-  const Tag({required this.id, required this.name, required this.colorValue});
+  const Collection({
+    required this.id,
+    required this.name,
+    this.description,
+    required this.colorValue,
+    this.createdAtUtc,
+  });
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Tag &&
+      other is Collection &&
           other.id == id &&
           other.name == name &&
-          other.colorValue == colorValue;
+          other.description == description &&
+          other.colorValue == colorValue &&
+          other.createdAtUtc == createdAtUtc;
 
   @override
-  int get hashCode => Object.hash(id, name, colorValue);
+  int get hashCode =>
+      Object.hash(id, name, description, colorValue, createdAtUtc);
 }
 
 class FilterCriteria {
@@ -326,7 +337,7 @@ class FilterCriteria {
   final bool? isNsfw;
   final bool? isStarred;
   final bool? isArchived;
-  final Set<int> selectedTagIds;
+  final Set<int> selectedCollectionIds;
   final SortOption sortOption;
   final bool groupCommentsByPost;
   final DateTime? dateRangeStart;
@@ -343,7 +354,7 @@ class FilterCriteria {
     this.isNsfw,
     this.isStarred,
     this.isArchived = false,
-    this.selectedTagIds = const {},
+    this.selectedCollectionIds = const {},
     this.sortOption = SortOption.savedOrderDesc,
     this.groupCommentsByPost = false,
     this.dateRangeStart,
@@ -360,7 +371,7 @@ class FilterCriteria {
       enrichmentStatus != null ||
       isNsfw != null ||
       isStarred != null ||
-      selectedTagIds.isNotEmpty ||
+      selectedCollectionIds.isNotEmpty ||
       dateRangeStart != null ||
       dateRangeEnd != null;
 
@@ -375,7 +386,7 @@ class FilterCriteria {
     bool? isNsfw,
     bool? isStarred,
     bool? isArchived,
-    Set<int>? selectedTagIds,
+    Set<int>? selectedCollectionIds,
     SortOption? sortOption,
     bool? groupCommentsByPost,
     DateTime? dateRangeStart,
@@ -403,7 +414,8 @@ class FilterCriteria {
       isNsfw: clearNsfw ? null : (isNsfw ?? this.isNsfw),
       isStarred: clearStarred ? null : (isStarred ?? this.isStarred),
       isArchived: clearArchived ? null : (isArchived ?? this.isArchived),
-      selectedTagIds: selectedTagIds ?? this.selectedTagIds,
+      selectedCollectionIds:
+          selectedCollectionIds ?? this.selectedCollectionIds,
       sortOption: sortOption ?? this.sortOption,
       groupCommentsByPost: groupCommentsByPost ?? this.groupCommentsByPost,
       dateRangeStart: (clearDateRange || clearDateRangeStart)
@@ -429,7 +441,7 @@ class FilterCriteria {
         other.isNsfw == isNsfw &&
         other.isStarred == isStarred &&
         other.isArchived == isArchived &&
-        setEquals(other.selectedTagIds, selectedTagIds) &&
+        setEquals(other.selectedCollectionIds, selectedCollectionIds) &&
         other.sortOption == sortOption &&
         other.groupCommentsByPost == groupCommentsByPost &&
         other.dateRangeStart == dateRangeStart &&
@@ -439,16 +451,16 @@ class FilterCriteria {
   @override
   int get hashCode => Object.hash(
     searchQuery,
-    Object.hashAll(selectedSubreddits),
-    Object.hashAll(selectedAuthors),
-    Object.hashAll(selectedFlairs),
-    Object.hashAll(selectedMediaTypes),
+    Object.hashAllUnordered(selectedSubreddits),
+    Object.hashAllUnordered(selectedAuthors),
+    Object.hashAllUnordered(selectedFlairs),
+    Object.hashAllUnordered(selectedMediaTypes),
     itemType,
     enrichmentStatus,
     isNsfw,
     isStarred,
     isArchived,
-    Object.hashAll(selectedTagIds),
+    Object.hashAllUnordered(selectedCollectionIds),
     sortOption,
     groupCommentsByPost,
     dateRangeStart,

@@ -6,14 +6,16 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/constants/constants.dart';
+import 'package:savedex/data/database/tables/collections_table.dart';
 import 'package:savedex/data/database/tables/saved_items_table.dart';
-import 'package:savedex/data/database/tables/tags_table.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [SavedItemsTable, TagsTable, ItemTagsTable])
+@DriftDatabase(
+  tables: [SavedItemsTable, CollectionsTable, ItemCollectionsTable],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase._([QueryExecutor? e]) : super(e ?? _openConnection());
 
@@ -39,7 +41,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -63,6 +65,12 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 5) {
         await _createIndexes(this);
+      }
+      if (from < 6) {
+        await customStatement('DROP TABLE IF EXISTS item_tags_table;');
+        await customStatement('DROP TABLE IF EXISTS tags_table;');
+        await m.createTable(collectionsTable);
+        await m.createTable(itemCollectionsTable);
       }
     },
     beforeOpen: (details) async {
@@ -242,7 +250,7 @@ class AppDatabase extends _$AppDatabase {
     bool? isNsfw,
     bool? isStarred,
     bool? isArchived,
-    Set<int> tagIds = const {},
+    Set<int> collectionIds = const {},
     SortOption sortOption = SortOption.savedOrderDesc,
     DateTime? dateRangeStart,
     DateTime? dateRangeEnd,
@@ -333,11 +341,11 @@ class AppDatabase extends _$AppDatabase {
       return predicate;
     });
 
-    if (tagIds.isNotEmpty) {
+    if (collectionIds.isNotEmpty) {
       query.where((tbl) {
-        final matchingItemsQuery = selectOnly(itemTagsTable)
-          ..addColumns([itemTagsTable.itemId])
-          ..where(itemTagsTable.tagId.isIn(tagIds));
+        final matchingItemsQuery = selectOnly(itemCollectionsTable)
+          ..addColumns([itemCollectionsTable.itemId])
+          ..where(itemCollectionsTable.collectionId.isIn(collectionIds));
         return tbl.id.isInQuery(matchingItemsQuery);
       });
     }
@@ -663,11 +671,11 @@ class AppDatabase extends _$AppDatabase {
       where.add('s.created_at_utc <= ?');
       vars.add(Variable.withDateTime(inclusiveEnd));
     }
-    if (filter.selectedTagIds.isNotEmpty) {
+    if (filter.selectedCollectionIds.isNotEmpty) {
       where.add(
-        's.id IN (SELECT item_id FROM item_tags_table WHERE tag_id IN (${List.filled(filter.selectedTagIds.length, '?').join(',')}))',
+        's.id IN (SELECT item_id FROM item_collections_table WHERE collection_id IN (${List.filled(filter.selectedCollectionIds.length, '?').join(',')}))',
       );
-      vars.addAll(filter.selectedTagIds.map(Variable.withInt));
+      vars.addAll(filter.selectedCollectionIds.map(Variable.withInt));
     }
     if (filter.searchQuery != null && filter.searchQuery!.trim().isNotEmpty) {
       final ftsToken = _sanitizeFtsQuery(filter.searchQuery!);
@@ -829,22 +837,28 @@ class AppDatabase extends _$AppDatabase {
         .toList();
   }
 
-  Stream<List<TagEntry>> watchTagsForItem(String itemId) {
-    final query = select(tagsTable).join([
-      innerJoin(itemTagsTable, itemTagsTable.tagId.equalsExp(tagsTable.id)),
-    ])..where(itemTagsTable.itemId.equals(itemId));
+  Stream<List<CollectionEntry>> watchCollectionsForItem(String itemId) {
+    final query = select(collectionsTable).join([
+      innerJoin(
+        itemCollectionsTable,
+        itemCollectionsTable.collectionId.equalsExp(collectionsTable.id),
+      ),
+    ])..where(itemCollectionsTable.itemId.equals(itemId));
 
     return query.watch().map(
-      (rows) => rows.map((r) => r.readTable(tagsTable)).toList(),
+      (rows) => rows.map((r) => r.readTable(collectionsTable)).toList(),
     );
   }
 
-  Future<List<TagEntry>> getTagsForItem(String itemId) {
-    final query = select(tagsTable).join([
-      innerJoin(itemTagsTable, itemTagsTable.tagId.equalsExp(tagsTable.id)),
-    ])..where(itemTagsTable.itemId.equals(itemId));
+  Future<List<CollectionEntry>> getCollectionsForItem(String itemId) {
+    final query = select(collectionsTable).join([
+      innerJoin(
+        itemCollectionsTable,
+        itemCollectionsTable.collectionId.equalsExp(collectionsTable.id),
+      ),
+    ])..where(itemCollectionsTable.itemId.equals(itemId));
 
-    return query.map((r) => r.readTable(tagsTable)).get();
+    return query.map((r) => r.readTable(collectionsTable)).get();
   }
 
   Future<List<SavedItemEntry>> getPendingEnrichmentItems({
@@ -911,8 +925,8 @@ class AppDatabase extends _$AppDatabase {
       await customStatement('DROP TRIGGER IF EXISTS saved_items_ad;');
       await customStatement('DROP TRIGGER IF EXISTS saved_items_au;');
 
-      await delete(itemTagsTable).go();
-      await delete(tagsTable).go();
+      await delete(itemCollectionsTable).go();
+      await delete(collectionsTable).go();
       await delete(savedItemsTable).go();
       try {
         await customStatement('DELETE FROM saved_items_fts;');
@@ -922,7 +936,7 @@ class AppDatabase extends _$AppDatabase {
 
       try {
         await customStatement(
-          'DELETE FROM sqlite_sequence WHERE name IN (\'tags_table\', \'saved_items_table\');',
+          'DELETE FROM sqlite_sequence WHERE name IN (\'collections_table\', \'saved_items_table\');',
         );
       } catch (_) {}
 
@@ -939,14 +953,14 @@ class AppDatabase extends _$AppDatabase {
 
     notifyUpdates({
       TableUpdate.onTable(savedItemsTable, kind: UpdateKind.delete),
-      TableUpdate.onTable(tagsTable, kind: UpdateKind.delete),
-      TableUpdate.onTable(itemTagsTable, kind: UpdateKind.delete),
+      TableUpdate.onTable(collectionsTable, kind: UpdateKind.delete),
+      TableUpdate.onTable(itemCollectionsTable, kind: UpdateKind.delete),
     });
   }
 }
 
 extension SavedItemEntryExtension on SavedItemEntry {
-  SavedItem toDomain({List<Tag> tags = const []}) {
+  SavedItem toDomain({List<Collection> collections = const []}) {
     return SavedItem(
       id: id,
       permalink: permalink,
@@ -974,7 +988,7 @@ extension SavedItemEntryExtension on SavedItemEntry {
       postFlair: postFlair,
       subredditType: subredditType,
       enrichmentStatus: enrichmentStatus,
-      tags: tags,
+      collections: collections,
     );
   }
 }

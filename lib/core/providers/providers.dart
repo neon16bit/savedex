@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/repositories/saved_item_repository.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
-import 'package:savedex/data/repositories/tag_repository.dart';
+import 'package:savedex/data/repositories/collection_repository.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
@@ -50,9 +50,9 @@ final backupExportServiceProvider = Provider<BackupExportService>((ref) {
   return BackupExportService();
 });
 
-final tagRepositoryProvider = Provider<TagRepository>((ref) {
+final collectionRepositoryProvider = Provider<CollectionRepository>((ref) {
   final db = ref.watch(databaseProvider);
-  return TagRepository(db);
+  return CollectionRepository(db);
 });
 
 final savedItemRepositoryProvider = Provider<SavedItemRepository>((ref) {

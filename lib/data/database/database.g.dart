@@ -1436,12 +1436,12 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
   }
 }
 
-class $TagsTableTable extends TagsTable
-    with TableInfo<$TagsTableTable, TagEntry> {
+class $CollectionsTableTable extends CollectionsTable
+    with TableInfo<$CollectionsTableTable, CollectionEntry> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $TagsTableTable(this.attachedDatabase, [this._alias]);
+  $CollectionsTableTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<int> id = GeneratedColumn<int>(
@@ -1465,6 +1465,17 @@ class $TagsTableTable extends TagsTable
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _colorValueMeta = const VerificationMeta(
     'colorValue',
   );
@@ -1477,16 +1488,33 @@ class $TagsTableTable extends TagsTable
     requiredDuringInsert: false,
     defaultValue: const Constant(0xFFFF4500),
   );
+  static const VerificationMeta _createdAtUtcMeta = const VerificationMeta(
+    'createdAtUtc',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, colorValue];
+  late final GeneratedColumn<DateTime> createdAtUtc = GeneratedColumn<DateTime>(
+    'created_at_utc',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    description,
+    colorValue,
+    createdAtUtc,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'tags_table';
+  static const String $name = 'collections_table';
   @override
   VerificationContext validateIntegrity(
-    Insertable<TagEntry> instance, {
+    Insertable<CollectionEntry> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -1502,10 +1530,28 @@ class $TagsTableTable extends TagsTable
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
     if (data.containsKey('color_value')) {
       context.handle(
         _colorValueMeta,
         colorValue.isAcceptableOrUnknown(data['color_value']!, _colorValueMeta),
+      );
+    }
+    if (data.containsKey('created_at_utc')) {
+      context.handle(
+        _createdAtUtcMeta,
+        createdAtUtc.isAcceptableOrUnknown(
+          data['created_at_utc']!,
+          _createdAtUtcMeta,
+        ),
       );
     }
     return context;
@@ -1514,9 +1560,9 @@ class $TagsTableTable extends TagsTable
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  TagEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+  CollectionEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return TagEntry(
+    return CollectionEntry(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}id'],
@@ -1525,54 +1571,80 @@ class $TagsTableTable extends TagsTable
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
       colorValue: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}color_value'],
       )!,
+      createdAtUtc: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at_utc'],
+      ),
     );
   }
 
   @override
-  $TagsTableTable createAlias(String alias) {
-    return $TagsTableTable(attachedDatabase, alias);
+  $CollectionsTableTable createAlias(String alias) {
+    return $CollectionsTableTable(attachedDatabase, alias);
   }
 }
 
-class TagEntry extends DataClass implements Insertable<TagEntry> {
+class CollectionEntry extends DataClass implements Insertable<CollectionEntry> {
   final int id;
   final String name;
+  final String? description;
   final int colorValue;
-  const TagEntry({
+  final DateTime? createdAtUtc;
+  const CollectionEntry({
     required this.id,
     required this.name,
+    this.description,
     required this.colorValue,
+    this.createdAtUtc,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
     map['color_value'] = Variable<int>(colorValue);
+    if (!nullToAbsent || createdAtUtc != null) {
+      map['created_at_utc'] = Variable<DateTime>(createdAtUtc);
+    }
     return map;
   }
 
-  TagsTableCompanion toCompanion(bool nullToAbsent) {
-    return TagsTableCompanion(
+  CollectionsTableCompanion toCompanion(bool nullToAbsent) {
+    return CollectionsTableCompanion(
       id: Value(id),
       name: Value(name),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
       colorValue: Value(colorValue),
+      createdAtUtc: createdAtUtc == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdAtUtc),
     );
   }
 
-  factory TagEntry.fromJson(
+  factory CollectionEntry.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return TagEntry(
+    return CollectionEntry(
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      description: serializer.fromJson<String?>(json['description']),
       colorValue: serializer.fromJson<int>(json['colorValue']),
+      createdAtUtc: serializer.fromJson<DateTime?>(json['createdAtUtc']),
     );
   }
   @override
@@ -1581,81 +1653,116 @@ class TagEntry extends DataClass implements Insertable<TagEntry> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
+      'description': serializer.toJson<String?>(description),
       'colorValue': serializer.toJson<int>(colorValue),
+      'createdAtUtc': serializer.toJson<DateTime?>(createdAtUtc),
     };
   }
 
-  TagEntry copyWith({int? id, String? name, int? colorValue}) => TagEntry(
+  CollectionEntry copyWith({
+    int? id,
+    String? name,
+    Value<String?> description = const Value.absent(),
+    int? colorValue,
+    Value<DateTime?> createdAtUtc = const Value.absent(),
+  }) => CollectionEntry(
     id: id ?? this.id,
     name: name ?? this.name,
+    description: description.present ? description.value : this.description,
     colorValue: colorValue ?? this.colorValue,
+    createdAtUtc: createdAtUtc.present ? createdAtUtc.value : this.createdAtUtc,
   );
-  TagEntry copyWithCompanion(TagsTableCompanion data) {
-    return TagEntry(
+  CollectionEntry copyWithCompanion(CollectionsTableCompanion data) {
+    return CollectionEntry(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
       colorValue: data.colorValue.present
           ? data.colorValue.value
           : this.colorValue,
+      createdAtUtc: data.createdAtUtc.present
+          ? data.createdAtUtc.value
+          : this.createdAtUtc,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('TagEntry(')
+    return (StringBuffer('CollectionEntry(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('colorValue: $colorValue')
+          ..write('description: $description, ')
+          ..write('colorValue: $colorValue, ')
+          ..write('createdAtUtc: $createdAtUtc')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, colorValue);
+  int get hashCode =>
+      Object.hash(id, name, description, colorValue, createdAtUtc);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is TagEntry &&
+      (other is CollectionEntry &&
           other.id == this.id &&
           other.name == this.name &&
-          other.colorValue == this.colorValue);
+          other.description == this.description &&
+          other.colorValue == this.colorValue &&
+          other.createdAtUtc == this.createdAtUtc);
 }
 
-class TagsTableCompanion extends UpdateCompanion<TagEntry> {
+class CollectionsTableCompanion extends UpdateCompanion<CollectionEntry> {
   final Value<int> id;
   final Value<String> name;
+  final Value<String?> description;
   final Value<int> colorValue;
-  const TagsTableCompanion({
+  final Value<DateTime?> createdAtUtc;
+  const CollectionsTableCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.description = const Value.absent(),
     this.colorValue = const Value.absent(),
+    this.createdAtUtc = const Value.absent(),
   });
-  TagsTableCompanion.insert({
+  CollectionsTableCompanion.insert({
     this.id = const Value.absent(),
     required String name,
+    this.description = const Value.absent(),
     this.colorValue = const Value.absent(),
+    this.createdAtUtc = const Value.absent(),
   }) : name = Value(name);
-  static Insertable<TagEntry> custom({
+  static Insertable<CollectionEntry> custom({
     Expression<int>? id,
     Expression<String>? name,
+    Expression<String>? description,
     Expression<int>? colorValue,
+    Expression<DateTime>? createdAtUtc,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (description != null) 'description': description,
       if (colorValue != null) 'color_value': colorValue,
+      if (createdAtUtc != null) 'created_at_utc': createdAtUtc,
     });
   }
 
-  TagsTableCompanion copyWith({
+  CollectionsTableCompanion copyWith({
     Value<int>? id,
     Value<String>? name,
+    Value<String?>? description,
     Value<int>? colorValue,
+    Value<DateTime?>? createdAtUtc,
   }) {
-    return TagsTableCompanion(
+    return CollectionsTableCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      description: description ?? this.description,
       colorValue: colorValue ?? this.colorValue,
+      createdAtUtc: createdAtUtc ?? this.createdAtUtc,
     );
   }
 
@@ -1668,29 +1775,37 @@ class TagsTableCompanion extends UpdateCompanion<TagEntry> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
     if (colorValue.present) {
       map['color_value'] = Variable<int>(colorValue.value);
+    }
+    if (createdAtUtc.present) {
+      map['created_at_utc'] = Variable<DateTime>(createdAtUtc.value);
     }
     return map;
   }
 
   @override
   String toString() {
-    return (StringBuffer('TagsTableCompanion(')
+    return (StringBuffer('CollectionsTableCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('colorValue: $colorValue')
+          ..write('description: $description, ')
+          ..write('colorValue: $colorValue, ')
+          ..write('createdAtUtc: $createdAtUtc')
           ..write(')'))
         .toString();
   }
 }
 
-class $ItemTagsTableTable extends ItemTagsTable
-    with TableInfo<$ItemTagsTableTable, ItemTagEntry> {
+class $ItemCollectionsTableTable extends ItemCollectionsTable
+    with TableInfo<$ItemCollectionsTableTable, ItemCollectionEntry> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $ItemTagsTableTable(this.attachedDatabase, [this._alias]);
+  $ItemCollectionsTableTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _itemIdMeta = const VerificationMeta('itemId');
   @override
   late final GeneratedColumn<String> itemId = GeneratedColumn<String>(
@@ -1703,28 +1818,30 @@ class $ItemTagsTableTable extends ItemTagsTable
       'REFERENCES saved_items_table (id) ON DELETE CASCADE',
     ),
   );
-  static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
+  static const VerificationMeta _collectionIdMeta = const VerificationMeta(
+    'collectionId',
+  );
   @override
-  late final GeneratedColumn<int> tagId = GeneratedColumn<int>(
-    'tag_id',
+  late final GeneratedColumn<int> collectionId = GeneratedColumn<int>(
+    'collection_id',
     aliasedName,
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES tags_table (id) ON DELETE CASCADE',
+      'REFERENCES collections_table (id) ON DELETE CASCADE',
     ),
   );
   @override
-  List<GeneratedColumn> get $columns => [itemId, tagId];
+  List<GeneratedColumn> get $columns => [itemId, collectionId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'item_tags_table';
+  static const String $name = 'item_collections_table';
   @override
   VerificationContext validateIntegrity(
-    Insertable<ItemTagEntry> instance, {
+    Insertable<ItemCollectionEntry> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -1737,64 +1854,71 @@ class $ItemTagsTableTable extends ItemTagsTable
     } else if (isInserting) {
       context.missing(_itemIdMeta);
     }
-    if (data.containsKey('tag_id')) {
+    if (data.containsKey('collection_id')) {
       context.handle(
-        _tagIdMeta,
-        tagId.isAcceptableOrUnknown(data['tag_id']!, _tagIdMeta),
+        _collectionIdMeta,
+        collectionId.isAcceptableOrUnknown(
+          data['collection_id']!,
+          _collectionIdMeta,
+        ),
       );
     } else if (isInserting) {
-      context.missing(_tagIdMeta);
+      context.missing(_collectionIdMeta);
     }
     return context;
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => {itemId, tagId};
+  Set<GeneratedColumn> get $primaryKey => {itemId, collectionId};
   @override
-  ItemTagEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+  ItemCollectionEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return ItemTagEntry(
+    return ItemCollectionEntry(
       itemId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}item_id'],
       )!,
-      tagId: attachedDatabase.typeMapping.read(
+      collectionId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}tag_id'],
+        data['${effectivePrefix}collection_id'],
       )!,
     );
   }
 
   @override
-  $ItemTagsTableTable createAlias(String alias) {
-    return $ItemTagsTableTable(attachedDatabase, alias);
+  $ItemCollectionsTableTable createAlias(String alias) {
+    return $ItemCollectionsTableTable(attachedDatabase, alias);
   }
 }
 
-class ItemTagEntry extends DataClass implements Insertable<ItemTagEntry> {
+class ItemCollectionEntry extends DataClass
+    implements Insertable<ItemCollectionEntry> {
   final String itemId;
-  final int tagId;
-  const ItemTagEntry({required this.itemId, required this.tagId});
+  final int collectionId;
+  const ItemCollectionEntry({required this.itemId, required this.collectionId});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['item_id'] = Variable<String>(itemId);
-    map['tag_id'] = Variable<int>(tagId);
+    map['collection_id'] = Variable<int>(collectionId);
     return map;
   }
 
-  ItemTagsTableCompanion toCompanion(bool nullToAbsent) {
-    return ItemTagsTableCompanion(itemId: Value(itemId), tagId: Value(tagId));
+  ItemCollectionsTableCompanion toCompanion(bool nullToAbsent) {
+    return ItemCollectionsTableCompanion(
+      itemId: Value(itemId),
+      collectionId: Value(collectionId),
+    );
   }
 
-  factory ItemTagEntry.fromJson(
+  factory ItemCollectionEntry.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return ItemTagEntry(
+    return ItemCollectionEntry(
       itemId: serializer.fromJson<String>(json['itemId']),
-      tagId: serializer.fromJson<int>(json['tagId']),
+      collectionId: serializer.fromJson<int>(json['collectionId']),
     );
   }
   @override
@@ -1802,73 +1926,79 @@ class ItemTagEntry extends DataClass implements Insertable<ItemTagEntry> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'itemId': serializer.toJson<String>(itemId),
-      'tagId': serializer.toJson<int>(tagId),
+      'collectionId': serializer.toJson<int>(collectionId),
     };
   }
 
-  ItemTagEntry copyWith({String? itemId, int? tagId}) =>
-      ItemTagEntry(itemId: itemId ?? this.itemId, tagId: tagId ?? this.tagId);
-  ItemTagEntry copyWithCompanion(ItemTagsTableCompanion data) {
-    return ItemTagEntry(
+  ItemCollectionEntry copyWith({String? itemId, int? collectionId}) =>
+      ItemCollectionEntry(
+        itemId: itemId ?? this.itemId,
+        collectionId: collectionId ?? this.collectionId,
+      );
+  ItemCollectionEntry copyWithCompanion(ItemCollectionsTableCompanion data) {
+    return ItemCollectionEntry(
       itemId: data.itemId.present ? data.itemId.value : this.itemId,
-      tagId: data.tagId.present ? data.tagId.value : this.tagId,
+      collectionId: data.collectionId.present
+          ? data.collectionId.value
+          : this.collectionId,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('ItemTagEntry(')
+    return (StringBuffer('ItemCollectionEntry(')
           ..write('itemId: $itemId, ')
-          ..write('tagId: $tagId')
+          ..write('collectionId: $collectionId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(itemId, tagId);
+  int get hashCode => Object.hash(itemId, collectionId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is ItemTagEntry &&
+      (other is ItemCollectionEntry &&
           other.itemId == this.itemId &&
-          other.tagId == this.tagId);
+          other.collectionId == this.collectionId);
 }
 
-class ItemTagsTableCompanion extends UpdateCompanion<ItemTagEntry> {
+class ItemCollectionsTableCompanion
+    extends UpdateCompanion<ItemCollectionEntry> {
   final Value<String> itemId;
-  final Value<int> tagId;
+  final Value<int> collectionId;
   final Value<int> rowid;
-  const ItemTagsTableCompanion({
+  const ItemCollectionsTableCompanion({
     this.itemId = const Value.absent(),
-    this.tagId = const Value.absent(),
+    this.collectionId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  ItemTagsTableCompanion.insert({
+  ItemCollectionsTableCompanion.insert({
     required String itemId,
-    required int tagId,
+    required int collectionId,
     this.rowid = const Value.absent(),
   }) : itemId = Value(itemId),
-       tagId = Value(tagId);
-  static Insertable<ItemTagEntry> custom({
+       collectionId = Value(collectionId);
+  static Insertable<ItemCollectionEntry> custom({
     Expression<String>? itemId,
-    Expression<int>? tagId,
+    Expression<int>? collectionId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (itemId != null) 'item_id': itemId,
-      if (tagId != null) 'tag_id': tagId,
+      if (collectionId != null) 'collection_id': collectionId,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  ItemTagsTableCompanion copyWith({
+  ItemCollectionsTableCompanion copyWith({
     Value<String>? itemId,
-    Value<int>? tagId,
+    Value<int>? collectionId,
     Value<int>? rowid,
   }) {
-    return ItemTagsTableCompanion(
+    return ItemCollectionsTableCompanion(
       itemId: itemId ?? this.itemId,
-      tagId: tagId ?? this.tagId,
+      collectionId: collectionId ?? this.collectionId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1879,8 +2009,8 @@ class ItemTagsTableCompanion extends UpdateCompanion<ItemTagEntry> {
     if (itemId.present) {
       map['item_id'] = Variable<String>(itemId.value);
     }
-    if (tagId.present) {
-      map['tag_id'] = Variable<int>(tagId.value);
+    if (collectionId.present) {
+      map['collection_id'] = Variable<int>(collectionId.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -1890,9 +2020,9 @@ class ItemTagsTableCompanion extends UpdateCompanion<ItemTagEntry> {
 
   @override
   String toString() {
-    return (StringBuffer('ItemTagsTableCompanion(')
+    return (StringBuffer('ItemCollectionsTableCompanion(')
           ..write('itemId: $itemId, ')
-          ..write('tagId: $tagId, ')
+          ..write('collectionId: $collectionId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1905,16 +2035,19 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $SavedItemsTableTable savedItemsTable = $SavedItemsTableTable(
     this,
   );
-  late final $TagsTableTable tagsTable = $TagsTableTable(this);
-  late final $ItemTagsTableTable itemTagsTable = $ItemTagsTableTable(this);
+  late final $CollectionsTableTable collectionsTable = $CollectionsTableTable(
+    this,
+  );
+  late final $ItemCollectionsTableTable itemCollectionsTable =
+      $ItemCollectionsTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     savedItemsTable,
-    tagsTable,
-    itemTagsTable,
+    collectionsTable,
+    itemCollectionsTable,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -1923,14 +2056,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         'saved_items_table',
         limitUpdateKind: UpdateKind.delete,
       ),
-      result: [TableUpdate('item_tags_table', kind: UpdateKind.delete)],
+      result: [TableUpdate('item_collections_table', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
-        'tags_table',
+        'collections_table',
         limitUpdateKind: UpdateKind.delete,
       ),
-      result: [TableUpdate('item_tags_table', kind: UpdateKind.delete)],
+      result: [TableUpdate('item_collections_table', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -2005,19 +2138,26 @@ final class $$SavedItemsTableTableReferences
     super.$_typedResult,
   );
 
-  static MultiTypedResultKey<$ItemTagsTableTable, List<ItemTagEntry>>
-  _itemTagsTableRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
-    db.itemTagsTable,
-    aliasName: 'saved_items_table__id__item_tags_table__item_id',
-  );
+  static MultiTypedResultKey<
+    $ItemCollectionsTableTable,
+    List<ItemCollectionEntry>
+  >
+  _itemCollectionsTableRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.itemCollectionsTable,
+        aliasName: 'saved_items_table__id__item_collections_table__item_id',
+      );
 
-  $$ItemTagsTableTableProcessedTableManager get itemTagsTableRefs {
-    final manager = $$ItemTagsTableTableTableManager(
+  $$ItemCollectionsTableTableProcessedTableManager
+  get itemCollectionsTableRefs {
+    final manager = $$ItemCollectionsTableTableTableManager(
       $_db,
-      $_db.itemTagsTable,
+      $_db.itemCollectionsTable,
     ).filter((f) => f.itemId.id.sqlEquals($_itemColumn<String>('id')!));
 
-    final cache = $_typedResult.readTableOrNull(_itemTagsTableRefsTable($_db));
+    final cache = $_typedResult.readTableOrNull(
+      _itemCollectionsTableRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -2166,22 +2306,22 @@ class $$SavedItemsTableTableFilterComposer
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
-  Expression<bool> itemTagsTableRefs(
-    Expression<bool> Function($$ItemTagsTableTableFilterComposer f) f,
+  Expression<bool> itemCollectionsTableRefs(
+    Expression<bool> Function($$ItemCollectionsTableTableFilterComposer f) f,
   ) {
-    final $$ItemTagsTableTableFilterComposer composer = $composerBuilder(
+    final $$ItemCollectionsTableTableFilterComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.itemTagsTable,
+      referencedTable: $db.itemCollectionsTable,
       getReferencedColumn: (t) => t.itemId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$ItemTagsTableTableFilterComposer(
+          }) => $$ItemCollectionsTableTableFilterComposer(
             $db: $db,
-            $table: $db.itemTagsTable,
+            $table: $db.itemCollectionsTable,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2440,28 +2580,29 @@ class $$SavedItemsTableTableAnnotationComposer
     builder: (column) => column,
   );
 
-  Expression<T> itemTagsTableRefs<T extends Object>(
-    Expression<T> Function($$ItemTagsTableTableAnnotationComposer a) f,
+  Expression<T> itemCollectionsTableRefs<T extends Object>(
+    Expression<T> Function($$ItemCollectionsTableTableAnnotationComposer a) f,
   ) {
-    final $$ItemTagsTableTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.itemTagsTable,
-      getReferencedColumn: (t) => t.itemId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ItemTagsTableTableAnnotationComposer(
-            $db: $db,
-            $table: $db.itemTagsTable,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
+    final $$ItemCollectionsTableTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.itemCollectionsTable,
+          getReferencedColumn: (t) => t.itemId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
                 $removeJoinBuilderFromRootComposer,
-          ),
-    );
+              }) => $$ItemCollectionsTableTableAnnotationComposer(
+                $db: $db,
+                $table: $db.itemCollectionsTable,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
@@ -2479,7 +2620,7 @@ class $$SavedItemsTableTableTableManager
           $$SavedItemsTableTableUpdateCompanionBuilder,
           (SavedItemEntry, $$SavedItemsTableTableReferences),
           SavedItemEntry,
-          PrefetchHooks Function({bool itemTagsTableRefs})
+          PrefetchHooks Function({bool itemCollectionsTableRefs})
         > {
   $$SavedItemsTableTableTableManager(
     _$AppDatabase db,
@@ -2613,35 +2754,35 @@ class $$SavedItemsTableTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
+                  e.readTable<$SavedItemsTableTable, SavedItemEntry>(table),
                   $$SavedItemsTableTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({itemTagsTableRefs = false}) {
+          prefetchHooksCallback: ({itemCollectionsTableRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
-                if (itemTagsTableRefs) db.itemTagsTable,
+                if (itemCollectionsTableRefs) db.itemCollectionsTable,
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
                 return [
-                  if (itemTagsTableRefs)
+                  if (itemCollectionsTableRefs)
                     await $_getPrefetchedData<
                       SavedItemEntry,
                       $SavedItemsTableTable,
-                      ItemTagEntry
+                      ItemCollectionEntry
                     >(
                       currentTable: table,
                       referencedTable: $$SavedItemsTableTableReferences
-                          ._itemTagsTableRefsTable(db),
+                          ._itemCollectionsTableRefsTable(db),
                       managerFromTypedResult: (p0) =>
                           $$SavedItemsTableTableReferences(
                             db,
                             table,
                             p0,
-                          ).itemTagsTableRefs,
+                          ).itemCollectionsTableRefs,
                       referencedItemsForCurrentItem: (item, referencedItems) =>
                           referencedItems.where((e) => e.itemId == item.id),
                       typedResults: items,
@@ -2666,45 +2807,64 @@ typedef $$SavedItemsTableTableProcessedTableManager =
       $$SavedItemsTableTableUpdateCompanionBuilder,
       (SavedItemEntry, $$SavedItemsTableTableReferences),
       SavedItemEntry,
-      PrefetchHooks Function({bool itemTagsTableRefs})
+      PrefetchHooks Function({bool itemCollectionsTableRefs})
     >;
-typedef $$TagsTableTableCreateCompanionBuilder = TagsTableCompanion Function({
-  Value<int> id,
-  required String name,
-  Value<int> colorValue,
-});
-typedef $$TagsTableTableUpdateCompanionBuilder = TagsTableCompanion Function({
-  Value<int> id,
-  Value<String> name,
-  Value<int> colorValue,
-});
+typedef $$CollectionsTableTableCreateCompanionBuilder =
+    CollectionsTableCompanion Function({
+      Value<int> id,
+      required String name,
+      Value<String?> description,
+      Value<int> colorValue,
+      Value<DateTime?> createdAtUtc,
+    });
+typedef $$CollectionsTableTableUpdateCompanionBuilder =
+    CollectionsTableCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<String?> description,
+      Value<int> colorValue,
+      Value<DateTime?> createdAtUtc,
+    });
 
-final class $$TagsTableTableReferences
-    extends BaseReferences<_$AppDatabase, $TagsTableTable, TagEntry> {
-  $$TagsTableTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static MultiTypedResultKey<$ItemTagsTableTable, List<ItemTagEntry>>
-  _itemTagsTableRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
-    db.itemTagsTable,
-    aliasName: 'tags_table__id__item_tags_table__tag_id',
+final class $$CollectionsTableTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $CollectionsTableTable, CollectionEntry> {
+  $$CollectionsTableTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
   );
 
-  $$ItemTagsTableTableProcessedTableManager get itemTagsTableRefs {
-    final manager = $$ItemTagsTableTableTableManager(
-      $_db,
-      $_db.itemTagsTable,
-    ).filter((f) => f.tagId.id.sqlEquals($_itemColumn<int>('id')!));
+  static MultiTypedResultKey<
+    $ItemCollectionsTableTable,
+    List<ItemCollectionEntry>
+  >
+  _itemCollectionsTableRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.itemCollectionsTable,
+        aliasName:
+            'collections_table__id__item_collections_table__collection_id',
+      );
 
-    final cache = $_typedResult.readTableOrNull(_itemTagsTableRefsTable($_db));
+  $$ItemCollectionsTableTableProcessedTableManager
+  get itemCollectionsTableRefs {
+    final manager = $$ItemCollectionsTableTableTableManager(
+      $_db,
+      $_db.itemCollectionsTable,
+    ).filter((f) => f.collectionId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _itemCollectionsTableRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
 }
 
-class $$TagsTableTableFilterComposer
-    extends Composer<_$AppDatabase, $TagsTableTable> {
-  $$TagsTableTableFilterComposer({
+class $$CollectionsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $CollectionsTableTable> {
+  $$CollectionsTableTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -2721,27 +2881,37 @@ class $$TagsTableTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get colorValue => $composableBuilder(
     column: $table.colorValue,
     builder: (column) => ColumnFilters(column),
   );
 
-  Expression<bool> itemTagsTableRefs(
-    Expression<bool> Function($$ItemTagsTableTableFilterComposer f) f,
+  ColumnFilters<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> itemCollectionsTableRefs(
+    Expression<bool> Function($$ItemCollectionsTableTableFilterComposer f) f,
   ) {
-    final $$ItemTagsTableTableFilterComposer composer = $composerBuilder(
+    final $$ItemCollectionsTableTableFilterComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.itemTagsTable,
-      getReferencedColumn: (t) => t.tagId,
+      referencedTable: $db.itemCollectionsTable,
+      getReferencedColumn: (t) => t.collectionId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$ItemTagsTableTableFilterComposer(
+          }) => $$ItemCollectionsTableTableFilterComposer(
             $db: $db,
-            $table: $db.itemTagsTable,
+            $table: $db.itemCollectionsTable,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -2752,9 +2922,9 @@ class $$TagsTableTableFilterComposer
   }
 }
 
-class $$TagsTableTableOrderingComposer
-    extends Composer<_$AppDatabase, $TagsTableTable> {
-  $$TagsTableTableOrderingComposer({
+class $$CollectionsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $CollectionsTableTable> {
+  $$CollectionsTableTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -2771,15 +2941,25 @@ class $$TagsTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get colorValue => $composableBuilder(
     column: $table.colorValue,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
-class $$TagsTableTableAnnotationComposer
-    extends Composer<_$AppDatabase, $TagsTableTable> {
-  $$TagsTableTableAnnotationComposer({
+class $$CollectionsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CollectionsTableTable> {
+  $$CollectionsTableTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -2792,112 +2972,140 @@ class $$TagsTableTableAnnotationComposer
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get colorValue => $composableBuilder(
     column: $table.colorValue,
     builder: (column) => column,
   );
 
-  Expression<T> itemTagsTableRefs<T extends Object>(
-    Expression<T> Function($$ItemTagsTableTableAnnotationComposer a) f,
+  GeneratedColumn<DateTime> get createdAtUtc => $composableBuilder(
+    column: $table.createdAtUtc,
+    builder: (column) => column,
+  );
+
+  Expression<T> itemCollectionsTableRefs<T extends Object>(
+    Expression<T> Function($$ItemCollectionsTableTableAnnotationComposer a) f,
   ) {
-    final $$ItemTagsTableTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.itemTagsTable,
-      getReferencedColumn: (t) => t.tagId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ItemTagsTableTableAnnotationComposer(
-            $db: $db,
-            $table: $db.itemTagsTable,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
+    final $$ItemCollectionsTableTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.itemCollectionsTable,
+          getReferencedColumn: (t) => t.collectionId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
                 $removeJoinBuilderFromRootComposer,
-          ),
-    );
+              }) => $$ItemCollectionsTableTableAnnotationComposer(
+                $db: $db,
+                $table: $db.itemCollectionsTable,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
     return f(composer);
   }
 }
 
-class $$TagsTableTableTableManager
+class $$CollectionsTableTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $TagsTableTable,
-          TagEntry,
-          $$TagsTableTableFilterComposer,
-          $$TagsTableTableOrderingComposer,
-          $$TagsTableTableAnnotationComposer,
-          $$TagsTableTableCreateCompanionBuilder,
-          $$TagsTableTableUpdateCompanionBuilder,
-          (TagEntry, $$TagsTableTableReferences),
-          TagEntry,
-          PrefetchHooks Function({bool itemTagsTableRefs})
+          $CollectionsTableTable,
+          CollectionEntry,
+          $$CollectionsTableTableFilterComposer,
+          $$CollectionsTableTableOrderingComposer,
+          $$CollectionsTableTableAnnotationComposer,
+          $$CollectionsTableTableCreateCompanionBuilder,
+          $$CollectionsTableTableUpdateCompanionBuilder,
+          (CollectionEntry, $$CollectionsTableTableReferences),
+          CollectionEntry,
+          PrefetchHooks Function({bool itemCollectionsTableRefs})
         > {
-  $$TagsTableTableTableManager(_$AppDatabase db, $TagsTableTable table)
-    : super(
+  $$CollectionsTableTableTableManager(
+    _$AppDatabase db,
+    $CollectionsTableTable table,
+  ) : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$TagsTableTableFilterComposer($db: db, $table: table),
+              $$CollectionsTableTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$TagsTableTableOrderingComposer($db: db, $table: table),
+              $$CollectionsTableTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$TagsTableTableAnnotationComposer($db: db, $table: table),
-          updateCompanionCallback: ({
-            Value<int> id = const Value.absent(),
-            Value<String> name = const Value.absent(),
-            Value<int> colorValue = const Value.absent(),
-          }) => TagsTableCompanion(id: id, name: name, colorValue: colorValue),
+              $$CollectionsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<int> colorValue = const Value.absent(),
+                Value<DateTime?> createdAtUtc = const Value.absent(),
+              }) => CollectionsTableCompanion(
+                id: id,
+                name: name,
+                description: description,
+                colorValue: colorValue,
+                createdAtUtc: createdAtUtc,
+              ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
+                Value<String?> description = const Value.absent(),
                 Value<int> colorValue = const Value.absent(),
-              }) => TagsTableCompanion.insert(
+                Value<DateTime?> createdAtUtc = const Value.absent(),
+              }) => CollectionsTableCompanion.insert(
                 id: id,
                 name: name,
+                description: description,
                 colorValue: colorValue,
+                createdAtUtc: createdAtUtc,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
-                  $$TagsTableTableReferences(db, table, e),
+                  e.readTable<$CollectionsTableTable, CollectionEntry>(table),
+                  $$CollectionsTableTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({itemTagsTableRefs = false}) {
+          prefetchHooksCallback: ({itemCollectionsTableRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
-                if (itemTagsTableRefs) db.itemTagsTable,
+                if (itemCollectionsTableRefs) db.itemCollectionsTable,
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
                 return [
-                  if (itemTagsTableRefs)
+                  if (itemCollectionsTableRefs)
                     await $_getPrefetchedData<
-                      TagEntry,
-                      $TagsTableTable,
-                      ItemTagEntry
+                      CollectionEntry,
+                      $CollectionsTableTable,
+                      ItemCollectionEntry
                     >(
                       currentTable: table,
-                      referencedTable: $$TagsTableTableReferences
-                          ._itemTagsTableRefsTable(db),
+                      referencedTable: $$CollectionsTableTableReferences
+                          ._itemCollectionsTableRefsTable(db),
                       managerFromTypedResult: (p0) =>
-                          $$TagsTableTableReferences(
+                          $$CollectionsTableTableReferences(
                             db,
                             table,
                             p0,
-                          ).itemTagsTableRefs,
+                          ).itemCollectionsTableRefs,
                       referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.tagId == item.id),
+                          referencedItems.where(
+                            (e) => e.collectionId == item.id,
+                          ),
                       typedResults: items,
                     ),
                 ];
@@ -2908,36 +3116,41 @@ class $$TagsTableTableTableManager
       );
 }
 
-typedef $$TagsTableTableProcessedTableManager =
+typedef $$CollectionsTableTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $TagsTableTable,
-      TagEntry,
-      $$TagsTableTableFilterComposer,
-      $$TagsTableTableOrderingComposer,
-      $$TagsTableTableAnnotationComposer,
-      $$TagsTableTableCreateCompanionBuilder,
-      $$TagsTableTableUpdateCompanionBuilder,
-      (TagEntry, $$TagsTableTableReferences),
-      TagEntry,
-      PrefetchHooks Function({bool itemTagsTableRefs})
+      $CollectionsTableTable,
+      CollectionEntry,
+      $$CollectionsTableTableFilterComposer,
+      $$CollectionsTableTableOrderingComposer,
+      $$CollectionsTableTableAnnotationComposer,
+      $$CollectionsTableTableCreateCompanionBuilder,
+      $$CollectionsTableTableUpdateCompanionBuilder,
+      (CollectionEntry, $$CollectionsTableTableReferences),
+      CollectionEntry,
+      PrefetchHooks Function({bool itemCollectionsTableRefs})
     >;
-typedef $$ItemTagsTableTableCreateCompanionBuilder =
-    ItemTagsTableCompanion Function({
+typedef $$ItemCollectionsTableTableCreateCompanionBuilder =
+    ItemCollectionsTableCompanion Function({
       required String itemId,
-      required int tagId,
+      required int collectionId,
       Value<int> rowid,
     });
-typedef $$ItemTagsTableTableUpdateCompanionBuilder =
-    ItemTagsTableCompanion Function({
+typedef $$ItemCollectionsTableTableUpdateCompanionBuilder =
+    ItemCollectionsTableCompanion Function({
       Value<String> itemId,
-      Value<int> tagId,
+      Value<int> collectionId,
       Value<int> rowid,
     });
 
-final class $$ItemTagsTableTableReferences
-    extends BaseReferences<_$AppDatabase, $ItemTagsTableTable, ItemTagEntry> {
-  $$ItemTagsTableTableReferences(
+final class $$ItemCollectionsTableTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $ItemCollectionsTableTable,
+          ItemCollectionEntry
+        > {
+  $$ItemCollectionsTableTableReferences(
     super.$_db,
     super.$_table,
     super.$_typedResult,
@@ -2945,7 +3158,7 @@ final class $$ItemTagsTableTableReferences
 
   static $SavedItemsTableTable _itemIdTable(_$AppDatabase db) => db
       .savedItemsTable
-      .createAlias('item_tags_table__item_id__saved_items_table__id');
+      .createAlias('item_collections_table__item_id__saved_items_table__id');
 
   $$SavedItemsTableTableProcessedTableManager get itemId {
     final $_column = $_itemColumn<String>('item_id')!;
@@ -2961,17 +3174,19 @@ final class $$ItemTagsTableTableReferences
     );
   }
 
-  static $TagsTableTable _tagIdTable(_$AppDatabase db) =>
-      db.tagsTable.createAlias('item_tags_table__tag_id__tags_table__id');
+  static $CollectionsTableTable _collectionIdTable(_$AppDatabase db) =>
+      db.collectionsTable.createAlias(
+        'item_collections_table__collection_id__collections_table__id',
+      );
 
-  $$TagsTableTableProcessedTableManager get tagId {
-    final $_column = $_itemColumn<int>('tag_id')!;
+  $$CollectionsTableTableProcessedTableManager get collectionId {
+    final $_column = $_itemColumn<int>('collection_id')!;
 
-    final manager = $$TagsTableTableTableManager(
+    final manager = $$CollectionsTableTableTableManager(
       $_db,
-      $_db.tagsTable,
+      $_db.collectionsTable,
     ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_tagIdTable($_db));
+    final item = $_typedResult.readTableOrNull(_collectionIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -2979,9 +3194,9 @@ final class $$ItemTagsTableTableReferences
   }
 }
 
-class $$ItemTagsTableTableFilterComposer
-    extends Composer<_$AppDatabase, $ItemTagsTableTable> {
-  $$ItemTagsTableTableFilterComposer({
+class $$ItemCollectionsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $ItemCollectionsTableTable> {
+  $$ItemCollectionsTableTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -3011,20 +3226,20 @@ class $$ItemTagsTableTableFilterComposer
     return composer;
   }
 
-  $$TagsTableTableFilterComposer get tagId {
-    final $$TagsTableTableFilterComposer composer = $composerBuilder(
+  $$CollectionsTableTableFilterComposer get collectionId {
+    final $$CollectionsTableTableFilterComposer composer = $composerBuilder(
       composer: this,
-      getCurrentColumn: (t) => t.tagId,
-      referencedTable: $db.tagsTable,
+      getCurrentColumn: (t) => t.collectionId,
+      referencedTable: $db.collectionsTable,
       getReferencedColumn: (t) => t.id,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$TagsTableTableFilterComposer(
+          }) => $$CollectionsTableTableFilterComposer(
             $db: $db,
-            $table: $db.tagsTable,
+            $table: $db.collectionsTable,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3035,9 +3250,9 @@ class $$ItemTagsTableTableFilterComposer
   }
 }
 
-class $$ItemTagsTableTableOrderingComposer
-    extends Composer<_$AppDatabase, $ItemTagsTableTable> {
-  $$ItemTagsTableTableOrderingComposer({
+class $$ItemCollectionsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $ItemCollectionsTableTable> {
+  $$ItemCollectionsTableTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -3067,20 +3282,20 @@ class $$ItemTagsTableTableOrderingComposer
     return composer;
   }
 
-  $$TagsTableTableOrderingComposer get tagId {
-    final $$TagsTableTableOrderingComposer composer = $composerBuilder(
+  $$CollectionsTableTableOrderingComposer get collectionId {
+    final $$CollectionsTableTableOrderingComposer composer = $composerBuilder(
       composer: this,
-      getCurrentColumn: (t) => t.tagId,
-      referencedTable: $db.tagsTable,
+      getCurrentColumn: (t) => t.collectionId,
+      referencedTable: $db.collectionsTable,
       getReferencedColumn: (t) => t.id,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$TagsTableTableOrderingComposer(
+          }) => $$CollectionsTableTableOrderingComposer(
             $db: $db,
-            $table: $db.tagsTable,
+            $table: $db.collectionsTable,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3091,9 +3306,9 @@ class $$ItemTagsTableTableOrderingComposer
   }
 }
 
-class $$ItemTagsTableTableAnnotationComposer
-    extends Composer<_$AppDatabase, $ItemTagsTableTable> {
-  $$ItemTagsTableTableAnnotationComposer({
+class $$ItemCollectionsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ItemCollectionsTableTable> {
+  $$ItemCollectionsTableTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -3123,20 +3338,20 @@ class $$ItemTagsTableTableAnnotationComposer
     return composer;
   }
 
-  $$TagsTableTableAnnotationComposer get tagId {
-    final $$TagsTableTableAnnotationComposer composer = $composerBuilder(
+  $$CollectionsTableTableAnnotationComposer get collectionId {
+    final $$CollectionsTableTableAnnotationComposer composer = $composerBuilder(
       composer: this,
-      getCurrentColumn: (t) => t.tagId,
-      referencedTable: $db.tagsTable,
+      getCurrentColumn: (t) => t.collectionId,
+      referencedTable: $db.collectionsTable,
       getReferencedColumn: (t) => t.id,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$TagsTableTableAnnotationComposer(
+          }) => $$CollectionsTableTableAnnotationComposer(
             $db: $db,
-            $table: $db.tagsTable,
+            $table: $db.collectionsTable,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3147,61 +3362,71 @@ class $$ItemTagsTableTableAnnotationComposer
   }
 }
 
-class $$ItemTagsTableTableTableManager
+class $$ItemCollectionsTableTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $ItemTagsTableTable,
-          ItemTagEntry,
-          $$ItemTagsTableTableFilterComposer,
-          $$ItemTagsTableTableOrderingComposer,
-          $$ItemTagsTableTableAnnotationComposer,
-          $$ItemTagsTableTableCreateCompanionBuilder,
-          $$ItemTagsTableTableUpdateCompanionBuilder,
-          (ItemTagEntry, $$ItemTagsTableTableReferences),
-          ItemTagEntry,
-          PrefetchHooks Function({bool itemId, bool tagId})
+          $ItemCollectionsTableTable,
+          ItemCollectionEntry,
+          $$ItemCollectionsTableTableFilterComposer,
+          $$ItemCollectionsTableTableOrderingComposer,
+          $$ItemCollectionsTableTableAnnotationComposer,
+          $$ItemCollectionsTableTableCreateCompanionBuilder,
+          $$ItemCollectionsTableTableUpdateCompanionBuilder,
+          (ItemCollectionEntry, $$ItemCollectionsTableTableReferences),
+          ItemCollectionEntry,
+          PrefetchHooks Function({bool itemId, bool collectionId})
         > {
-  $$ItemTagsTableTableTableManager(_$AppDatabase db, $ItemTagsTableTable table)
-    : super(
+  $$ItemCollectionsTableTableTableManager(
+    _$AppDatabase db,
+    $ItemCollectionsTableTable table,
+  ) : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$ItemTagsTableTableFilterComposer($db: db, $table: table),
+              $$ItemCollectionsTableTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$ItemTagsTableTableOrderingComposer($db: db, $table: table),
+              $$ItemCollectionsTableTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
           createComputedFieldComposer: () =>
-              $$ItemTagsTableTableAnnotationComposer($db: db, $table: table),
+              $$ItemCollectionsTableTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
           updateCompanionCallback:
               ({
                 Value<String> itemId = const Value.absent(),
-                Value<int> tagId = const Value.absent(),
+                Value<int> collectionId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => ItemTagsTableCompanion(
+              }) => ItemCollectionsTableCompanion(
                 itemId: itemId,
-                tagId: tagId,
+                collectionId: collectionId,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String itemId,
-                required int tagId,
+                required int collectionId,
                 Value<int> rowid = const Value.absent(),
-              }) => ItemTagsTableCompanion.insert(
+              }) => ItemCollectionsTableCompanion.insert(
                 itemId: itemId,
-                tagId: tagId,
+                collectionId: collectionId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable(table),
-                  $$ItemTagsTableTableReferences(db, table, e),
+                  e.readTable<$ItemCollectionsTableTable, ItemCollectionEntry>(
+                    table,
+                  ),
+                  $$ItemCollectionsTableTableReferences(db, table, e),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({itemId = false, tagId = false}) {
+          prefetchHooksCallback: ({itemId = false, collectionId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -3225,21 +3450,21 @@ class $$ItemTagsTableTableTableManager
                       state = state.withJoin(
                         currentTable: table,
                         currentColumn: table.itemId,
-                        referencedTable: $$ItemTagsTableTableReferences
+                        referencedTable: $$ItemCollectionsTableTableReferences
                             ._itemIdTable(db),
-                        referencedColumn: $$ItemTagsTableTableReferences
+                        referencedColumn: $$ItemCollectionsTableTableReferences
                             ._itemIdTable(db)
                             .id,
                       ) as T;
                     }
-                    if (tagId) {
+                    if (collectionId) {
                       state = state.withJoin(
                         currentTable: table,
-                        currentColumn: table.tagId,
-                        referencedTable: $$ItemTagsTableTableReferences
-                            ._tagIdTable(db),
-                        referencedColumn: $$ItemTagsTableTableReferences
-                            ._tagIdTable(db)
+                        currentColumn: table.collectionId,
+                        referencedTable: $$ItemCollectionsTableTableReferences
+                            ._collectionIdTable(db),
+                        referencedColumn: $$ItemCollectionsTableTableReferences
+                            ._collectionIdTable(db)
                             .id,
                       ) as T;
                     }
@@ -3255,19 +3480,19 @@ class $$ItemTagsTableTableTableManager
       );
 }
 
-typedef $$ItemTagsTableTableProcessedTableManager =
+typedef $$ItemCollectionsTableTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $ItemTagsTableTable,
-      ItemTagEntry,
-      $$ItemTagsTableTableFilterComposer,
-      $$ItemTagsTableTableOrderingComposer,
-      $$ItemTagsTableTableAnnotationComposer,
-      $$ItemTagsTableTableCreateCompanionBuilder,
-      $$ItemTagsTableTableUpdateCompanionBuilder,
-      (ItemTagEntry, $$ItemTagsTableTableReferences),
-      ItemTagEntry,
-      PrefetchHooks Function({bool itemId, bool tagId})
+      $ItemCollectionsTableTable,
+      ItemCollectionEntry,
+      $$ItemCollectionsTableTableFilterComposer,
+      $$ItemCollectionsTableTableOrderingComposer,
+      $$ItemCollectionsTableTableAnnotationComposer,
+      $$ItemCollectionsTableTableCreateCompanionBuilder,
+      $$ItemCollectionsTableTableUpdateCompanionBuilder,
+      (ItemCollectionEntry, $$ItemCollectionsTableTableReferences),
+      ItemCollectionEntry,
+      PrefetchHooks Function({bool itemId, bool collectionId})
     >;
 
 class $AppDatabaseManager {
@@ -3275,8 +3500,8 @@ class $AppDatabaseManager {
   $AppDatabaseManager(this._db);
   $$SavedItemsTableTableTableManager get savedItemsTable =>
       $$SavedItemsTableTableTableManager(_db, _db.savedItemsTable);
-  $$TagsTableTableTableManager get tagsTable =>
-      $$TagsTableTableTableManager(_db, _db.tagsTable);
-  $$ItemTagsTableTableTableManager get itemTagsTable =>
-      $$ItemTagsTableTableTableManager(_db, _db.itemTagsTable);
+  $$CollectionsTableTableTableManager get collectionsTable =>
+      $$CollectionsTableTableTableManager(_db, _db.collectionsTable);
+  $$ItemCollectionsTableTableTableManager get itemCollectionsTable =>
+      $$ItemCollectionsTableTableTableManager(_db, _db.itemCollectionsTable);
 }

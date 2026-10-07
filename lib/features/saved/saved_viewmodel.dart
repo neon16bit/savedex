@@ -138,9 +138,11 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
         item.createdAtUtc!.isAfter(f.dateRangeEnd!)) {
       return false;
     }
-    if (f.selectedTagIds.isNotEmpty) {
-      final itemTagIds = item.tags.map((t) => t.id).toSet();
-      if (!f.selectedTagIds.any(itemTagIds.contains)) return false;
+    if (f.selectedCollectionIds.isNotEmpty) {
+      final itemCollectionIds = item.collections.map((c) => c.id).toSet();
+      if (!f.selectedCollectionIds.any(itemCollectionIds.contains)) {
+        return false;
+      }
     }
     if (f.searchQuery != null && f.searchQuery!.trim().isNotEmpty) {
       final terms = f.searchQuery!

@@ -40,9 +40,9 @@ void main() {
           postFlair: 'Grimoire Hunting',
           subredditType: 'public',
           enrichmentStatus: EnrichmentStatus.enriched,
-          tags: const [
-            Tag(id: 1, name: 'Frieren', colorValue: 0xFF87CEEB),
-            Tag(id: 2, name: 'Mimic', colorValue: 0xFFFF4500),
+          collections: const [
+            Collection(id: 1, name: 'Frieren', colorValue: 0xFF87CEEB),
+            Collection(id: 2, name: 'Mimic', colorValue: 0xFFFF4500),
           ],
         ),
         SavedItem(
@@ -68,7 +68,9 @@ void main() {
           savedAtUtc: DateTime.utc(2026, 2, 11, 9, 30),
           subredditType: 'public',
           enrichmentStatus: EnrichmentStatus.enriched,
-          tags: const [Tag(id: 3, name: 'StrawHat', colorValue: 0xFFDC143C)],
+          collections: const [
+            Collection(id: 3, name: 'StrawHat', colorValue: 0xFFDC143C),
+          ],
         ),
       ];
     });
@@ -113,12 +115,12 @@ void main() {
       );
       expect(post.mediaType.value, equals(MediaType.video));
 
-      final postTags = payload.itemTags['post_frieren_mimic'];
-      expect(postTags, isNotNull);
-      expect(postTags, hasLength(2));
-      expect(postTags![0].name, equals('Frieren'));
-      expect(postTags[0].colorValue, equals(0xFF87CEEB));
-      expect(postTags[1].name, equals('Mimic'));
+      final postCollections = payload.itemCollections['post_frieren_mimic'];
+      expect(postCollections, isNotNull);
+      expect(postCollections, hasLength(2));
+      expect(postCollections![0].name, equals('Frieren'));
+      expect(postCollections[0].colorValue, equals(0xFF87CEEB));
+      expect(postCollections[1].name, equals('Mimic'));
 
       final comment = payload.items.firstWhere(
         (i) => i.id.value == 'comment_luffy_reddit_app',
@@ -146,14 +148,15 @@ void main() {
 
       expect(payload.version, equals(1));
       expect(payload.items, hasLength(2));
-      expect(payload.itemTags['post_frieren_mimic'], hasLength(2));
+      expect(payload.itemCollections['post_frieren_mimic'], hasLength(2));
     });
 
     test('exportToCsv produces rich CSV with all columns', () {
       final csvString = service.exportToCsv(sampleItems);
       expect(csvString.contains('id,permalink,item_type'), isTrue);
       expect(csvString.contains('user_note'), isTrue);
-      expect(csvString.contains('tags'), isTrue);
+      expect(csvString.contains('collections'), isTrue);
+      expect(csvString.contains('collection_colors'), isTrue);
       expect(
         csvString.contains(
           'Grimoire that sees through clothes found on floor 48',
@@ -175,67 +178,70 @@ void main() {
       },
     );
 
-    test('parseSavedexCsv restores full items, notes, stars, and tags', () {
-      final csvString = service.exportToCsv(sampleItems);
-      final payload = service.parseSavedexCsv(csvString);
+    test(
+      'parseSavedexCsv restores full items, notes, stars, and collections',
+      () {
+        final csvString = service.exportToCsv(sampleItems);
+        final payload = service.parseSavedexCsv(csvString);
 
-      expect(payload.items, hasLength(2));
-      final post = payload.items.firstWhere(
-        (i) => i.id.value == 'post_frieren_mimic',
-      );
-      expect(
-        post.title.value,
-        equals('It might be a real grimoire this time (99% chance of mimic)'),
-      );
-      expect(
-        post.body.value,
-        equals(
-          'Dark! It is so dark and terrifying! Fern, help me out of here!',
-        ),
-      );
-      expect(post.mediaType.value, equals(MediaType.video));
-      expect(
-        post.thumbnailUrl.value,
-        equals('https://grimoires.org/mimic_preview.png'),
-      );
-      expect(
-        post.mediaUrl.value,
-        equals('https://grimoires.org/frieren_stuck_in_mimic.mp4'),
-      );
-      expect(post.postFlair.value, equals('Grimoire Hunting'));
-      expect(post.isStarred.value, isTrue);
-      expect(
-        post.userNote.value,
-        equals('Grimoire that sees through clothes found on floor 48'),
-      );
-      expect(post.enrichmentStatus.value, equals(EnrichmentStatus.enriched));
+        expect(payload.items, hasLength(2));
+        final post = payload.items.firstWhere(
+          (i) => i.id.value == 'post_frieren_mimic',
+        );
+        expect(
+          post.title.value,
+          equals('It might be a real grimoire this time (99% chance of mimic)'),
+        );
+        expect(
+          post.body.value,
+          equals(
+            'Dark! It is so dark and terrifying! Fern, help me out of here!',
+          ),
+        );
+        expect(post.mediaType.value, equals(MediaType.video));
+        expect(
+          post.thumbnailUrl.value,
+          equals('https://grimoires.org/mimic_preview.png'),
+        );
+        expect(
+          post.mediaUrl.value,
+          equals('https://grimoires.org/frieren_stuck_in_mimic.mp4'),
+        );
+        expect(post.postFlair.value, equals('Grimoire Hunting'));
+        expect(post.isStarred.value, isTrue);
+        expect(
+          post.userNote.value,
+          equals('Grimoire that sees through clothes found on floor 48'),
+        );
+        expect(post.enrichmentStatus.value, equals(EnrichmentStatus.enriched));
 
-      final comment = payload.items.firstWhere(
-        (i) => i.id.value == 'comment_luffy_reddit_app',
-      );
-      expect(comment.parentPostId.value, equals('t3_official_reddit_app'));
-      expect(
-        comment.parentPostTitle.value,
-        equals('State of the Official Reddit App'),
-      );
-      expect(comment.itemType.value, equals(ItemType.comment));
-      expect(comment.isArchived.value, isTrue);
+        final comment = payload.items.firstWhere(
+          (i) => i.id.value == 'comment_luffy_reddit_app',
+        );
+        expect(comment.parentPostId.value, equals('t3_official_reddit_app'));
+        expect(
+          comment.parentPostTitle.value,
+          equals('State of the Official Reddit App'),
+        );
+        expect(comment.itemType.value, equals(ItemType.comment));
+        expect(comment.isArchived.value, isTrue);
 
-      final tags = payload.itemTags['post_frieren_mimic'];
-      expect(tags, isNotNull);
-      expect(
-        tags!.map((t) => t.name).toList(),
-        containsAll(['Frieren', 'Mimic']),
-      );
-      expect(
-        tags.firstWhere((t) => t.name == 'Frieren').colorValue,
-        equals(0xFF87CEEB),
-      );
-      expect(
-        tags.firstWhere((t) => t.name == 'Mimic').colorValue,
-        equals(0xFFFF4500),
-      );
-    });
+        final collections = payload.itemCollections['post_frieren_mimic'];
+        expect(collections, isNotNull);
+        expect(
+          collections!.map((c) => c.name).toList(),
+          containsAll(['Frieren', 'Mimic']),
+        );
+        expect(
+          collections.firstWhere((c) => c.name == 'Frieren').colorValue,
+          equals(0xFF87CEEB),
+        );
+        expect(
+          collections.firstWhere((c) => c.name == 'Mimic').colorValue,
+          equals(0xFFFF4500),
+        );
+      },
+    );
 
     test('detectFileType accurately identifies extensions and content', () {
       expect(

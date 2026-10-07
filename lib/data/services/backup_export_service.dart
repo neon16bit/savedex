@@ -9,24 +9,29 @@ import 'package:savedex/data/models/saved_item_model.dart';
 
 enum BackupFileType { savedex, json, savedexCsv, redditCsv, redditZip, unknown }
 
-class SavedexTagBackup {
+class SavedexCollectionBackup {
   final String name;
+  final String? description;
   final int colorValue;
 
-  const SavedexTagBackup({required this.name, required this.colorValue});
+  const SavedexCollectionBackup({
+    required this.name,
+    this.description,
+    required this.colorValue,
+  });
 }
 
 class SavedexBackupPayload {
   final int version;
   final DateTime? exportedAt;
   final List<SavedItemsTableCompanion> items;
-  final Map<String, List<SavedexTagBackup>> itemTags;
+  final Map<String, List<SavedexCollectionBackup>> itemCollections;
 
   const SavedexBackupPayload({
     required this.version,
     this.exportedAt,
     required this.items,
-    required this.itemTags,
+    required this.itemCollections,
   });
 }
 
@@ -96,7 +101,7 @@ class BackupExportService {
     final firstLine = content.split('\n').first.toLowerCase();
     return firstLine.contains('user_note') ||
         firstLine.contains('is_starred') ||
-        (firstLine.contains('tags') && firstLine.contains('permalink'));
+        (firstLine.contains('collections') && firstLine.contains('permalink'));
   }
 
   // create compressed .savedex backup
@@ -151,8 +156,8 @@ class BackupExportService {
         'is_starred',
         'is_archived',
         'user_note',
-        'tags',
-        'tag_colors',
+        'collections',
+        'collection_colors',
         'post_flair',
         'parent_post_id',
         'parent_post_title',
@@ -182,8 +187,8 @@ class BackupExportService {
         item.isStarred ? 'true' : 'false',
         item.isArchived ? 'true' : 'false',
         item.userNote ?? '',
-        item.tags.map((t) => t.name).join(';'),
-        item.tags.map((t) => t.colorValue.toString()).join(';'),
+        item.collections.map((c) => c.name).join(';'),
+        item.collections.map((c) => c.colorValue.toString()).join(';'),
         item.postFlair ?? '',
         item.parentPostId ?? '',
         item.parentPostTitle ?? '',
@@ -234,7 +239,7 @@ class BackupExportService {
     final rawItems = decoded['items'] as List<dynamic>? ?? [];
 
     final List<SavedItemsTableCompanion> companions = [];
-    final Map<String, List<SavedexTagBackup>> itemTags = {};
+    final Map<String, List<SavedexCollectionBackup>> itemCollections = {};
 
     for (final raw in rawItems) {
       if (raw is! Map<String, dynamic>) continue;
@@ -242,19 +247,26 @@ class BackupExportService {
       companions.add(companion);
 
       final itemId = companion.id.value;
-      final rawTags = raw['tags'] as List<dynamic>? ?? [];
-      final tags = <SavedexTagBackup>[];
-      for (final t in rawTags) {
-        if (t is Map) {
-          final name = (t['name'] as String?)?.trim() ?? '';
-          final colorValue = (t['colorValue'] as num?)?.toInt() ?? 0xFFFF4500;
+      final rawCollections = raw['collections'] as List<dynamic>? ?? [];
+      final collections = <SavedexCollectionBackup>[];
+      for (final c in rawCollections) {
+        if (c is Map) {
+          final name = (c['name'] as String?)?.trim() ?? '';
+          final description = (c['description'] as String?)?.trim();
+          final colorValue = (c['colorValue'] as num?)?.toInt() ?? 0xFFFF4500;
           if (name.isNotEmpty) {
-            tags.add(SavedexTagBackup(name: name, colorValue: colorValue));
+            collections.add(
+              SavedexCollectionBackup(
+                name: name,
+                description: description,
+                colorValue: colorValue,
+              ),
+            );
           }
         }
       }
-      if (tags.isNotEmpty) {
-        itemTags[itemId] = tags;
+      if (collections.isNotEmpty) {
+        itemCollections[itemId] = collections;
       }
     }
 
@@ -262,7 +274,7 @@ class BackupExportService {
       version: version,
       exportedAt: exportedAt,
       items: companions,
-      itemTags: itemTags,
+      itemCollections: itemCollections,
     );
   }
 
@@ -270,7 +282,11 @@ class BackupExportService {
   SavedexBackupPayload parseSavedexCsv(String csvContent) {
     final rows = CsvHelper.parseCsv(csvContent);
     if (rows.isEmpty) {
-      return const SavedexBackupPayload(version: 1, items: [], itemTags: {});
+      return const SavedexBackupPayload(
+        version: 1,
+        items: [],
+        itemCollections: {},
+      );
     }
 
     final headerRow = rows.first.map((e) => e.trim().toLowerCase()).toList();
@@ -291,8 +307,8 @@ class BackupExportService {
     final isStarredIndex = headerRow.indexOf('is_starred');
     final isArchivedIndex = headerRow.indexOf('is_archived');
     final userNoteIndex = headerRow.indexOf('user_note');
-    final tagsIndex = headerRow.indexOf('tags');
-    final tagColorsIndex = headerRow.indexOf('tag_colors');
+    final collectionsIndex = headerRow.indexOf('collections');
+    final collectionColorsIndex = headerRow.indexOf('collection_colors');
     final postFlairIndex = headerRow.indexOf('post_flair');
     final parentPostIdIndex = headerRow.indexOf('parent_post_id');
     final parentPostTitleIndex = headerRow.indexOf('parent_post_title');
@@ -302,7 +318,7 @@ class BackupExportService {
     final createdAtIndex = headerRow.indexOf('created_at');
 
     final List<SavedItemsTableCompanion> companions = [];
-    final Map<String, List<SavedexTagBackup>> itemTags = {};
+    final Map<String, List<SavedexCollectionBackup>> itemCollections = {};
     int orderCounter = 0;
 
     for (int i = 1; i < rows.length; i++) {
@@ -476,18 +492,18 @@ class BackupExportService {
         ),
       );
 
-      if (tagsIndex != -1 && tagsIndex < row.length) {
-        final rawTagsStr = row[tagsIndex].trim();
-        if (rawTagsStr.isNotEmpty) {
-          final tagNames = rawTagsStr
+      if (collectionsIndex != -1 && collectionsIndex < row.length) {
+        final rawCollectionsStr = row[collectionsIndex].trim();
+        if (rawCollectionsStr.isNotEmpty) {
+          final collectionNames = rawCollectionsStr
               .split(';')
               .map((s) => s.trim())
               .where((s) => s.isNotEmpty)
               .toList();
 
           final rawColorsStr =
-              tagColorsIndex != -1 && tagColorsIndex < row.length
-              ? row[tagColorsIndex].trim()
+              collectionColorsIndex != -1 && collectionColorsIndex < row.length
+              ? row[collectionColorsIndex].trim()
               : '';
           final colorValues = rawColorsStr.isNotEmpty
               ? rawColorsStr
@@ -496,14 +512,17 @@ class BackupExportService {
                     .toList()
               : <int>[];
 
-          final tagsList = <SavedexTagBackup>[];
-          for (int t = 0; t < tagNames.length; t++) {
+          final collectionsList = <SavedexCollectionBackup>[];
+          for (int t = 0; t < collectionNames.length; t++) {
             final color = t < colorValues.length ? colorValues[t] : 0xFFFF4500;
-            tagsList.add(
-              SavedexTagBackup(name: tagNames[t], colorValue: color),
+            collectionsList.add(
+              SavedexCollectionBackup(
+                name: collectionNames[t],
+                colorValue: color,
+              ),
             );
           }
-          itemTags[id] = tagsList;
+          itemCollections[id] = collectionsList;
         }
       }
     }
@@ -511,7 +530,7 @@ class BackupExportService {
     return SavedexBackupPayload(
       version: 1,
       items: companions,
-      itemTags: itemTags,
+      itemCollections: itemCollections,
     );
   }
 
@@ -544,9 +563,14 @@ class BackupExportService {
         'postFlair': item.postFlair,
         'subredditType': item.subredditType,
         'enrichmentStatus': item.enrichmentStatus.name,
-        'tags': item.tags
+        'collections': item.collections
             .map(
-              (t) => {'id': t.id, 'name': t.name, 'colorValue': t.colorValue},
+              (c) => {
+                'id': c.id,
+                'name': c.name,
+                'description': c.description,
+                'colorValue': c.colorValue,
+              },
             )
             .toList(),
       };

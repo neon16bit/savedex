@@ -40,12 +40,33 @@ class SavedItemRepository {
           isStarred: filter.isStarred,
           isArchived: filter.isArchived,
           isNsfw: filter.isNsfw,
-          tagIds: filter.selectedTagIds,
+          collectionIds: filter.selectedCollectionIds,
           sortOption: filter.sortOption,
           dateRangeStart: filter.dateRangeStart,
           dateRangeEnd: filter.dateRangeEnd,
         )
-        .map((rows) => rows.map((r) => r.toDomain()).toList());
+        .asyncMap((rows) => _attachCollectionsToEntries(rows));
+  }
+
+  Future<List<SavedItem>> getAllSavedItems(FilterCriteria filter) async {
+    final stream = db.watchFilteredSavedItems(
+      searchQuery: filter.searchQuery,
+      subreddits: filter.selectedSubreddits,
+      authors: filter.selectedAuthors,
+      flairs: filter.selectedFlairs,
+      mediaTypes: filter.selectedMediaTypes,
+      itemType: filter.itemType,
+      enrichmentStatus: filter.enrichmentStatus,
+      isStarred: filter.isStarred,
+      isArchived: filter.isArchived,
+      isNsfw: filter.isNsfw,
+      collectionIds: filter.selectedCollectionIds,
+      sortOption: filter.sortOption,
+      dateRangeStart: filter.dateRangeStart,
+      dateRangeEnd: filter.dateRangeEnd,
+    );
+    final rows = await stream.first;
+    return _attachCollectionsToEntries(rows);
   }
 
   Future<PagedRows<SavedItem>> getSavedItemsPage({
@@ -63,7 +84,7 @@ class SavedItemRepository {
       return const PagedRows(items: [], nextCursor: null, hasMore: false);
     }
 
-    final items = await _attachTagsToEntries(page.items);
+    final items = await _attachCollectionsToEntries(page.items);
     return PagedRows(
       items: items,
       nextCursor: page.nextCursor,
@@ -86,10 +107,10 @@ class SavedItemRepository {
     }
     final chunkResults = await Future.wait(chunkFutures);
     final allEntries = [for (final list in chunkResults) ...list];
-    return _attachTagsToEntries(allEntries);
+    return _attachCollectionsToEntries(allEntries);
   }
 
-  Future<List<SavedItem>> _attachTagsToEntries(
+  Future<List<SavedItem>> _attachCollectionsToEntries(
     List<SavedItemEntry> entries,
   ) async {
     if (entries.isEmpty) return const [];
@@ -103,29 +124,39 @@ class SavedItemRepository {
         i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize,
       );
       chunkFutures.add(
-        (db.select(db.tagsTable).join([
+        (db.select(db.collectionsTable).join([
           innerJoin(
-            db.itemTagsTable,
-            db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
+            db.itemCollectionsTable,
+            db.itemCollectionsTable.collectionId.equalsExp(
+              db.collectionsTable.id,
+            ),
           ),
-        ])..where(db.itemTagsTable.itemId.isIn(chunk))).get(),
+        ])..where(db.itemCollectionsTable.itemId.isIn(chunk))).get(),
       );
     }
 
     final chunkResults = await Future.wait(chunkFutures);
-    final tagRows = [for (final list in chunkResults) ...list];
+    final collectionRows = [for (final list in chunkResults) ...list];
 
-    final tagsMap = <String, List<Tag>>{};
-    for (final row in tagRows) {
-      final t = row.readTable(db.tagsTable);
-      final itemId = row.readTable(db.itemTagsTable).itemId;
-      tagsMap
+    final collectionsMap = <String, List<Collection>>{};
+    for (final row in collectionRows) {
+      final c = row.readTable(db.collectionsTable);
+      final itemId = row.readTable(db.itemCollectionsTable).itemId;
+      collectionsMap
           .putIfAbsent(itemId, () => [])
-          .add(Tag(id: t.id, name: t.name, colorValue: t.colorValue));
+          .add(
+            Collection(
+              id: c.id,
+              name: c.name,
+              description: c.description,
+              colorValue: c.colorValue,
+              createdAtUtc: c.createdAtUtc,
+            ),
+          );
     }
 
     return entries
-        .map((e) => e.toDomain(tags: tagsMap[e.id] ?? const []))
+        .map((e) => e.toDomain(collections: collectionsMap[e.id] ?? const []))
         .toList();
   }
 
@@ -134,36 +165,52 @@ class SavedItemRepository {
     final entry = await query.getSingleOrNull();
     if (entry == null) return null;
 
-    final tags =
-        await (db.select(db.tagsTable).join([
+    final collections =
+        await (db.select(db.collectionsTable).join([
           innerJoin(
-            db.itemTagsTable,
-            db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
+            db.itemCollectionsTable,
+            db.itemCollectionsTable.collectionId.equalsExp(
+              db.collectionsTable.id,
+            ),
           ),
-        ])..where(db.itemTagsTable.itemId.equals(id))).map((row) {
-          final t = row.readTable(db.tagsTable);
-          return Tag(id: t.id, name: t.name, colorValue: t.colorValue);
+        ])..where(db.itemCollectionsTable.itemId.equals(id))).map((row) {
+          final c = row.readTable(db.collectionsTable);
+          return Collection(
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            colorValue: c.colorValue,
+            createdAtUtc: c.createdAtUtc,
+          );
         }).get();
 
-    return entry.toDomain(tags: tags);
+    return entry.toDomain(collections: collections);
   }
 
   Stream<SavedItem?> watchItemById(String id) {
     final query = db.select(db.savedItemsTable)..where((t) => t.id.equals(id));
     return query.watchSingleOrNull().asyncMap((entry) async {
       if (entry == null) return null;
-      final tags =
-          await (db.select(db.tagsTable).join([
+      final collections =
+          await (db.select(db.collectionsTable).join([
             innerJoin(
-              db.itemTagsTable,
-              db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
+              db.itemCollectionsTable,
+              db.itemCollectionsTable.collectionId.equalsExp(
+                db.collectionsTable.id,
+              ),
             ),
-          ])..where(db.itemTagsTable.itemId.equals(id))).map((row) {
-            final t = row.readTable(db.tagsTable);
-            return Tag(id: t.id, name: t.name, colorValue: t.colorValue);
+          ])..where(db.itemCollectionsTable.itemId.equals(id))).map((row) {
+            final c = row.readTable(db.collectionsTable);
+            return Collection(
+              id: c.id,
+              name: c.name,
+              description: c.description,
+              colorValue: c.colorValue,
+              createdAtUtc: c.createdAtUtc,
+            );
           }).get();
 
-      return entry.toDomain(tags: tags);
+      return entry.toDomain(collections: collections);
     });
   }
 
@@ -597,48 +644,53 @@ class SavedItemRepository {
         );
       }
 
-      if (payload.itemTags.isNotEmpty) {
-        final existingTags = await db.select(db.tagsTable).get();
-        final tagNameToId = <String, int>{};
-        for (final t in existingTags) {
-          tagNameToId[t.name.toLowerCase()] = t.id;
+      if (payload.itemCollections.isNotEmpty) {
+        final existingCollections = await db.select(db.collectionsTable).get();
+        final collectionNameToId = <String, int>{};
+        for (final c in existingCollections) {
+          collectionNameToId[c.name.toLowerCase()] = c.id;
         }
 
-        for (final tags in payload.itemTags.values) {
-          for (final tag in tags) {
-            final lower = tag.name.toLowerCase();
-            if (!tagNameToId.containsKey(lower)) {
+        for (final collections in payload.itemCollections.values) {
+          for (final collection in collections) {
+            final lower = collection.name.toLowerCase();
+            if (!collectionNameToId.containsKey(lower)) {
               final insertedId = await db
-                  .into(db.tagsTable)
+                  .into(db.collectionsTable)
                   .insert(
-                    TagsTableCompanion.insert(
-                      name: tag.name,
-                      colorValue: Value(tag.colorValue),
+                    CollectionsTableCompanion.insert(
+                      name: collection.name,
+                      description: Value(collection.description),
+                      colorValue: Value(collection.colorValue),
                     ),
                     mode: InsertMode.insertOrIgnore,
                   );
               if (insertedId > 0) {
-                tagNameToId[lower] = insertedId;
+                collectionNameToId[lower] = insertedId;
               } else {
-                final found = await (db.select(
-                  db.tagsTable,
-                )..where((t) => t.name.equals(tag.name))).getSingleOrNull();
+                final found =
+                    await (db.select(db.collectionsTable)
+                          ..where((c) => c.name.equals(collection.name)))
+                        .getSingleOrNull();
                 if (found != null) {
-                  tagNameToId[lower] = found.id;
+                  collectionNameToId[lower] = found.id;
                 }
               }
             }
           }
         }
 
-        final linkCompanions = <ItemTagsTableCompanion>[];
-        for (final entry in payload.itemTags.entries) {
+        final linkCompanions = <ItemCollectionsTableCompanion>[];
+        for (final entry in payload.itemCollections.entries) {
           final itemId = entry.key;
-          for (final tag in entry.value) {
-            final tagId = tagNameToId[tag.name.toLowerCase()];
-            if (tagId != null) {
+          for (final collection in entry.value) {
+            final colId = collectionNameToId[collection.name.toLowerCase()];
+            if (colId != null) {
               linkCompanions.add(
-                ItemTagsTableCompanion.insert(itemId: itemId, tagId: tagId),
+                ItemCollectionsTableCompanion.insert(
+                  itemId: itemId,
+                  collectionId: colId,
+                ),
               );
             }
           }
@@ -655,7 +707,7 @@ class SavedItemRepository {
             );
             await db.batch((batch) {
               batch.insertAll(
-                db.itemTagsTable,
+                db.itemCollectionsTable,
                 chunk,
                 mode: InsertMode.insertOrIgnore,
               );

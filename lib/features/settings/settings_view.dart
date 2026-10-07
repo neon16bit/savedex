@@ -93,7 +93,7 @@ class SettingsView extends ConsumerWidget {
                     ),
                   ),
                   subtitle: const Text(
-                    'Delete all saved posts, comments, tags, and search index',
+                    'Delete all saved posts, comments, collections, and search index',
                   ),
                   trailing: OutlinedButton(
                     style: OutlinedButton.styleFrom(
@@ -709,7 +709,7 @@ class SettingsView extends ConsumerWidget {
           ],
         ),
         content: const Text(
-          'This will permanently delete all saved posts, comments, tags, user notes, and the search index from your local library.\n\nThis is useful for resetting and testing imports from scratch.',
+          'This will permanently delete all saved posts, comments, collections, user notes, and the search index from your local library.\n\nThis is useful for resetting and testing imports from scratch.',
         ),
         actions: [
           TextButton(
