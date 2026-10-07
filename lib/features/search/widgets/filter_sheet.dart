@@ -204,7 +204,9 @@ class FilterSheet extends ConsumerWidget {
                                 .contains(name);
 
                             return FilterChip(
-                              label: Text('r/$name ($count)'),
+                              label: Text(
+                                '${SavedItem.formatSubreddit(name)} ($count)',
+                              ),
                               selected: isSelected,
                               onSelected: (_) =>
                                   viewModel.toggleSubreddit(name),

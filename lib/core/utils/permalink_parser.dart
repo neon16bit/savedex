@@ -179,13 +179,18 @@ class PermalinkParser {
     }
 
     final idSuffix = postId != null && postId.isNotEmpty ? ' #$postId' : '';
+    final subDisplay = subreddit != null
+        ? (subreddit.startsWith('u_') || subreddit.startsWith('u/')
+              ? 'u/${subreddit.substring(2)}'
+              : 'r/$subreddit')
+        : null;
     if (isComment) {
-      return subreddit != null
-          ? 'Comment in r/$subreddit$idSuffix'
+      return subDisplay != null
+          ? 'Comment in $subDisplay$idSuffix'
           : 'Saved Comment$idSuffix';
     }
-    return subreddit != null
-        ? 'Post in r/$subreddit$idSuffix'
+    return subDisplay != null
+        ? 'Post in $subDisplay$idSuffix'
         : 'Saved Post$idSuffix';
   }
 }

@@ -543,8 +543,13 @@ class _SavedViewState extends ConsumerState<SavedView> {
               (sub) => Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Chip(
-                  avatar: const Icon(Icons.tag_rounded, size: 14),
-                  label: Text('r/$sub'),
+                  avatar: Icon(
+                    SavedItem.isUserSubreddit(sub)
+                        ? Icons.person_rounded
+                        : Icons.tag_rounded,
+                    size: 14,
+                  ),
+                  label: Text(SavedItem.formatSubreddit(sub)),
                   onDeleted: () => filterVm.toggleSubreddit(sub),
                 ),
               ),

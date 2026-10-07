@@ -121,7 +121,7 @@ class CompactListItem extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(100),
                           ),
                           child: Text(
-                            'r/${item.subreddit}',
+                            item.displaySubreddit,
                             style: TextStyle(
                               fontSize: 10.5,
                               fontWeight: FontWeight.w800,

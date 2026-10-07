@@ -133,7 +133,7 @@ class GalleryItem extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'r/${item.subreddit}',
+                  item.displaySubreddit,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 9.5,

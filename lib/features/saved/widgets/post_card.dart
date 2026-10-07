@@ -54,7 +54,7 @@ class PostCard extends ConsumerWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'r/${item.subreddit}',
+                          item.displaySubreddit,
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,

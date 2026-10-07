@@ -63,6 +63,32 @@ class SavedItem {
   bool get isComment => itemType == ItemType.comment;
   bool get isPost => itemType == ItemType.post;
 
+  bool get isUserPost =>
+      subredditType == 'user' ||
+      subreddit.startsWith('u_') ||
+      subreddit.startsWith('u/');
+
+  static String formatSubreddit(String subreddit, {String? subredditType}) {
+    if (subredditType == 'user' ||
+        subreddit.startsWith('u_') ||
+        subreddit.startsWith('u/')) {
+      final clean = (subreddit.startsWith('u_') || subreddit.startsWith('u/'))
+          ? subreddit.substring(2)
+          : subreddit;
+      return 'u/$clean';
+    }
+    return 'r/$subreddit';
+  }
+
+  static bool isUserSubreddit(String subreddit, {String? subredditType}) {
+    return subredditType == 'user' ||
+        subreddit.startsWith('u_') ||
+        subreddit.startsWith('u/');
+  }
+
+  String get displaySubreddit =>
+      formatSubreddit(subreddit, subredditType: subredditType);
+
   String get fullPermalink {
     if (permalink.startsWith('http://') || permalink.startsWith('https://')) {
       return permalink;

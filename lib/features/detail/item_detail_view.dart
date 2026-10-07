@@ -112,7 +112,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
           return Scaffold(
             appBar: AppBar(
               titleSpacing: 0,
-              title: Text('r/${rawItem.subreddit}'),
+              title: Text(rawItem.displaySubreddit),
             ),
             body: const Center(child: CircularProgressIndicator()),
           );
@@ -133,7 +133,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             scrolledUnderElevation: 2,
             titleSpacing: 0,
             title: Text(
-              'r/${item.subreddit}',
+              item.displaySubreddit,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
