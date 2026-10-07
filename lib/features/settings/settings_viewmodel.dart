@@ -77,7 +77,7 @@ class SettingsViewModel extends Notifier<UserSettings> {
     required int expiresIn,
   }) {
     final expiry = DateTime.now().toUtc().add(
-      Duration(seconds: expiresIn - 60),
+      Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
     );
     state = state.copyWith(
       redditAccessToken: accessToken,
@@ -93,6 +93,17 @@ class SettingsViewModel extends Notifier<UserSettings> {
           refreshToken: refreshToken,
           tokenExpiry: expiry,
         );
+  }
+
+  void saveRefreshedToken(String accessToken, int expiresIn) {
+    final expiry = DateTime.now().toUtc().add(
+      Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
+    );
+    state = state.copyWith(
+      redditAccessToken: accessToken,
+      redditTokenExpiry: expiry,
+    );
+    ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
   void clearOAuthAuth() {

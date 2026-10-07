@@ -113,6 +113,7 @@ class RedditApiService {
   String? _anonymousAccessToken;
   DateTime? _anonymousTokenExpiry;
   String? _lastAuthError;
+  Future<String?>? _inFlightTokenRefresh;
   void Function(String accessToken, int expiresIn)? onTokenRefreshed;
 
   RedditApiService({http.Client? client}) : _client = client ?? http.Client();
@@ -139,6 +140,7 @@ class RedditApiService {
     if (clientId != null && _oauthClientId != clientId) {
       _anonymousAccessToken = null;
       _anonymousTokenExpiry = null;
+      _inFlightTokenRefresh = null;
     }
     if (userAgent != null) _userAgent = userAgent;
     if (clientId != null) _oauthClientId = clientId;
@@ -148,6 +150,7 @@ class RedditApiService {
       _refreshToken = null;
       _accessToken = null;
       _tokenExpiry = null;
+      _inFlightTokenRefresh = null;
     } else {
       if (refreshToken != null) _refreshToken = refreshToken;
       if (accessToken != null) _accessToken = accessToken;
@@ -331,7 +334,7 @@ class RedditApiService {
     if (result != null) {
       _anonymousAccessToken = result.accessToken;
       _anonymousTokenExpiry = DateTime.now().add(
-        Duration(seconds: result.expiresIn - 60),
+        Duration(seconds: (result.expiresIn - 300).clamp(60, result.expiresIn)),
       );
       return _anonymousAccessToken;
     }
@@ -339,6 +342,27 @@ class RedditApiService {
   }
 
   Future<String?> _getValidToken({bool forceRefresh = false}) async {
+    if (!forceRefresh &&
+        _accessToken != null &&
+        _tokenExpiry != null &&
+        DateTime.now().isBefore(_tokenExpiry!)) {
+      return _accessToken;
+    }
+
+    if (_inFlightTokenRefresh != null) {
+      return await _inFlightTokenRefresh!;
+    }
+
+    final refreshFuture = _executeTokenRefresh(forceRefresh: forceRefresh);
+    _inFlightTokenRefresh = refreshFuture;
+    try {
+      return await refreshFuture;
+    } finally {
+      _inFlightTokenRefresh = null;
+    }
+  }
+
+  Future<String?> _executeTokenRefresh({bool forceRefresh = false}) async {
     if (hasUserOAuth) {
       if (!forceRefresh &&
           _accessToken != null &&
@@ -355,11 +379,14 @@ class RedditApiService {
       if (refreshed != null) {
         _accessToken = refreshed.accessToken;
         _tokenExpiry = DateTime.now().add(
-          Duration(seconds: refreshed.expiresIn - 60),
+          Duration(
+            seconds: (refreshed.expiresIn - 300).clamp(60, refreshed.expiresIn),
+          ),
         );
         onTokenRefreshed?.call(refreshed.accessToken, refreshed.expiresIn);
         return _accessToken;
       }
+      return null;
     }
 
     if (hasOAuthCredentials) {
@@ -380,10 +407,13 @@ class RedditApiService {
       if (result != null) {
         _accessToken = result.accessToken;
         _tokenExpiry = DateTime.now().add(
-          Duration(seconds: result.expiresIn - 60),
+          Duration(
+            seconds: (result.expiresIn - 300).clamp(60, result.expiresIn),
+          ),
         );
         return _accessToken;
       }
+      return null;
     }
 
     if (_oauthClientId != null && _oauthClientId!.trim().isNotEmpty) {
@@ -420,6 +450,8 @@ class RedditApiService {
           .timeout(timeout);
 
       if (response.statusCode == 401 || response.statusCode == 403) {
+        _accessToken = null;
+        _tokenExpiry = null;
         token = await _getValidToken(forceRefresh: true);
         if (token != null) {
           response = await _client

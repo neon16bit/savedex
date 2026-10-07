@@ -20,7 +20,8 @@ final csvParserServiceProvider = Provider<CsvParserService>((ref) {
 
 final redditApiServiceProvider = Provider<RedditApiService>((ref) {
   final api = RedditApiService();
-  final settings = ref.watch(settingsRepositoryProvider).settings;
+  final settingsRepo = ref.watch(settingsRepositoryProvider);
+  final settings = settingsRepo.settings;
   api.updateCredentials(
     clientId: settings.redditClientId,
     clientSecret: settings.redditClientSecret,
@@ -30,6 +31,17 @@ final redditApiServiceProvider = Provider<RedditApiService>((ref) {
     accessToken: settings.redditAccessToken,
     tokenExpiry: settings.redditTokenExpiry,
   );
+  api.onTokenRefreshed = (accessToken, expiresIn) {
+    final expiry = DateTime.now().toUtc().add(
+      Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
+    );
+    settingsRepo.updateSettings(
+      settingsRepo.settings.copyWith(
+        redditAccessToken: accessToken,
+        redditTokenExpiry: expiry,
+      ),
+    );
+  };
   ref.onDispose(() => api.dispose());
   return api;
 });
