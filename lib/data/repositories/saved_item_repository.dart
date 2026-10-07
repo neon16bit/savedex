@@ -279,12 +279,7 @@ class SavedItemRepository {
   }
 
   Future<void> deleteItem(String id) async {
-    await db.transaction(() async {
-      await (db.delete(
-        db.itemTagsTable,
-      )..where((t) => t.itemId.equals(id))).go();
-      await (db.delete(db.savedItemsTable)..where((t) => t.id.equals(id))).go();
-    });
+    await (db.delete(db.savedItemsTable)..where((t) => t.id.equals(id))).go();
   }
 
   Future<ImportSummary> importFromCsvContent(

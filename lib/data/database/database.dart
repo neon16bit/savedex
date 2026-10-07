@@ -39,7 +39,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -47,6 +47,7 @@ class AppDatabase extends _$AppDatabase {
       await m.createAll();
       await _createFts5(this);
       await _createIndexes(this);
+      _ftsInitFuture = Future.value();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -60,19 +61,28 @@ class AppDatabase extends _$AppDatabase {
       if (from < 4) {
         await _rebuildFts(this);
       }
+      if (from < 5) {
+        await _createIndexes(this);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
       await _createFts5(this);
+      _ftsInitFuture = Future.value();
     },
   );
 
-  bool _ftsVerified = false;
+  Future<void>? _ftsInitFuture;
 
-  Future<void> ensureFtsSchema() async {
-    if (_ftsVerified) return;
-    await _createFts5(this);
-    _ftsVerified = true;
+  Future<void> ensureFtsSchema() {
+    return _ftsInitFuture ??= () async {
+      try {
+        await _createFts5(this);
+      } catch (e) {
+        _ftsInitFuture = null;
+        rethrow;
+      }
+    }();
   }
 
   static Future<void> _createIndexes(AppDatabase db) async {
@@ -83,12 +93,16 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_order_asc ON saved_items_table (import_order ASC, id ASC);
       ''');
+
+      await db.customStatement('DROP INDEX IF EXISTS idx_saved_date_desc;');
+      await db.customStatement('DROP INDEX IF EXISTS idx_saved_date_asc;');
       await db.customStatement('''
-        CREATE INDEX IF NOT EXISTS idx_saved_date_desc ON saved_items_table (created_at_utc DESC, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_saved_date_desc ON saved_items_table (COALESCE(created_at_utc, 0) DESC, id DESC);
       ''');
       await db.customStatement('''
-        CREATE INDEX IF NOT EXISTS idx_saved_date_asc ON saved_items_table (created_at_utc ASC, id ASC);
+        CREATE INDEX IF NOT EXISTS idx_saved_date_asc ON saved_items_table (COALESCE(created_at_utc, 0) ASC, id ASC);
       ''');
+
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_score_desc ON saved_items_table (score DESC, id DESC);
       ''');
@@ -98,9 +112,12 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_sub_nocase ON saved_items_table (subreddit COLLATE NOCASE, id);
       ''');
+
+      await db.customStatement('DROP INDEX IF EXISTS idx_saved_author_nocase;');
       await db.customStatement('''
-        CREATE INDEX IF NOT EXISTS idx_saved_author_nocase ON saved_items_table (author COLLATE NOCASE, id);
+        CREATE INDEX IF NOT EXISTS idx_saved_author_nocase ON saved_items_table (COALESCE(author, '') COLLATE NOCASE, id);
       ''');
+
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_title_nocase ON saved_items_table (title COLLATE NOCASE, id);
       ''');
@@ -116,11 +133,9 @@ class AppDatabase extends _$AppDatabase {
     try {
       bool needsRebuild = false;
       try {
-        await db
-            .customSelect(
-              'SELECT parent_post_title FROM saved_items_fts LIMIT 0',
-            )
-            .get();
+        await db.customStatement(
+          'SELECT parent_post_title FROM saved_items_fts LIMIT 0;',
+        );
       } catch (_) {
         needsRebuild = true;
       }
@@ -203,11 +218,13 @@ class AppDatabase extends _$AppDatabase {
 
   static Future<void> _rebuildFts(AppDatabase db) async {
     try {
+      db._ftsInitFuture = null;
       await db.customStatement('DROP TRIGGER IF EXISTS saved_items_ai');
       await db.customStatement('DROP TRIGGER IF EXISTS saved_items_ad');
       await db.customStatement('DROP TRIGGER IF EXISTS saved_items_au');
       await db.customStatement('DROP TABLE IF EXISTS saved_items_fts');
       await _createFts5(db);
+      db._ftsInitFuture = Future.value();
     } catch (e, stack) {
       debugPrint('[Database] FTS5 rebuild failed: $e\n$stack');
       rethrow;
@@ -341,12 +358,18 @@ class AppDatabase extends _$AppDatabase {
             );
           case SortOption.createdDateDesc:
             return OrderingTerm(
-              expression: tbl.createdAtUtc,
+              expression: coalesce([
+                tbl.createdAtUtc,
+                Constant(DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)),
+              ]),
               mode: OrderingMode.desc,
             );
           case SortOption.createdDateAsc:
             return OrderingTerm(
-              expression: tbl.createdAtUtc,
+              expression: coalesce([
+                tbl.createdAtUtc,
+                Constant(DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)),
+              ]),
               mode: OrderingMode.asc,
             );
           case SortOption.scoreDesc:
@@ -355,27 +378,29 @@ class AppDatabase extends _$AppDatabase {
             return OrderingTerm(expression: tbl.score, mode: OrderingMode.asc);
           case SortOption.subredditAsc:
             return OrderingTerm(
-              expression: tbl.subreddit.lower(),
+              expression: tbl.subreddit.collate(Collate.noCase),
               mode: OrderingMode.asc,
             );
           case SortOption.subredditDesc:
             return OrderingTerm(
-              expression: tbl.subreddit.lower(),
+              expression: tbl.subreddit.collate(Collate.noCase),
               mode: OrderingMode.desc,
             );
           case SortOption.authorAsc:
             return OrderingTerm(
-              expression: tbl.author.lower(),
+              expression: coalesce([tbl.author, const Constant('')])
+                  .collate(Collate.noCase),
               mode: OrderingMode.asc,
             );
           case SortOption.authorDesc:
             return OrderingTerm(
-              expression: tbl.author.lower(),
+              expression: coalesce([tbl.author, const Constant('')])
+                  .collate(Collate.noCase),
               mode: OrderingMode.desc,
             );
           case SortOption.titleAsc:
             return OrderingTerm(
-              expression: tbl.title.lower(),
+              expression: tbl.title.collate(Collate.noCase),
               mode: OrderingMode.asc,
             );
           case SortOption.commentsDesc:
@@ -395,7 +420,7 @@ class AppDatabase extends _$AppDatabase {
     final terms = raw
         .trim()
         .split(RegExp(r'\s+'))
-        .map((t) => t.replaceAll('"', ''))
+        .map((t) => t.replaceAll(RegExp(r'["*]'), ''))
         .where((t) => t.isNotEmpty)
         .map((t) => '"$t"*')
         .join(' ');
@@ -510,7 +535,7 @@ class AppDatabase extends _$AppDatabase {
         );
       case SortOption.authorAsc:
         return (
-          '(COALESCE(s.author, "") COLLATE NOCASE, s.id) > (?, ?)',
+          "(COALESCE(s.author, '') COLLATE NOCASE, s.id) > (?, ?)",
           [
             Variable.withString(cursor.sortValue as String),
             Variable.withString(cursor.id),
@@ -518,7 +543,7 @@ class AppDatabase extends _$AppDatabase {
         );
       case SortOption.authorDesc:
         return (
-          '(COALESCE(s.author, "") COLLATE NOCASE, s.id) < (?, ?)',
+          "(COALESCE(s.author, '') COLLATE NOCASE, s.id) < (?, ?)",
           [
             Variable.withString(cursor.sortValue as String),
             Variable.withString(cursor.id),
@@ -562,9 +587,9 @@ class AppDatabase extends _$AppDatabase {
       case SortOption.subredditDesc:
         return 's.subreddit COLLATE NOCASE DESC, s.id DESC';
       case SortOption.authorAsc:
-        return 'COALESCE(s.author, "") COLLATE NOCASE ASC, s.id ASC';
+        return "COALESCE(s.author, '') COLLATE NOCASE ASC, s.id ASC";
       case SortOption.authorDesc:
-        return 'COALESCE(s.author, "") COLLATE NOCASE DESC, s.id DESC';
+        return "COALESCE(s.author, '') COLLATE NOCASE DESC, s.id DESC";
       case SortOption.titleAsc:
         return 's.title COLLATE NOCASE ASC, s.id ASC';
       case SortOption.commentsDesc:
@@ -880,6 +905,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> clearAllData() async {
+    _ftsInitFuture = null;
     await transaction(() async {
       await customStatement('DROP TRIGGER IF EXISTS saved_items_ai;');
       await customStatement('DROP TRIGGER IF EXISTS saved_items_ad;');
@@ -901,6 +927,7 @@ class AppDatabase extends _$AppDatabase {
       } catch (_) {}
 
       await _createFts5(this);
+      _ftsInitFuture = Future.value();
     });
 
     try {
