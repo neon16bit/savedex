@@ -74,17 +74,18 @@ class SavedItemRepository {
   Future<List<SavedItem>> getItemsByIds(List<String> ids) async {
     if (ids.isEmpty) return const [];
     const chunkSize = 200;
-    final allEntries = <SavedItemEntry>[];
+    final chunkFutures = <Future<List<SavedItemEntry>>>[];
     for (var i = 0; i < ids.length; i += chunkSize) {
       final chunk = ids.sublist(
         i,
         i + chunkSize > ids.length ? ids.length : i + chunkSize,
       );
-      final entries = await (db.select(
-        db.savedItemsTable,
-      )..where((t) => t.id.isIn(chunk))).get();
-      allEntries.addAll(entries);
+      chunkFutures.add(
+        (db.select(db.savedItemsTable)..where((t) => t.id.isIn(chunk))).get(),
+      );
     }
+    final chunkResults = await Future.wait(chunkFutures);
+    final allEntries = [for (final list in chunkResults) ...list];
     return _attachTagsToEntries(allEntries);
   }
 
@@ -94,21 +95,25 @@ class SavedItemRepository {
     if (entries.isEmpty) return const [];
     final itemIds = entries.map((i) => i.id).toList();
     const chunkSize = 200;
-    final tagRows = <TypedResult>[];
+    final chunkFutures = <Future<List<TypedResult>>>[];
 
     for (var i = 0; i < itemIds.length; i += chunkSize) {
       final chunk = itemIds.sublist(
         i,
         i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize,
       );
-      final rows = await (db.select(db.tagsTable).join([
-        innerJoin(
-          db.itemTagsTable,
-          db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
-        ),
-      ])..where(db.itemTagsTable.itemId.isIn(chunk))).get();
-      tagRows.addAll(rows);
+      chunkFutures.add(
+        (db.select(db.tagsTable).join([
+          innerJoin(
+            db.itemTagsTable,
+            db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
+          ),
+        ])..where(db.itemTagsTable.itemId.isIn(chunk))).get(),
+      );
     }
+
+    final chunkResults = await Future.wait(chunkFutures);
+    final tagRows = [for (final list in chunkResults) ...list];
 
     final tagsMap = <String, List<Tag>>{};
     for (final row in tagRows) {

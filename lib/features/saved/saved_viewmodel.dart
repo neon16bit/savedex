@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
@@ -55,6 +54,7 @@ final savedFeedPaginationProvider =
 class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   static const int _pageSize = 100;
   int _generation = 0;
+  int _localMutationsInProgress = 0;
   StreamSubscription? _dbUpdatesSub;
   Timer? _debounceTimer;
 
@@ -98,33 +98,6 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     );
   }
 
-  static FeedCursor _extractCursorFromItem(SavedItem item, SortOption sort) {
-    switch (sort) {
-      case SortOption.savedOrderDesc:
-      case SortOption.savedOrderAsc:
-        return FeedCursor(sortValue: item.importOrder, id: item.id);
-      case SortOption.createdDateDesc:
-      case SortOption.createdDateAsc:
-        return FeedCursor(
-          sortValue: item.createdAtUtc?.millisecondsSinceEpoch ?? 0,
-          id: item.id,
-        );
-      case SortOption.scoreDesc:
-      case SortOption.scoreAsc:
-        return FeedCursor(sortValue: item.score, id: item.id);
-      case SortOption.subredditAsc:
-      case SortOption.subredditDesc:
-        return FeedCursor(sortValue: item.subreddit, id: item.id);
-      case SortOption.authorAsc:
-      case SortOption.authorDesc:
-        return FeedCursor(sortValue: item.author ?? '', id: item.id);
-      case SortOption.titleAsc:
-        return FeedCursor(sortValue: item.title, id: item.id);
-      case SortOption.commentsDesc:
-        return FeedCursor(sortValue: item.numComments, id: item.id);
-    }
-  }
-
   static bool _itemMatchesFilter(SavedItem item, FilterCriteria f) {
     if (f.isStarred != null && item.isStarred != f.isStarred) return false;
     if (f.isArchived != null && item.isArchived != f.isArchived) return false;
@@ -166,15 +139,15 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       if (!f.selectedTagIds.any(itemTagIds.contains)) return false;
     }
     if (f.searchQuery != null && f.searchQuery!.trim().isNotEmpty) {
-      final q = f.searchQuery!.trim().toLowerCase();
-      final title = item.title.toLowerCase();
-      final body = item.body?.toLowerCase() ?? '';
-      final parentPostTitle = item.parentPostTitle?.toLowerCase() ?? '';
-      final note = item.userNote?.toLowerCase() ?? '';
-      if (!title.contains(q) &&
-          !body.contains(q) &&
-          !parentPostTitle.contains(q) &&
-          !note.contains(q)) {
+      final terms = f.searchQuery!
+          .trim()
+          .toLowerCase()
+          .split(RegExp(r'\s+'))
+          .where((t) => t.isNotEmpty);
+      final searchableText =
+          '${item.title} ${item.body ?? ''} ${item.parentPostTitle ?? ''} ${item.userNote ?? ''}'
+              .toLowerCase();
+      if (!terms.every(searchableText.contains)) {
         return false;
       }
     }
@@ -182,8 +155,11 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 
   void _onTableUpdate() {
+    if (_localMutationsInProgress > 0) return;
+
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 150), () async {
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      if (_localMutationsInProgress > 0) return;
       final current = state.value;
       if (current == null) return;
 
@@ -210,66 +186,27 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
         return;
       }
 
-      // on empty or initial pages (<= 200 items)
       final targetFetchCount = current.items.length <= _pageSize
           ? _pageSize
-          : current.items.length;
+          : (current.items.length > 200 ? 200 : current.items.length);
 
-      if (current.items.length <= 200) {
-        final page = await repo.getSavedItemsPage(
-          filter: filter,
-          cursor: null,
-          limit: targetFetchCount,
-        );
-
-        if (gen != _generation) return;
-        final currentLatest = state.value;
-        if (currentLatest == null) return;
-
-        state = AsyncData(
-          currentLatest.copyWith(
-            items: page.items,
-            nextCursor: page.nextCursor,
-            clearCursor: page.nextCursor == null,
-            totalCount: totalCount,
-            hasMore: page.items.length < totalCount,
-          ),
-        );
-        return;
-      }
-
-      final allLoadedIds = current.items.map((i) => i.id).toList();
-      final freshItems = await repo.getItemsByIds(allLoadedIds);
+      final page = await repo.getSavedItemsPage(
+        filter: filter,
+        cursor: null,
+        limit: targetFetchCount,
+      );
 
       if (gen != _generation) return;
       final currentLatest = state.value;
       if (currentLatest == null) return;
 
-      final freshMap = {for (final i in freshItems) i.id: i};
-
-      final updatedList = <SavedItem>[];
-      for (final item in currentLatest.items) {
-        final fresh = freshMap[item.id];
-        if (fresh != null && _itemMatchesFilter(fresh, filter)) {
-          updatedList.add(fresh);
-        }
-      }
-
-      FeedCursor? nextCursor;
-      if (updatedList.isNotEmpty) {
-        nextCursor = _extractCursorFromItem(
-          updatedList.last,
-          filter.sortOption,
-        );
-      }
-
       state = AsyncData(
         currentLatest.copyWith(
-          items: updatedList,
-          nextCursor: nextCursor,
-          clearCursor: nextCursor == null,
+          items: page.items,
+          nextCursor: page.nextCursor,
+          clearCursor: page.nextCursor == null,
           totalCount: totalCount,
-          hasMore: updatedList.length < totalCount,
+          hasMore: page.items.length < totalCount,
         ),
       );
     });
@@ -355,6 +292,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       }
     }
 
+    _localMutationsInProgress++;
     try {
       await ref
           .read(savedItemRepositoryProvider)
@@ -362,6 +300,8 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     } catch (e) {
       if (prev != null) state = AsyncData(prev);
       rethrow;
+    } finally {
+      _localMutationsInProgress--;
     }
   }
 
@@ -392,6 +332,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       }
     }
 
+    _localMutationsInProgress++;
     try {
       await ref
           .read(savedItemRepositoryProvider)
@@ -399,6 +340,8 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     } catch (e) {
       if (prev != null) state = AsyncData(prev);
       rethrow;
+    } finally {
+      _localMutationsInProgress--;
     }
   }
 
@@ -416,11 +359,14 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       }
     }
 
+    _localMutationsInProgress++;
     try {
       await ref.read(savedItemRepositoryProvider).deleteItem(id);
     } catch (e) {
       if (prev != null) state = AsyncData(prev);
       rethrow;
+    } finally {
+      _localMutationsInProgress--;
     }
   }
 
@@ -441,11 +387,14 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       );
     }
 
+    _localMutationsInProgress++;
     try {
       await ref.read(savedItemRepositoryProvider).updateUserNote(id, cleanNote);
     } catch (e) {
       if (prev != null) state = AsyncData(prev);
       rethrow;
+    } finally {
+      _localMutationsInProgress--;
     }
   }
 
