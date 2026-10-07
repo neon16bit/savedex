@@ -239,20 +239,35 @@ class SavedItem {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
+    permalink,
     itemType,
-    isStarred,
-    isArchived,
+    parentPostId,
+    parentPostTitle,
+    title,
+    subreddit,
+    author,
+    body,
+    url,
+    thumbnailUrl,
+    mediaUrl,
+    mediaType,
     score,
     numComments,
-    enrichmentStatus,
+    isNsfw,
+    isStarred,
+    isArchived,
     userNote,
-    body,
-    mediaUrl,
-    thumbnailUrl,
+    csvSource,
+    importOrder,
+    createdAtUtc,
+    savedAtUtc,
     postFlair,
-  );
+    subredditType,
+    enrichmentStatus,
+    Object.hashAll(tags),
+  ]);
 }
 
 class Tag {

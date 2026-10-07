@@ -63,6 +63,43 @@ class _SavedViewState extends ConsumerState<SavedView> {
     }
   }
 
+  Future<ImportSummary?> _syncFromReddit({
+    bool showErrorSnackbar = true,
+  }) async {
+    final summary = await ref
+        .read(importExportViewModelProvider.notifier)
+        .pullSavedFromReddit();
+    if (!mounted) return summary;
+
+    if (summary != null) {
+      final message = _formatSyncMessage(summary);
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } else if (showErrorSnackbar) {
+      final error = ref.read(importExportViewModelProvider).errorMessage;
+      if (error != null) {
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(error),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+      }
+    }
+    return summary;
+  }
+
   @override
   Widget build(BuildContext context) {
     final feedStateAsync = ref.watch(savedFeedPaginationProvider);
@@ -295,42 +332,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                 return IconButton(
                   icon: const Icon(Icons.sync_rounded),
                   tooltip: 'Pull Saved from Reddit',
-                  onPressed: () async {
-                    final summary = await ref
-                        .read(importExportViewModelProvider.notifier)
-                        .pullSavedFromReddit();
-                    if (!context.mounted) return;
-                    if (summary != null) {
-                      final message = _formatSyncMessage(summary);
-                      ScaffoldMessenger.of(context)
-                        ..clearSnackBars()
-                        ..showSnackBar(
-                          SnackBar(
-                            content: Text(message),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                    } else {
-                      final error = ref
-                          .read(importExportViewModelProvider)
-                          .errorMessage;
-                      if (error != null) {
-                        ScaffoldMessenger.of(context)
-                          ..clearSnackBars()
-                          ..showSnackBar(
-                            SnackBar(
-                              content: Text(error),
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .error,
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                      }
-                    }
-                  },
+                  onPressed: _syncFromReddit,
                 );
               },
             ),
@@ -455,21 +457,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   child: RefreshIndicator(
                     onRefresh: () async {
                       if (isAuthenticatedWithOAuth) {
-                        final summary = await ref
-                            .read(importExportViewModelProvider.notifier)
-                            .pullSavedFromReddit();
-                        if (context.mounted && summary != null) {
-                          final message = _formatSyncMessage(summary);
-                          ScaffoldMessenger.of(context)
-                            ..clearSnackBars()
-                            ..showSnackBar(
-                              SnackBar(
-                                content: Text(message),
-                                behavior: SnackBarBehavior.floating,
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                        }
+                        await _syncFromReddit(showErrorSnackbar: false);
                       }
                       ref.invalidate(savedFeedPaginationProvider);
                       await ref.read(savedFeedPaginationProvider.future);
@@ -732,41 +720,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
               ),
             ] else if (isAuthenticatedWithOAuth) ...[
               FilledButton.icon(
-                onPressed: () async {
-                  final summary = await ref
-                      .read(importExportViewModelProvider.notifier)
-                      .pullSavedFromReddit();
-                  if (context.mounted) {
-                    if (summary != null) {
-                      final message = _formatSyncMessage(summary);
-                      ScaffoldMessenger.of(context)
-                        ..clearSnackBars()
-                        ..showSnackBar(
-                          SnackBar(
-                            content: Text(message),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                    } else {
-                      final error = ref
-                          .read(importExportViewModelProvider)
-                          .errorMessage;
-                      if (error != null) {
-                        ScaffoldMessenger.of(context)
-                          ..clearSnackBars()
-                          ..showSnackBar(
-                            SnackBar(
-                              content: Text(error),
-                              backgroundColor: colorScheme.error,
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                      }
-                    }
-                  }
-                },
+                onPressed: _syncFromReddit,
                 icon: const Icon(Icons.cloud_download_rounded),
                 label: const Text('Pull Saved from Reddit (OAuth)'),
                 style: FilledButton.styleFrom(
