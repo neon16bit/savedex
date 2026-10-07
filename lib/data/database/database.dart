@@ -39,13 +39,14 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
       await _createFts5(this);
+      await _createIndexes(this);
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -53,47 +54,143 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(savedItemsTable, savedItemsTable.subredditType);
         await _rebuildFts(this);
       }
+      if (from < 3) {
+        await _createIndexes(this);
+      }
+      if (from < 4) {
+        await _rebuildFts(this);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
+      await _createFts5(this);
     },
   );
 
+  bool _ftsVerified = false;
+
+  Future<void> ensureFtsSchema() async {
+    if (_ftsVerified) return;
+    await _createFts5(this);
+    _ftsVerified = true;
+  }
+
+  static Future<void> _createIndexes(AppDatabase db) async {
+    try {
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_order_desc ON saved_items_table (import_order DESC, id DESC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_order_asc ON saved_items_table (import_order ASC, id ASC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_date_desc ON saved_items_table (created_at_utc DESC, id DESC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_date_asc ON saved_items_table (created_at_utc ASC, id ASC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_score_desc ON saved_items_table (score DESC, id DESC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_score_asc ON saved_items_table (score ASC, id ASC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_sub_nocase ON saved_items_table (subreddit COLLATE NOCASE, id);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_author_nocase ON saved_items_table (author COLLATE NOCASE, id);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_title_nocase ON saved_items_table (title COLLATE NOCASE, id);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_comments_desc ON saved_items_table (num_comments DESC, id DESC);
+      ''');
+    } catch (e, stack) {
+      debugPrint('[Database] Create indexes note: $e\n$stack');
+    }
+  }
+
   static Future<void> _createFts5(AppDatabase db) async {
     try {
+      bool needsRebuild = false;
+      try {
+        await db
+            .customSelect(
+              'SELECT parent_post_title FROM saved_items_fts LIMIT 0',
+            )
+            .get();
+      } catch (_) {
+        needsRebuild = true;
+      }
+
+      if (needsRebuild) {
+        await db.customStatement('DROP TRIGGER IF EXISTS saved_items_ai');
+        await db.customStatement('DROP TRIGGER IF EXISTS saved_items_ad');
+        await db.customStatement('DROP TRIGGER IF EXISTS saved_items_au');
+        await db.customStatement('DROP TABLE IF EXISTS saved_items_fts');
+      }
+
       await db.customStatement('''
         CREATE VIRTUAL TABLE IF NOT EXISTS saved_items_fts USING fts5(
           id UNINDEXED,
           title,
           body,
-          subreddit,
-          author,
+          parent_post_title,
           user_note,
-          post_flair,
           tokenize = 'unicode61'
         );
       ''');
 
       await db.customStatement('''
         CREATE TRIGGER IF NOT EXISTS saved_items_ai AFTER INSERT ON saved_items_table BEGIN
-          INSERT INTO saved_items_fts(rowid, id, title, body, subreddit, author, user_note, post_flair)
-          VALUES (new.rowid, new.id, new.title, coalesce(new.body, ''), new.subreddit, coalesce(new.author, ''), coalesce(new.user_note, ''), coalesce(new.post_flair, ''));
+          INSERT INTO saved_items_fts(rowid, id, title, body, parent_post_title, user_note)
+          VALUES (
+            new.rowid,
+            new.id,
+            new.title,
+            coalesce(new.body, ''),
+            coalesce(new.parent_post_title, ''),
+            coalesce(new.user_note, '')
+          );
         END;
       ''');
 
       await db.customStatement('''
         CREATE TRIGGER IF NOT EXISTS saved_items_ad AFTER DELETE ON saved_items_table BEGIN
-          DELETE FROM saved_items_fts WHERE id = old.id;
+          DELETE FROM saved_items_fts WHERE rowid = old.rowid;
         END;
       ''');
 
       await db.customStatement('''
         CREATE TRIGGER IF NOT EXISTS saved_items_au AFTER UPDATE ON saved_items_table BEGIN
-          DELETE FROM saved_items_fts WHERE id = old.id;
-          INSERT INTO saved_items_fts(rowid, id, title, body, subreddit, author, user_note, post_flair)
-          VALUES (new.rowid, new.id, new.title, coalesce(new.body, ''), new.subreddit, coalesce(new.author, ''), coalesce(new.user_note, ''), coalesce(new.post_flair, ''));
+          DELETE FROM saved_items_fts WHERE rowid = old.rowid;
+          INSERT INTO saved_items_fts(rowid, id, title, body, parent_post_title, user_note)
+          VALUES (
+            new.rowid,
+            new.id,
+            new.title,
+            coalesce(new.body, ''),
+            coalesce(new.parent_post_title, ''),
+            coalesce(new.user_note, '')
+          );
         END;
       ''');
+
+      if (needsRebuild) {
+        await db.customStatement('''
+          INSERT INTO saved_items_fts(rowid, id, title, body, parent_post_title, user_note)
+          SELECT
+            rowid,
+            id,
+            title,
+            coalesce(body, ''),
+            coalesce(parent_post_title, ''),
+            coalesce(user_note, '')
+          FROM saved_items_table;
+        ''');
+      }
     } catch (e, stack) {
       debugPrint('[Database] FTS5 initialization note: $e\n$stack');
       try {
@@ -111,11 +208,6 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('DROP TRIGGER IF EXISTS saved_items_au');
       await db.customStatement('DROP TABLE IF EXISTS saved_items_fts');
       await _createFts5(db);
-      await db.customStatement('''
-        INSERT INTO saved_items_fts(rowid, id, title, body, subreddit, author, user_note, post_flair)
-        SELECT rowid, id, title, coalesce(body, ''), subreddit, coalesce(author, ''), coalesce(user_note, ''), coalesce(post_flair, '')
-        FROM saved_items_table;
-      ''');
     } catch (e, stack) {
       debugPrint('[Database] FTS5 rebuild failed: $e\n$stack');
       rethrow;
@@ -211,19 +303,14 @@ class AppDatabase extends _$AppDatabase {
         final queryPattern = '%${searchQuery.trim().toLowerCase()}%';
         final titleMatch = tbl.title.lower().like(queryPattern);
         final bodyMatch = tbl.body.lower().like(queryPattern);
-        final subMatch = tbl.subreddit.lower().like(queryPattern);
-        final authorMatch = tbl.author.lower().like(queryPattern);
+        final parentPostTitleMatch = tbl.parentPostTitle.lower().like(
+          queryPattern,
+        );
         final noteMatch = tbl.userNote.lower().like(queryPattern);
-        final flairMatch = tbl.postFlair.lower().like(queryPattern);
 
         predicate =
             predicate &
-            (titleMatch |
-                bodyMatch |
-                subMatch |
-                authorMatch |
-                noteMatch |
-                flairMatch);
+            (titleMatch | bodyMatch | parentPostTitleMatch | noteMatch);
       }
 
       return predicate;
@@ -301,6 +388,340 @@ class AppDatabase extends _$AppDatabase {
     ]);
 
     return query.watch();
+  }
+
+  static String? _sanitizeFtsQuery(String? raw) {
+    if (raw == null) return null;
+    final terms = raw
+        .trim()
+        .split(RegExp(r'\s+'))
+        .map((t) => t.replaceAll('"', ''))
+        .where((t) => t.isNotEmpty)
+        .map((t) => '"$t"*')
+        .join(' ');
+    return terms.isEmpty ? null : terms;
+  }
+
+  static FeedCursor _extractCursor(SavedItemEntry entry, SortOption sort) {
+    switch (sort) {
+      case SortOption.savedOrderDesc:
+      case SortOption.savedOrderAsc:
+        return FeedCursor(sortValue: entry.importOrder, id: entry.id);
+      case SortOption.createdDateDesc:
+      case SortOption.createdDateAsc:
+        return FeedCursor(
+          sortValue: entry.createdAtUtc?.millisecondsSinceEpoch ?? 0,
+          id: entry.id,
+        );
+      case SortOption.scoreDesc:
+      case SortOption.scoreAsc:
+        return FeedCursor(sortValue: entry.score, id: entry.id);
+      case SortOption.subredditAsc:
+      case SortOption.subredditDesc:
+        return FeedCursor(sortValue: entry.subreddit, id: entry.id);
+      case SortOption.authorAsc:
+      case SortOption.authorDesc:
+        return FeedCursor(sortValue: entry.author ?? '', id: entry.id);
+      case SortOption.titleAsc:
+        return FeedCursor(sortValue: entry.title, id: entry.id);
+      case SortOption.commentsDesc:
+        return FeedCursor(sortValue: entry.numComments, id: entry.id);
+    }
+  }
+
+  static (String, List<Variable>) _buildKeysetRowValue(
+    SortOption sort,
+    FeedCursor cursor,
+  ) {
+    switch (sort) {
+      case SortOption.savedOrderDesc:
+        return (
+          '(s.import_order, s.id) < (?, ?)',
+          [
+            Variable.withInt(cursor.sortValue as int),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.savedOrderAsc:
+        return (
+          '(s.import_order, s.id) > (?, ?)',
+          [
+            Variable.withInt(cursor.sortValue as int),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.createdDateDesc:
+        return (
+          '(COALESCE(s.created_at_utc, 0), s.id) < (?, ?)',
+          [
+            Variable.withDateTime(
+              DateTime.fromMillisecondsSinceEpoch(
+                cursor.sortValue as int,
+                isUtc: true,
+              ),
+            ),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.createdDateAsc:
+        return (
+          '(COALESCE(s.created_at_utc, 0), s.id) > (?, ?)',
+          [
+            Variable.withDateTime(
+              DateTime.fromMillisecondsSinceEpoch(
+                cursor.sortValue as int,
+                isUtc: true,
+              ),
+            ),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.scoreDesc:
+        return (
+          '(s.score, s.id) < (?, ?)',
+          [
+            Variable.withInt(cursor.sortValue as int),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.scoreAsc:
+        return (
+          '(s.score, s.id) > (?, ?)',
+          [
+            Variable.withInt(cursor.sortValue as int),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.subredditAsc:
+        return (
+          '(s.subreddit COLLATE NOCASE, s.id) > (?, ?)',
+          [
+            Variable.withString(cursor.sortValue as String),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.subredditDesc:
+        return (
+          '(s.subreddit COLLATE NOCASE, s.id) < (?, ?)',
+          [
+            Variable.withString(cursor.sortValue as String),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.authorAsc:
+        return (
+          '(COALESCE(s.author, "") COLLATE NOCASE, s.id) > (?, ?)',
+          [
+            Variable.withString(cursor.sortValue as String),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.authorDesc:
+        return (
+          '(COALESCE(s.author, "") COLLATE NOCASE, s.id) < (?, ?)',
+          [
+            Variable.withString(cursor.sortValue as String),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.titleAsc:
+        return (
+          '(s.title COLLATE NOCASE, s.id) > (?, ?)',
+          [
+            Variable.withString(cursor.sortValue as String),
+            Variable.withString(cursor.id),
+          ],
+        );
+      case SortOption.commentsDesc:
+        return (
+          '(s.num_comments, s.id) < (?, ?)',
+          [
+            Variable.withInt(cursor.sortValue as int),
+            Variable.withString(cursor.id),
+          ],
+        );
+    }
+  }
+
+  static String _buildOrderBySql(SortOption sort) {
+    switch (sort) {
+      case SortOption.savedOrderDesc:
+        return 's.import_order DESC, s.id DESC';
+      case SortOption.savedOrderAsc:
+        return 's.import_order ASC, s.id ASC';
+      case SortOption.createdDateDesc:
+        return 'COALESCE(s.created_at_utc, 0) DESC, s.id DESC';
+      case SortOption.createdDateAsc:
+        return 'COALESCE(s.created_at_utc, 0) ASC, s.id ASC';
+      case SortOption.scoreDesc:
+        return 's.score DESC, s.id DESC';
+      case SortOption.scoreAsc:
+        return 's.score ASC, s.id ASC';
+      case SortOption.subredditAsc:
+        return 's.subreddit COLLATE NOCASE ASC, s.id ASC';
+      case SortOption.subredditDesc:
+        return 's.subreddit COLLATE NOCASE DESC, s.id DESC';
+      case SortOption.authorAsc:
+        return 'COALESCE(s.author, "") COLLATE NOCASE ASC, s.id ASC';
+      case SortOption.authorDesc:
+        return 'COALESCE(s.author, "") COLLATE NOCASE DESC, s.id DESC';
+      case SortOption.titleAsc:
+        return 's.title COLLATE NOCASE ASC, s.id ASC';
+      case SortOption.commentsDesc:
+        return 's.num_comments DESC, s.id DESC';
+    }
+  }
+
+  (List<String>, List<Variable>) _buildFilterClauses(FilterCriteria filter) {
+    final where = <String>[];
+    final vars = <Variable>[];
+
+    if (filter.isArchived != null) {
+      where.add('s.is_archived = ?');
+      vars.add(Variable.withBool(filter.isArchived!));
+    }
+    if (filter.itemType != null) {
+      where.add('s.item_type = ?');
+      vars.add(Variable.withInt(filter.itemType!.index));
+    }
+    if (filter.enrichmentStatus != null) {
+      where.add('s.enrichment_status = ?');
+      vars.add(Variable.withInt(filter.enrichmentStatus!.index));
+    }
+    if (filter.isNsfw != null) {
+      where.add('s.is_nsfw = ?');
+      vars.add(Variable.withBool(filter.isNsfw!));
+    }
+    if (filter.isStarred != null) {
+      where.add('s.is_starred = ?');
+      vars.add(Variable.withBool(filter.isStarred!));
+    }
+    if (filter.selectedSubreddits.isNotEmpty) {
+      where.add(
+        's.subreddit IN (${List.filled(filter.selectedSubreddits.length, '?').join(',')})',
+      );
+      vars.addAll(filter.selectedSubreddits.map(Variable.withString));
+    }
+    if (filter.selectedAuthors.isNotEmpty) {
+      where.add(
+        's.author IN (${List.filled(filter.selectedAuthors.length, '?').join(',')})',
+      );
+      vars.addAll(filter.selectedAuthors.map(Variable.withString));
+    }
+    if (filter.selectedFlairs.isNotEmpty) {
+      where.add(
+        's.post_flair IN (${List.filled(filter.selectedFlairs.length, '?').join(',')})',
+      );
+      vars.addAll(filter.selectedFlairs.map(Variable.withString));
+    }
+    if (filter.selectedMediaTypes.isNotEmpty) {
+      where.add(
+        's.media_type IN (${List.filled(filter.selectedMediaTypes.length, '?').join(',')})',
+      );
+      vars.addAll(
+        filter.selectedMediaTypes.map((m) => Variable.withInt(m.index)),
+      );
+    }
+    if (filter.dateRangeStart != null) {
+      where.add('s.created_at_utc >= ?');
+      vars.add(Variable.withDateTime(filter.dateRangeStart!.toUtc()));
+    }
+    if (filter.dateRangeEnd != null) {
+      final end = filter.dateRangeEnd!;
+      final inclusiveEnd =
+          (end.hour == 0 &&
+              end.minute == 0 &&
+              end.second == 0 &&
+              end.millisecond == 0)
+          ? DateTime(end.year, end.month, end.day, 23, 59, 59, 999).toUtc()
+          : end.toUtc();
+      where.add('s.created_at_utc <= ?');
+      vars.add(Variable.withDateTime(inclusiveEnd));
+    }
+    if (filter.selectedTagIds.isNotEmpty) {
+      where.add(
+        's.id IN (SELECT item_id FROM item_tags_table WHERE tag_id IN (${List.filled(filter.selectedTagIds.length, '?').join(',')}))',
+      );
+      vars.addAll(filter.selectedTagIds.map(Variable.withInt));
+    }
+    if (filter.searchQuery != null && filter.searchQuery!.trim().isNotEmpty) {
+      final ftsToken = _sanitizeFtsQuery(filter.searchQuery!);
+      if (ftsToken != null) {
+        where.add(
+          's.id IN (SELECT id FROM saved_items_fts WHERE saved_items_fts MATCH ?)',
+        );
+        vars.add(Variable.withString(ftsToken));
+      }
+    }
+
+    return (where, vars);
+  }
+
+  Future<PagedRows<SavedItemEntry>> getSavedItemsKeysetPage({
+    required FilterCriteria filter,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) async {
+    if (filter.searchQuery != null && filter.searchQuery!.trim().isNotEmpty) {
+      await ensureFtsSchema();
+    }
+    final (where, vars) = _buildFilterClauses(filter);
+
+    if (cursor != null) {
+      final (clause, cursorVars) = _buildKeysetRowValue(
+        filter.sortOption,
+        cursor,
+      );
+      where.add(clause);
+      vars.addAll(cursorVars);
+    }
+
+    final whereClause = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
+    final orderBy = 'ORDER BY ${_buildOrderBySql(filter.sortOption)}';
+
+    vars.add(Variable.withInt(limit + 1));
+    final sql =
+        '''
+      SELECT s.*
+      FROM saved_items_table s
+      $whereClause
+      $orderBy
+      LIMIT ?
+    ''';
+
+    final rows = await customSelect(
+      sql,
+      variables: vars,
+      readsFrom: {savedItemsTable},
+    ).get();
+
+    final entries = rows.map((r) => savedItemsTable.map(r.data)).toList();
+    final hasMore = entries.length > limit;
+    final pageRows = hasMore ? entries.sublist(0, limit) : entries;
+
+    FeedCursor? nextCursor;
+    if (hasMore && pageRows.isNotEmpty) {
+      nextCursor = _extractCursor(pageRows.last, filter.sortOption);
+    }
+
+    return PagedRows(items: pageRows, nextCursor: nextCursor, hasMore: hasMore);
+  }
+
+  Future<int> countFilteredSavedItems(FilterCriteria filter) async {
+    if (filter.searchQuery != null && filter.searchQuery!.trim().isNotEmpty) {
+      await ensureFtsSchema();
+    }
+    final (where, vars) = _buildFilterClauses(filter);
+    final whereClause = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
+    final sql = 'SELECT COUNT(*) AS c FROM saved_items_table s $whereClause';
+
+    final row = await customSelect(
+      sql,
+      variables: vars,
+      readsFrom: {savedItemsTable},
+    ).getSingle();
+
+    return row.read<int>('c');
   }
 
   // bulk upsert items nondestructively using ON CONFLICT DO UPDATE
@@ -460,6 +881,10 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> clearAllData() async {
     await transaction(() async {
+      await customStatement('DROP TRIGGER IF EXISTS saved_items_ai;');
+      await customStatement('DROP TRIGGER IF EXISTS saved_items_ad;');
+      await customStatement('DROP TRIGGER IF EXISTS saved_items_au;');
+
       await delete(itemTagsTable).go();
       await delete(tagsTable).go();
       await delete(savedItemsTable).go();
@@ -468,6 +893,27 @@ class AppDatabase extends _$AppDatabase {
       } catch (e, stack) {
         debugPrint('[Database] Note: Could not clear FTS5 index: $e\n$stack');
       }
+
+      try {
+        await customStatement(
+          'DELETE FROM sqlite_sequence WHERE name IN (\'tags_table\', \'saved_items_table\');',
+        );
+      } catch (_) {}
+
+      await _createFts5(this);
+    });
+
+    try {
+      await customStatement('PRAGMA wal_checkpoint(TRUNCATE);');
+      await customStatement('VACUUM;');
+    } catch (e) {
+      debugPrint('[Database] Post-clear compaction note: $e');
+    }
+
+    notifyUpdates({
+      TableUpdate.onTable(savedItemsTable, kind: UpdateKind.delete),
+      TableUpdate.onTable(tagsTable, kind: UpdateKind.delete),
+      TableUpdate.onTable(itemTagsTable, kind: UpdateKind.delete),
     });
   }
 }

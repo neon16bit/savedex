@@ -2,24 +2,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 
-final itemDetailProvider = FutureProvider.family<SavedItem?, String>((
-  ref,
-  id,
-) async {
+final itemDetailProvider =
+    StreamProvider.autoDispose.family<SavedItem?, String>((ref, id) {
   final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.getItemById(id);
+  return repo.watchItemById(id);
 });
 
 final relatedThreadProvider =
-    FutureProvider.family<
+    StreamProvider.autoDispose.family<
       ({SavedItem? parentPost, List<SavedItem> comments}),
       String
-    >((ref, id) async {
-      final item = await ref.watch(itemDetailProvider(id).future);
-      if (item == null) return (parentPost: null, comments: <SavedItem>[]);
+    >((ref, id) {
+      final itemAsync = ref.watch(itemDetailProvider(id));
+      final item = itemAsync.value;
+      if (item == null) {
+        return Stream.value((parentPost: null, comments: <SavedItem>[]));
+      }
       final repo = ref.watch(savedItemRepositoryProvider);
-      return repo.getRelatedThreadItems(item);
+      return repo.watchRelatedThreadItems(item);
     });
 
 final enrichingItemsProvider =
@@ -78,8 +80,7 @@ class ItemDetailActions {
   Future<void> toggleStar(SavedItem item) async {
     if (!_busyItemIds.add(item.id)) return;
     try {
-      final repo = _ref.read(savedItemRepositoryProvider);
-      await repo.toggleStar(item.id, !item.isStarred);
+      await _ref.read(savedFeedPaginationProvider.notifier).toggleStar(item);
       _ref.invalidate(itemDetailProvider(item.id));
       _ref.invalidate(relatedThreadProvider);
     } finally {
@@ -93,9 +94,12 @@ class ItemDetailActions {
       final cleanNote = (note == null || note.trim().isEmpty)
           ? null
           : note.trim();
-      final repo = _ref.read(savedItemRepositoryProvider);
-      await repo.updateUserNote(id, cleanNote);
+      await _ref
+          .read(savedFeedPaginationProvider.notifier)
+          .updateItemNote(id, cleanNote);
       _ref.read(itemNotesProvider.notifier).setNote(id, cleanNote);
+      _ref.invalidate(itemDetailProvider(id));
+      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(id);
     }
@@ -107,14 +111,21 @@ class ItemDetailActions {
         .enrichSingleItem(item);
     _ref.invalidate(itemDetailProvider(item.id));
     _ref.invalidate(relatedThreadProvider);
+    if (result.success) {
+      await _ref
+          .read(savedFeedPaginationProvider.notifier)
+          .refreshItem(item.id);
+    }
     return result;
   }
 
   Future<void> deleteItem(String id) async {
     if (!_busyItemIds.add(id)) return;
     try {
-      final repo = _ref.read(savedItemRepositoryProvider);
-      await repo.deleteItem(id);
+      await _ref
+          .read(savedFeedPaginationProvider.notifier)
+          .deleteItemById(id);
+      _ref.invalidate(itemDetailProvider(id));
       _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(id);

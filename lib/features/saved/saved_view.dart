@@ -65,7 +65,44 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
   @override
   Widget build(BuildContext context) {
-    final rawItemsAsync = ref.watch(feedItemsStreamProvider);
+    final feedStateAsync = ref.watch(savedFeedPaginationProvider);
+
+    // fetch next page only when items change
+    ref.listen(savedFeedPaginationProvider, (prev, next) {
+      final feedState = next.value;
+      if (feedState == null ||
+          !feedState.hasMore ||
+          feedState.isLoadingMore ||
+          feedState.paginationError != null) {
+        return;
+      }
+
+      final prevLength = prev?.value?.items.length ?? 0;
+      if (feedState.items.isNotEmpty && feedState.items.length != prevLength) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final controller = PrimaryScrollController.maybeOf(context);
+          if (controller?.hasClients == true &&
+              controller!.position.maxScrollExtent == 0) {
+            ref.read(savedFeedPaginationProvider.notifier).fetchNextPage();
+          }
+        });
+      }
+    });
+
+    // reset scroll to top when filters change
+    ref.listen(searchFilterViewModelProvider, (prev, next) {
+      if (prev != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final controller = PrimaryScrollController.maybeOf(context);
+          if (controller?.hasClients == true && controller!.offset > 0) {
+            controller.jumpTo(0);
+          }
+        });
+      }
+    });
+
     final filter = ref.watch(searchFilterViewModelProvider);
     final filterVm = ref.read(searchFilterViewModelProvider.notifier);
     final feedLayoutMode = ref.watch(
@@ -91,7 +128,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   fontWeight: FontWeight.w600,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Search titles, notes, subreddits...',
+                  hintText: 'Search titles, comments, threads, notes...',
                   hintStyle: TextStyle(
                     fontSize: 14,
                     color: colorScheme.onSurfaceVariant,
@@ -142,8 +179,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  rawItemsAsync.when(
-                    data: (items) => Container(
+                  feedStateAsync.when(
+                    data: (feedState) => Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 2,
@@ -153,7 +190,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                         borderRadius: BorderRadius.circular(100),
                       ),
                       child: Text(
-                        '${items.length}',
+                        '${feedState.totalCount}',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w800,
@@ -307,10 +344,14 @@ class _SavedViewState extends ConsumerState<SavedView> {
             margin: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             isDense: true,
           ),
+          if (feedStateAsync.isLoading && feedStateAsync.hasValue)
+            const LinearProgressIndicator(minHeight: 2),
 
           Expanded(
-            child: rawItemsAsync.when(
-              data: (items) {
+            child: feedStateAsync.when(
+              skipLoadingOnReload: true,
+              data: (feedState) {
+                final items = feedState.items;
                 if (items.isEmpty) {
                   return _buildEmptyState(
                     context,
@@ -319,24 +360,30 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   );
                 }
 
+                final showFooter =
+                    feedState.hasMore ||
+                    feedState.isLoadingMore ||
+                    feedState.paginationError != null;
+
                 Widget content;
                 switch (feedLayoutMode) {
                   case FeedLayoutMode.card:
+                  case FeedLayoutMode.compact:
                     content = ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(top: 4, bottom: 28),
-                      itemCount: items.length,
-                      findChildIndexCallback: (Key key) {
-                        if (key is ValueKey<String>) {
-                          final index = items.indexWhere(
-                            (it) => it.id == key.value,
-                          );
-                          return index != -1 ? index : null;
-                        }
-                        return null;
-                      },
+                      itemCount: items.length + (showFooter ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index >= items.length) {
+                          return _buildPaginationFooter(context, feedState);
+                        }
                         final item = items[index];
+                        if (feedLayoutMode == FeedLayoutMode.compact) {
+                          return CompactListItem(
+                            key: ValueKey(item.id),
+                            item: item,
+                          );
+                        }
                         if (item.itemType == ItemType.comment) {
                           return CommentCard(
                             key: ValueKey(item.id),
@@ -348,85 +395,87 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     );
                     break;
 
-                  case FeedLayoutMode.compact:
-                    content = ListView.builder(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(top: 4, bottom: 28),
-                      itemCount: items.length,
-                      findChildIndexCallback: (Key key) {
-                        if (key is ValueKey<String>) {
-                          final index = items.indexWhere(
-                            (it) => it.id == key.value,
-                          );
-                          return index != -1 ? index : null;
-                        }
-                        return null;
-                      },
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        return CompactListItem(
-                          key: ValueKey(item.id),
-                          item: item,
-                        );
-                      },
-                    );
-                    break;
-
                   case FeedLayoutMode.gallery:
-                    content = GridView.builder(
+                    content = CustomScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.82,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
                           ),
-                      itemCount: items.length,
-                      findChildIndexCallback: (Key key) {
-                        if (key is ValueKey<String>) {
-                          final index = items.indexWhere(
-                            (it) => it.id == key.value,
-                          );
-                          return index != -1 ? index : null;
-                        }
-                        return null;
-                      },
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        return GalleryItem(key: ValueKey(item.id), item: item);
-                      },
+                          sliver: SliverGrid(
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 0.82,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
+                              final item = items[index];
+                              return GalleryItem(
+                                key: ValueKey(item.id),
+                                item: item,
+                              );
+                            }, childCount: items.length),
+                          ),
+                        ),
+                        if (showFooter)
+                          SliverToBoxAdapter(
+                            child: _buildPaginationFooter(context, feedState),
+                          ),
+                      ],
                     );
                     break;
                 }
 
-                return RefreshIndicator(
-                  onRefresh: () async {
-                    if (isAuthenticatedWithOAuth) {
-                      final summary = await ref
-                          .read(importExportViewModelProvider.notifier)
-                          .pullSavedFromReddit();
-                      if (context.mounted && summary != null) {
-                        final message = _formatSyncMessage(summary);
-                        ScaffoldMessenger.of(context)
-                          ..clearSnackBars()
-                          ..showSnackBar(
-                            SnackBar(
-                              content: Text(message),
-                              behavior: SnackBarBehavior.floating,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                return NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification.depth == 0 &&
+                        notification.metrics.pixels >=
+                            notification.metrics.maxScrollExtent - 600) {
+                      final current = ref
+                          .read(savedFeedPaginationProvider)
+                          .value;
+                      if (current != null &&
+                          current.hasMore &&
+                          !current.isLoadingMore &&
+                          current.paginationError == null) {
+                        ref
+                            .read(savedFeedPaginationProvider.notifier)
+                            .fetchNextPage();
                       }
-                    } else {
-                      ref.invalidate(feedItemsStreamProvider);
                     }
+                    return false;
                   },
-                  child: content,
+                  child: RefreshIndicator(
+                    onRefresh: () async {
+                      if (isAuthenticatedWithOAuth) {
+                        final summary = await ref
+                            .read(importExportViewModelProvider.notifier)
+                            .pullSavedFromReddit();
+                        if (context.mounted && summary != null) {
+                          final message = _formatSyncMessage(summary);
+                          ScaffoldMessenger.of(context)
+                            ..clearSnackBars()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text(message),
+                                behavior: SnackBarBehavior.floating,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                        }
+                      }
+                      ref.invalidate(savedFeedPaginationProvider);
+                      await ref.read(savedFeedPaginationProvider.future);
+                    },
+                    child: content,
+                  ),
                 );
               },
               loading: () => const Center(
@@ -549,7 +598,14 @@ class _SavedViewState extends ConsumerState<SavedView> {
               onPressed: () {
                 _searchDebounceTimer?.cancel();
                 _searchController.clear();
+                setState(() {
+                  _isSearchExpanded = false;
+                });
                 filterVm.clearAllFilters();
+                final controller = PrimaryScrollController.maybeOf(context);
+                if (controller?.hasClients == true && controller!.offset > 0) {
+                  controller.jumpTo(0);
+                }
               },
             ),
           ],
@@ -775,5 +831,39 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
   void _openSortSheet(BuildContext context) {
     showModalBottomSheet(context: context, builder: (ctx) => const SortSheet());
+  }
+
+  Widget _buildPaginationFooter(
+    BuildContext context,
+    SavedFeedState feedState,
+  ) {
+    if (feedState.paginationError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: TextButton.icon(
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Failed to load more. Tap to retry'),
+            onPressed: () =>
+                ref.read(savedFeedPaginationProvider.notifier).retryNextPage(),
+          ),
+        ),
+      );
+    }
+
+    if (feedState.isLoadingMore) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }

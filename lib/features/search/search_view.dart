@@ -35,7 +35,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
   @override
   Widget build(BuildContext context) {
     final filterVm = ref.read(searchFilterViewModelProvider.notifier);
-    final resultsAsync = ref.watch(feedItemsStreamProvider);
+    final feedStateAsync = ref.watch(savedFeedPaginationProvider);
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -47,7 +47,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
           controller: _searchController,
           autofocus: false,
           decoration: InputDecoration(
-            hintText: 'Search titles, text, subreddits, notes...',
+            hintText: 'Search titles, comments, threads, notes...',
             hintStyle: TextStyle(
               fontSize: 14,
               color: colorScheme.onSurfaceVariant,
@@ -86,8 +86,9 @@ class _SearchViewState extends ConsumerState<SearchView> {
           ),
         ],
       ),
-      body: resultsAsync.when(
-        data: (items) {
+      body: feedStateAsync.when(
+        data: (feedState) {
+          final items = feedState.items;
           if (items.isEmpty) {
             return Center(
               child: Padding(
@@ -113,7 +114,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                     Text(
                       _searchController.text.isNotEmpty
                           ? 'Try different keywords, subreddits, or clear active filters'
-                          : 'Search across titles, selftext markdown, subreddits, authors, and notes',
+                          : 'Search across titles, comments, parent threads, and notes',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: colorScheme.onSurfaceVariant),
                     ),

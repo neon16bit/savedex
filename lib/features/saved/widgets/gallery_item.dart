@@ -1,16 +1,18 @@
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_view.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 
-class GalleryItem extends StatelessWidget {
+class GalleryItem extends ConsumerWidget {
   final SavedItem item;
 
   const GalleryItem({super.key, required this.item});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final imageUrl = item.displayImageUrl;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -19,12 +21,13 @@ class GalleryItem extends StatelessWidget {
       margin: const EdgeInsets.all(4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: () {
-          Navigator.of(context).push(
+        onTap: () async {
+          await Navigator.of(context).push(
             MaterialPageRoute(
               builder: (ctx) => ItemDetailView(itemId: item.id),
             ),
           );
+          ref.read(savedFeedPaginationProvider.notifier).refreshItem(item.id);
         },
         child: Stack(
           fit: StackFit.expand,

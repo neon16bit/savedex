@@ -8,6 +8,8 @@ import 'package:savedex/data/services/reddit_auth_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 class SettingsView extends ConsumerWidget {
@@ -724,6 +726,15 @@ class SettingsView extends ConsumerWidget {
             onPressed: () async {
               Navigator.pop(ctx);
               await ref.read(savedItemRepositoryProvider).clearAllData();
+              ref
+                  .read(searchFilterViewModelProvider.notifier)
+                  .clearAllFilters();
+              ref.read(savedFeedPaginationProvider.notifier).clearFeed();
+              ref.invalidate(savedFeedPaginationProvider);
+              ref.invalidate(availableSubredditsProvider);
+              ref.invalidate(availableAuthorsWithCountsProvider);
+              ref.invalidate(availableAuthorsProvider);
+              ref.invalidate(availableFlairsProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context)
                   ..clearSnackBars()

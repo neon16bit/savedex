@@ -434,3 +434,25 @@ class ImportSummary {
     this.totalInDatabase,
   });
 }
+
+class FeedCursor {
+  final Object sortValue;
+  final String id;
+
+  const FeedCursor({required this.sortValue, required this.id});
+
+  @override
+  String toString() => 'FeedCursor(sortValue: $sortValue, id: $id)';
+}
+
+class PagedRows<T> {
+  final List<T> items;
+  final FeedCursor? nextCursor;
+  final bool hasMore;
+
+  const PagedRows({
+    required this.items,
+    required this.nextCursor,
+    required this.hasMore,
+  });
+}

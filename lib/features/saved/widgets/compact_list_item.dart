@@ -23,12 +23,15 @@ class CompactListItem extends ConsumerWidget {
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () {
-          Navigator.of(context).push(
+        onTap: () async {
+          await Navigator.of(context).push(
             MaterialPageRoute(
               builder: (ctx) => ItemDetailView(itemId: item.id),
             ),
           );
+          if (context.mounted) {
+            ref.read(savedFeedPaginationProvider.notifier).refreshItem(item.id);
+          }
         },
         child: Padding(
           padding: const EdgeInsets.all(12),

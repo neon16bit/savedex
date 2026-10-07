@@ -48,6 +48,82 @@ class SavedItemRepository {
         .map((rows) => rows.map((r) => r.toDomain()).toList());
   }
 
+  Future<PagedRows<SavedItem>> getSavedItemsPage({
+    required FilterCriteria filter,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) async {
+    final page = await db.getSavedItemsKeysetPage(
+      filter: filter,
+      cursor: cursor,
+      limit: limit,
+    );
+
+    if (page.items.isEmpty) {
+      return const PagedRows(items: [], nextCursor: null, hasMore: false);
+    }
+
+    final items = await _attachTagsToEntries(page.items);
+    return PagedRows(
+      items: items,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+    );
+  }
+
+  Future<List<SavedItem>> getItemsByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    const chunkSize = 200;
+    final allEntries = <SavedItemEntry>[];
+    for (var i = 0; i < ids.length; i += chunkSize) {
+      final chunk = ids.sublist(
+        i,
+        i + chunkSize > ids.length ? ids.length : i + chunkSize,
+      );
+      final entries = await (db.select(
+        db.savedItemsTable,
+      )..where((t) => t.id.isIn(chunk))).get();
+      allEntries.addAll(entries);
+    }
+    return _attachTagsToEntries(allEntries);
+  }
+
+  Future<List<SavedItem>> _attachTagsToEntries(
+    List<SavedItemEntry> entries,
+  ) async {
+    if (entries.isEmpty) return const [];
+    final itemIds = entries.map((i) => i.id).toList();
+    const chunkSize = 200;
+    final tagRows = <TypedResult>[];
+
+    for (var i = 0; i < itemIds.length; i += chunkSize) {
+      final chunk = itemIds.sublist(
+        i,
+        i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize,
+      );
+      final rows = await (db.select(db.tagsTable).join([
+        innerJoin(
+          db.itemTagsTable,
+          db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
+        ),
+      ])..where(db.itemTagsTable.itemId.isIn(chunk))).get();
+      tagRows.addAll(rows);
+    }
+
+    final tagsMap = <String, List<Tag>>{};
+    for (final row in tagRows) {
+      final t = row.readTable(db.tagsTable);
+      final itemId = row.readTable(db.itemTagsTable).itemId;
+      tagsMap
+          .putIfAbsent(itemId, () => [])
+          .add(Tag(id: t.id, name: t.name, colorValue: t.colorValue));
+    }
+
+    return entries
+        .map((e) => e.toDomain(tags: tagsMap[e.id] ?? const []))
+        .toList();
+  }
+
   Future<SavedItem?> getItemById(String id) async {
     final query = db.select(db.savedItemsTable)..where((t) => t.id.equals(id));
     final entry = await query.getSingleOrNull();
@@ -65,6 +141,74 @@ class SavedItemRepository {
         }).get();
 
     return entry.toDomain(tags: tags);
+  }
+
+  Stream<SavedItem?> watchItemById(String id) {
+    final query = db.select(db.savedItemsTable)..where((t) => t.id.equals(id));
+    return query.watchSingleOrNull().asyncMap((entry) async {
+      if (entry == null) return null;
+      final tags =
+          await (db.select(db.tagsTable).join([
+            innerJoin(
+              db.itemTagsTable,
+              db.itemTagsTable.tagId.equalsExp(db.tagsTable.id),
+            ),
+          ])..where(db.itemTagsTable.itemId.equals(id))).map((row) {
+            final t = row.readTable(db.tagsTable);
+            return Tag(id: t.id, name: t.name, colorValue: t.colorValue);
+          }).get();
+
+      return entry.toDomain(tags: tags);
+    });
+  }
+
+  Stream<({SavedItem? parentPost, List<SavedItem> comments})>
+  watchRelatedThreadItems(SavedItem item) {
+    final isComment = item.itemType == ItemType.comment;
+    final rawPostId = isComment ? item.parentPostId : item.id;
+
+    if (rawPostId == null || rawPostId.isEmpty) {
+      return Stream.value((
+        parentPost: isComment ? null : item,
+        comments: <SavedItem>[],
+      ));
+    }
+
+    final cleanPostId = rawPostId.startsWith('t3_')
+        ? rawPostId.substring(3)
+        : rawPostId;
+    final candidatePostIds = [cleanPostId, 't3_$cleanPostId'];
+
+    final commentQuery = db.select(db.savedItemsTable)
+      ..where(
+        (t) =>
+            t.parentPostId.isIn(candidatePostIds) &
+            t.itemType.equals(ItemType.comment.index),
+      )
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.createdAtUtc, mode: OrderingMode.asc),
+      ]);
+
+    return commentQuery.watch().asyncMap((commentEntries) async {
+      SavedItem? parentPost;
+      if (!isComment) {
+        parentPost = item;
+      } else {
+        final postEntry =
+            await (db.select(db.savedItemsTable)..where(
+                  (t) =>
+                      t.id.isIn(candidatePostIds) &
+                      t.itemType.equals(ItemType.post.index),
+                ))
+                .getSingleOrNull();
+        if (postEntry != null) {
+          parentPost = postEntry.toDomain();
+        }
+      }
+
+      final comments = commentEntries.map((e) => e.toDomain()).toList();
+      return (parentPost: parentPost, comments: comments);
+    });
   }
 
   Future<({SavedItem? parentPost, List<SavedItem> comments})>

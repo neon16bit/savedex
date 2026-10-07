@@ -5,6 +5,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_view.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
 class PostCard extends ConsumerWidget {
@@ -23,12 +24,15 @@ class PostCard extends ConsumerWidget {
       clipBehavior: Clip.antiAlias,
       margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       child: InkWell(
-        onTap: () {
-          Navigator.of(context).push(
+        onTap: () async {
+          await Navigator.of(context).push(
             MaterialPageRoute(
               builder: (ctx) => ItemDetailView(itemId: item.id),
             ),
           );
+          if (context.mounted) {
+            ref.read(savedFeedPaginationProvider.notifier).refreshItem(item.id);
+          }
         },
         child: Padding(
           padding: const EdgeInsets.all(16),
