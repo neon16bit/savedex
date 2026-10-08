@@ -283,6 +283,7 @@ class PostCard extends ConsumerWidget {
                         ExtendedImage.network(
                           item.displayImageUrl!,
                           width: double.infinity,
+                          cacheWidth: 800,
                           fit: BoxFit.cover,
                           cache: true,
                           printError: false,

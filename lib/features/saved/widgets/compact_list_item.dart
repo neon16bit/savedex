@@ -46,6 +46,8 @@ class CompactListItem extends ConsumerWidget {
                   child: item.displayImageUrl != null
                       ? ExtendedImage.network(
                           item.displayImageUrl!,
+                          cacheWidth: 120,
+                          cacheHeight: 120,
                           fit: BoxFit.cover,
                           cache: true,
                           printError: false,

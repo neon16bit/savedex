@@ -1,5 +1,8 @@
 import 'package:extended_image/extended_image.dart' hide MediaType;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
+import 'package:http/http.dart' as http;
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,34 +15,8 @@ class DetailMediaView extends StatelessWidget {
   void _openFullscreen(BuildContext context, String imageUrl) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (ctx) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            foregroundColor: Colors.white,
-          ),
-          body: Center(
-            child: ExtendedImage.network(
-              imageUrl,
-              fit: BoxFit.contain,
-              mode: ExtendedImageMode.gesture,
-              cache: true,
-              printError: false,
-              initGestureConfigHandler: (state) {
-                return GestureConfig(
-                  minScale: 0.9,
-                  animationMinScale: 0.7,
-                  maxScale: 4.0,
-                  animationMaxScale: 4.5,
-                  speed: 1.0,
-                  inertialSpeed: 100.0,
-                  initialScale: 1.0,
-                  inPageView: false,
-                );
-              },
-            ),
-          ),
-        ),
+        builder: (ctx) =>
+            _FullscreenImageViewer(imageUrl: imageUrl, itemTitle: item.title),
       ),
     );
   }
@@ -65,7 +42,10 @@ class DetailMediaView extends StatelessWidget {
               if (item.isVideo) {
                 _playVideo(item.mediaUrl ?? item.url);
               } else {
-                _openFullscreen(context, item.displayImageUrl!);
+                _openFullscreen(
+                  context,
+                  item.fullImageUrl ?? item.displayImageUrl!,
+                );
               }
             },
             child: ClipRRect(
@@ -87,34 +67,52 @@ class DetailMediaView extends StatelessWidget {
                       item.displayImageUrl!,
                       fit: BoxFit.contain,
                       cache: true,
+                      cacheWidth: 800,
                       printError: false,
                       loadStateChanged: (state) {
-                        switch (state.extendedImageLoadState) {
-                          case LoadState.loading:
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(32),
-                                child: CircularProgressIndicator(),
+                        if (state.extendedImageLoadState == LoadState.failed) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Icon(
+                                item.isVideo
+                                    ? Icons.videocam_rounded
+                                    : Icons.broken_image_rounded,
+                                size: 44,
+                                color: Colors.grey,
                               ),
-                            );
-                          case LoadState.completed:
-                            return null;
-                          case LoadState.failed:
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Icon(
-                                  item.isVideo
-                                      ? Icons.videocam_rounded
-                                      : Icons.broken_image_rounded,
-                                  size: 44,
-                                  color: Colors.grey,
+                            ),
+                          );
+                        }
+                        return null;
+                      },
+                    ),
+                    if (item.fullImageUrl != null &&
+                        item.fullImageUrl != item.displayImageUrl)
+                      ExtendedImage.network(
+                        item.fullImageUrl!,
+                        fit: BoxFit.contain,
+                        cache: true,
+                        printError: false,
+                        loadStateChanged: (state) {
+                          if (state.extendedImageLoadState ==
+                              LoadState.loading) {
+                            return const IgnorePointer(
+                              child: Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(32),
+                                  child: CircularProgressIndicator(),
                                 ),
                               ),
                             );
-                        }
-                      },
-                    ),
+                          }
+                          if (state.extendedImageLoadState ==
+                              LoadState.failed) {
+                            return const SizedBox.shrink();
+                          }
+                          return null;
+                        },
+                      ),
                     if (item.isVideo)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -268,6 +266,159 @@ class DetailMediaView extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _FullscreenImageViewer extends StatefulWidget {
+  final String imageUrl;
+  final String? itemTitle;
+
+  const _FullscreenImageViewer({required this.imageUrl, this.itemTitle});
+
+  @override
+  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
+  bool _isDownloading = false;
+
+  Future<void> _downloadImage() async {
+    if (_isDownloading) return;
+    setState(() => _isDownloading = true);
+
+    try {
+      Uint8List? bytes;
+
+      // directly from extended_image cache
+      try {
+        bytes = await getNetworkImageData(widget.imageUrl, useCache: true);
+      } catch (_) {
+        bytes = null;
+      }
+
+      // if not cached or failed, fetch via HTTP
+      if (bytes == null || bytes.isEmpty) {
+        final response = await http
+            .get(Uri.parse(widget.imageUrl))
+            .timeout(const Duration(seconds: 25));
+        if (response.statusCode == 200) {
+          bytes = response.bodyBytes;
+        } else {
+          throw Exception('HTTP ${response.statusCode}');
+        }
+      }
+
+      String baseName = 'savedex_image';
+      if (widget.itemTitle != null && widget.itemTitle!.trim().isNotEmpty) {
+        final sanitized = widget.itemTitle!
+            .trim()
+            .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_')
+            .replaceAll(RegExp(r'_+'), '_');
+        if (sanitized.isNotEmpty) {
+          baseName = sanitized.length > 40
+              ? sanitized.substring(0, 40)
+              : sanitized;
+        }
+      }
+      final name = '${baseName}_${DateTime.now().millisecondsSinceEpoch}';
+
+      final hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess(toAlbum: true);
+        if (!granted) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Storage access permission denied'),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+      }
+
+      await Gal.putImageBytes(bytes, album: 'Savedex', name: name);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Image saved to Pictures/Savedex'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save image: $e'),
+            backgroundColor: Colors.red.shade800,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDownloading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        actions: [
+          if (_isDownloading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.download_rounded),
+              tooltip: 'Download image',
+              onPressed: _downloadImage,
+            ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: Center(
+        child: ExtendedImage.network(
+          widget.imageUrl,
+          fit: BoxFit.contain,
+          mode: ExtendedImageMode.gesture,
+          cache: true,
+          printError: false,
+          initGestureConfigHandler: (state) {
+            return GestureConfig(
+              minScale: 0.9,
+              animationMinScale: 0.7,
+              maxScale: 4.0,
+              animationMaxScale: 4.5,
+              speed: 1.0,
+              inertialSpeed: 100.0,
+              initialScale: 1.0,
+              inPageView: false,
+            );
+          },
+        ),
+      ),
     );
   }
 }

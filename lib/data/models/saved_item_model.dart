@@ -142,6 +142,12 @@ class SavedItem {
       return null;
     }
 
+    // prefer medium preview thumbnails for feed but avoid stretching thumbs if full media exists
+    if (thumbnailUrl != null &&
+        isImageUrl(thumbnailUrl) &&
+        !thumbnailUrl!.contains('thumbs.redditmedia.com')) {
+      return thumbnailUrl;
+    }
     if (mediaUrl != null && isImageUrl(mediaUrl)) {
       return mediaUrl;
     }
@@ -149,6 +155,13 @@ class SavedItem {
       return thumbnailUrl;
     }
     return null;
+  }
+
+  String? get fullImageUrl {
+    if (isVideo) return null;
+    if (mediaUrl != null && isImageUrl(mediaUrl)) return mediaUrl;
+    if (url != null && isImageUrl(url)) return url;
+    return displayImageUrl;
   }
 
   bool get hasDisplayImage => displayImageUrl != null;

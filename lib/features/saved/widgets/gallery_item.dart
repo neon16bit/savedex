@@ -35,6 +35,7 @@ class GalleryItem extends ConsumerWidget {
             if (imageUrl != null)
               ExtendedImage.network(
                 imageUrl,
+                cacheWidth: 400,
                 fit: BoxFit.cover,
                 cache: true,
                 printError: false,

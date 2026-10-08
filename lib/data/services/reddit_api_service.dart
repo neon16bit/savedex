@@ -220,44 +220,44 @@ class RedditApiService {
     int maxAttempts = 2,
     Duration timeout = const Duration(seconds: 20),
   }) async {
-      final effectiveUser = (userAgent != null && userAgent.isNotEmpty)
-          ? userAgent
-          : _effectiveUserAgent;
+    final effectiveUser = (userAgent != null && userAgent.isNotEmpty)
+        ? userAgent
+        : _effectiveUserAgent;
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-      final response = await _client
-          .post(
-            Uri.parse('https://www.reddit.com/api/v1/access_token'),
-            headers: {
-              'Authorization': 'Basic $basicAuth',
-              'User-Agent': effectiveUser,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: body,
-          )
+        final response = await _client
+            .post(
+              Uri.parse('https://www.reddit.com/api/v1/access_token'),
+              headers: {
+                'Authorization': 'Basic $basicAuth',
+                'User-Agent': effectiveUser,
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: body,
+            )
             .timeout(timeout);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is Map && data.containsKey('access_token')) {
-          final accessToken = data['access_token'] as String;
-          final refreshToken = data['refresh_token'] as String?;
-          final expiresIn = data['expires_in'] as int? ?? defaultExpiresIn;
-          _lastAuthError = null;
-          return (
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            expiresIn: expiresIn,
-          );
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data is Map && data.containsKey('access_token')) {
+            final accessToken = data['access_token'] as String;
+            final refreshToken = data['refresh_token'] as String?;
+            final expiresIn = data['expires_in'] as int? ?? defaultExpiresIn;
+            _lastAuthError = null;
+            return (
+              accessToken: accessToken,
+              refreshToken: refreshToken,
+              expiresIn: expiresIn,
+            );
+          } else {
+            _lastAuthError = 'Unexpected token response: ${response.body}';
+          }
         } else {
-          _lastAuthError = 'Unexpected token response: ${response.body}';
+          _lastAuthError = 'HTTP ${response.statusCode}: ${response.body}';
         }
-      } else {
-        _lastAuthError = 'HTTP ${response.statusCode}: ${response.body}';
-      }
-    } catch (e) {
-      _lastAuthError = e.toString();
+      } catch (e) {
+        _lastAuthError = e.toString();
         if (attempt < maxAttempts) {
           await Future.delayed(const Duration(milliseconds: 600));
           continue;
@@ -438,64 +438,64 @@ class RedditApiService {
     int maxAttempts = 2,
   }) async {
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-    String? token = await _getValidToken();
-    if (token == null) {
-      final detail = _lastAuthError != null ? ' ($_lastAuthError)' : '';
+      String? token = await _getValidToken();
+      if (token == null) {
+        final detail = _lastAuthError != null ? ' ($_lastAuthError)' : '';
         if (attempt < maxAttempts) {
           await Future.delayed(const Duration(milliseconds: 600));
           continue;
         }
-      return (
-        response: null,
-          error: 'Not authenticated with Reddit API$detail',
-        isRateLimited: false,
-      );
-    }
-
-    try {
-      var response = await _client
-          .get(
-            uri,
-            headers: {
-              'Authorization': 'bearer $token',
-              'User-Agent': _effectiveUserAgent,
-            },
-          )
-          .timeout(timeout);
-
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        _accessToken = null;
-        _tokenExpiry = null;
-        token = await _getValidToken(forceRefresh: true);
-        if (token != null) {
-          response = await _client
-              .get(
-                uri,
-                headers: {
-                  'Authorization': 'bearer $token',
-                  'User-Agent': _effectiveUserAgent,
-                },
-              )
-              .timeout(timeout);
-        }
-      }
-
-      if (response.statusCode == 429) {
         return (
-          response: response,
-          error: 'Rate limit exceeded (429)',
-          isRateLimited: true,
+          response: null,
+          error: 'Not authenticated with Reddit API$detail',
+          isRateLimited: false,
         );
       }
 
-      return (response: response, error: null, isRateLimited: false);
-    } catch (e) {
+      try {
+        var response = await _client
+            .get(
+              uri,
+              headers: {
+                'Authorization': 'bearer $token',
+                'User-Agent': _effectiveUserAgent,
+              },
+            )
+            .timeout(timeout);
+
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          _accessToken = null;
+          _tokenExpiry = null;
+          token = await _getValidToken(forceRefresh: true);
+          if (token != null) {
+            response = await _client
+                .get(
+                  uri,
+                  headers: {
+                    'Authorization': 'bearer $token',
+                    'User-Agent': _effectiveUserAgent,
+                  },
+                )
+                .timeout(timeout);
+          }
+        }
+
+        if (response.statusCode == 429) {
+          return (
+            response: response,
+            error: 'Rate limit exceeded (429)',
+            isRateLimited: true,
+          );
+        }
+
+        return (response: response, error: null, isRateLimited: false);
+      } catch (e) {
         if (attempt < maxAttempts) {
           await Future.delayed(const Duration(milliseconds: 600));
           continue;
         }
-      return (response: null, error: e.toString(), isRateLimited: false);
-    }
+        return (response: null, error: e.toString(), isRateLimited: false);
+      }
     }
 
     return (
@@ -817,15 +817,30 @@ class RedditApiService {
       thumbnailUrl = rawThumbnail;
     }
 
-    // high res preview
+    // use a medium preview in feeds
     final preview = data['preview'];
     if (preview != null &&
         preview['images'] is List &&
         (preview['images'] as List).isNotEmpty) {
-      final source = preview['images'][0]['source'];
+      final image = preview['images'][0];
+      final source = image['source'];
       if (source != null && source['url'] is String) {
         mediaUrl = (source['url'] as String).replaceAll('&amp;', '&');
-        thumbnailUrl ??= mediaUrl;
+        final resolutions = image['resolutions'];
+        if (resolutions is List && resolutions.isNotEmpty) {
+          Map<String, dynamic>? selected;
+          for (final resolution in resolutions) {
+            if (resolution is! Map || resolution['url'] is! String) continue;
+            selected = Map<String, dynamic>.from(resolution);
+            final width = resolution['width'];
+            if (width is num && width >= 640) break;
+          }
+          thumbnailUrl = selected?['url'] is String
+              ? (selected!['url'] as String).replaceAll('&amp;', '&')
+              : mediaUrl;
+        } else {
+          thumbnailUrl = mediaUrl;
+        }
         mediaType = MediaType.image;
       }
     }

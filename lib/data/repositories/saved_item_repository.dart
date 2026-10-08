@@ -495,6 +495,9 @@ class SavedItemRepository {
             final companionMediaUrl = companion.mediaUrl.present
                 ? companion.mediaUrl.value
                 : null;
+            final companionThumbnailUrl = companion.thumbnailUrl.present
+                ? companion.thumbnailUrl.value
+                : null;
             final companionMediaType = companion.mediaType.present
                 ? companion.mediaType.value
                 : null;
@@ -547,6 +550,10 @@ class SavedItemRepository {
                 (existing.mediaUrl == null || existing.mediaUrl!.isEmpty) &&
                 companionMediaUrl != null &&
                 companionMediaUrl.isNotEmpty;
+            final thumbnailNeedsUpdate =
+                companionThumbnailUrl != null &&
+                companionThumbnailUrl.isNotEmpty &&
+                existing.thumbnailUrl != companionThumbnailUrl;
             final mediaTypeNeedsUpdate =
                 existing.mediaType == MediaType.text &&
                 companionMediaType != null &&
@@ -572,6 +579,7 @@ class SavedItemRepository {
                 bodyNeedsUpdate ||
                 authorNeedsUpdate ||
                 mediaNeedsUpdate ||
+                thumbnailNeedsUpdate ||
                 mediaTypeNeedsUpdate ||
                 flairNeedsUpdate ||
                 subTypeNeedsUpdate) {
@@ -604,6 +612,9 @@ class SavedItemRepository {
                   mediaUrl: mediaNeedsUpdate
                       ? Value(companionMediaUrl)
                       : Value(existing.mediaUrl),
+                  thumbnailUrl: thumbnailNeedsUpdate
+                      ? Value(companionThumbnailUrl)
+                      : Value(existing.thumbnailUrl),
                   mediaType: mediaTypeNeedsUpdate
                       ? Value(companionMediaType)
                       : Value(existing.mediaType),
