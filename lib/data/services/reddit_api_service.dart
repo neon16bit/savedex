@@ -217,12 +217,15 @@ class RedditApiService {
     required Map<String, String> body,
     String? userAgent,
     int defaultExpiresIn = 3600,
+    int maxAttempts = 2,
+    Duration timeout = const Duration(seconds: 20),
   }) async {
-    try {
       final effectiveUser = (userAgent != null && userAgent.isNotEmpty)
           ? userAgent
           : _effectiveUserAgent;
 
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
       final response = await _client
           .post(
             Uri.parse('https://www.reddit.com/api/v1/access_token'),
@@ -233,7 +236,7 @@ class RedditApiService {
             },
             body: body,
           )
-          .timeout(const Duration(seconds: 10));
+            .timeout(timeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -255,6 +258,11 @@ class RedditApiService {
       }
     } catch (e) {
       _lastAuthError = e.toString();
+        if (attempt < maxAttempts) {
+          await Future.delayed(const Duration(milliseconds: 600));
+          continue;
+        }
+      }
     }
     return null;
   }
@@ -426,14 +434,20 @@ class RedditApiService {
   Future<({http.Response? response, String? error, bool isRateLimited})>
   _getWithAuth(
     Uri uri, {
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 20),
+    int maxAttempts = 2,
   }) async {
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
     String? token = await _getValidToken();
     if (token == null) {
       final detail = _lastAuthError != null ? ' ($_lastAuthError)' : '';
+        if (attempt < maxAttempts) {
+          await Future.delayed(const Duration(milliseconds: 600));
+          continue;
+        }
       return (
         response: null,
-        error: 'Not authenticated with Reddit API $detail',
+          error: 'Not authenticated with Reddit API$detail',
         isRateLimited: false,
       );
     }
@@ -476,8 +490,19 @@ class RedditApiService {
 
       return (response: response, error: null, isRateLimited: false);
     } catch (e) {
+        if (attempt < maxAttempts) {
+          await Future.delayed(const Duration(milliseconds: 600));
+          continue;
+        }
       return (response: null, error: e.toString(), isRateLimited: false);
     }
+    }
+
+    return (
+      response: null,
+      error: 'Request failed after $maxAttempts attempts',
+      isRateLimited: false,
+    );
   }
 
   Future<({String? username, String? error})> fetchMyUsername() async {

@@ -552,7 +552,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
           _isStarredOnly == true;
 
       return Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

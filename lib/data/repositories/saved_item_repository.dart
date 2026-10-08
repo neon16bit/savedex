@@ -1014,7 +1014,11 @@ class SavedItemRepository {
 
     onProgress?.call(0, 'Connecting to Reddit...');
 
-    final userResult = await _redditApi.fetchMyUsername();
+    var userResult = await _redditApi.fetchMyUsername();
+    if (userResult.username == null) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      userResult = await _redditApi.fetchMyUsername();
+    }
     if (userResult.username == null) {
       throw Exception(
         'Failed to get Reddit user info: ${userResult.error ?? "Unknown error"}',

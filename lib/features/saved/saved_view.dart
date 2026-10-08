@@ -628,7 +628,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
     if (hasActiveFilters) {
       return Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -679,7 +679,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
     }
 
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
