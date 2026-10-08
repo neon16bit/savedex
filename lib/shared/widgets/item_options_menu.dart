@@ -7,6 +7,7 @@ import 'package:savedex/features/detail/widgets/detail_dialogs.dart';
 import 'package:savedex/features/detail/widgets/detail_utils.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:savedex/shared/widgets/collection_picker_sheet.dart';
 import 'package:savedex/shared/widgets/item_reddit_button.dart';
 
 class ItemOptionsMenu extends ConsumerWidget {
@@ -117,6 +118,8 @@ class ItemOptionsMenu extends ConsumerWidget {
           }
         } else if (val == 'open_reddit') {
           openRedditUrl(context, item.fullPermalink);
+        } else if (val == 'collections') {
+          showCollectionPickerSheet(context, item.id);
         } else if (val == 'delete') {
           showConfirmDeleteDialog(
             context,
@@ -168,6 +171,16 @@ class ItemOptionsMenu extends ConsumerWidget {
               Icon(Icons.link_rounded, size: 18),
               SizedBox(width: 10),
               Text('Copy Permalink'),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'collections',
+          child: Row(
+            children: [
+              Icon(Icons.collections_bookmark_outlined, size: 18),
+              SizedBox(width: 10),
+              Text('Manage Collections'),
             ],
           ),
         ),

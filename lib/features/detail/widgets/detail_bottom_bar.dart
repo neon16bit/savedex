@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
-import 'package:savedex/features/detail/item_detail_viewmodel.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
 class DetailBottomBar extends StatelessWidget {
   final SavedItem item;
   final VoidCallback onOpenReddit;
-  final void Function(String? currentNote) onEditNote;
+  final void Function(String? currentNote)? onEditNote;
 
   const DetailBottomBar({
     super.key,
     required this.item,
     required this.onOpenReddit,
-    required this.onEditNote,
+    this.onEditNote,
   });
 
   void _share(BuildContext context) {
@@ -72,20 +72,20 @@ class DetailBottomBar extends StatelessWidget {
                 height: 48,
                 child: Consumer(
                   builder: (context, ref, _) {
-                    final note = ref.watch(
-                      itemNoteProvider((
-                        id: item.id,
-                        initialNote: item.userNote,
-                      )),
+                    final collectionsAsync = ref.watch(
+                      itemCollectionsProvider(item.id),
                     );
-                    final hasNote = note != null && note.trim().isNotEmpty;
+                    final collections =
+                        collectionsAsync.asData?.value ?? item.collections;
+                    final hasCollections = collections.isNotEmpty;
                     final colorScheme = Theme.of(context).colorScheme;
+
                     return IconButton.filledTonal(
                       style: IconButton.styleFrom(
-                        backgroundColor: hasNote
+                        backgroundColor: hasCollections
                             ? colorScheme.primaryContainer
                             : null,
-                        foregroundColor: hasNote
+                        foregroundColor: hasCollections
                             ? colorScheme.onPrimaryContainer
                             : null,
                         shape: RoundedRectangleBorder(
@@ -94,13 +94,16 @@ class DetailBottomBar extends StatelessWidget {
                         padding: EdgeInsets.zero,
                       ),
                       icon: Icon(
-                        hasNote
-                            ? Icons.sticky_note_2_rounded
-                            : Icons.note_add_outlined,
+                        hasCollections
+                            ? Icons.bookmark_added_rounded
+                            : Icons.collections_bookmark_outlined,
                         size: 20,
                       ),
-                      tooltip: hasNote ? 'Edit Note' : 'Add Note',
-                      onPressed: () => onEditNote(note),
+                      tooltip: hasCollections
+                          ? 'Collections (${collections.length})'
+                          : 'Add to Collection',
+                      onPressed: () =>
+                          showCollectionPickerSheet(context, item.id),
                     );
                   },
                 ),

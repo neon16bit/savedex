@@ -168,6 +168,11 @@ class PostCard extends ConsumerWidget {
                       ),
                     ),
                   ],
+
+                  CollectionBadgeRow(
+                    itemId: item.id,
+                    initialCollections: item.collections,
+                  ),
                 ],
               ),
 

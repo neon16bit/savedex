@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/repositories/saved_item_repository.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
+import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/repositories/collection_repository.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
@@ -71,3 +72,14 @@ final pendingEnrichmentCountProvider = StreamProvider<int>((ref) {
   final repo = ref.watch(savedItemRepositoryProvider);
   return repo.watchPendingEnrichmentCount();
 });
+
+final allCollectionsProvider = StreamProvider<List<Collection>>((ref) {
+  final repo = ref.watch(collectionRepositoryProvider);
+  return repo.watchAllCollections();
+});
+
+final itemCollectionsProvider =
+    StreamProvider.family<List<Collection>, String>((ref, itemId) {
+      final repo = ref.watch(collectionRepositoryProvider);
+      return repo.watchCollectionsForItem(itemId);
+    });

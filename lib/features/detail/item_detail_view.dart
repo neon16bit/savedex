@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
+import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_viewmodel.dart';
@@ -205,6 +206,8 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                               duration: Duration(seconds: 2),
                             ),
                           );
+                      } else if (val == 'collections') {
+                        showCollectionPickerSheet(context, item.id);
                       } else if (val == 'delete') {
                         showConfirmDeleteDialog(
                           context,
@@ -265,6 +268,16 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           ],
                         ),
                       ),
+                      const PopupMenuItem(
+                        value: 'collections',
+                        child: Row(
+                          children: [
+                            Icon(Icons.collections_bookmark_outlined, size: 18),
+                            SizedBox(width: 10),
+                            Text('Manage Collections'),
+                          ],
+                        ),
+                      ),
                       const PopupMenuDivider(),
                       PopupMenuItem(
                         value: 'delete',
@@ -315,10 +328,22 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    DetailBadgeRow(
-                      isComment: isComment,
-                      isNsfw: item.isNsfw,
-                      postFlair: item.postFlair,
+                    Consumer(
+                      builder: (context, ref, _) {
+                        final colsAsync = ref.watch(
+                          itemCollectionsProvider(item.id),
+                        );
+                        final cols =
+                            colsAsync.asData?.value ?? item.collections;
+                        return DetailBadgeRow(
+                          isComment: isComment,
+                          isNsfw: item.isNsfw,
+                          postFlair: item.postFlair,
+                          collections: cols,
+                          onCollectionTap: (_) =>
+                              showCollectionPickerSheet(context, item.id),
+                        );
+                      },
                     ),
                     if (item.author != null && item.author!.isNotEmpty) ...[
                       const SizedBox(height: 10),
@@ -423,8 +448,6 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
           bottomNavigationBar: DetailBottomBar(
             item: item,
             onOpenReddit: () => openRedditUrl(context, item.fullPermalink),
-            onEditNote: (currentNote) =>
-                showEditNoteDialog(context, actions, item.id, currentNote),
           ),
         );
       },

@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
+import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class DetailBadgeRow extends StatelessWidget {
   final bool isComment;
   final bool isNsfw;
   final String? postFlair;
+  final List<Collection> collections;
+  final ValueChanged<Collection>? onCollectionTap;
 
   const DetailBadgeRow({
     super.key,
     required this.isComment,
     required this.isNsfw,
     this.postFlair,
+    this.collections = const [],
+    this.onCollectionTap,
   });
 
   @override
@@ -74,6 +80,13 @@ class DetailBadgeRow extends StatelessWidget {
                 color: colorScheme.onSecondaryContainer,
               ),
             ),
+          ),
+        for (final col in collections)
+          CollectionBadge(
+            collection: col,
+            onTap: onCollectionTap != null ? () => onCollectionTap!(col) : null,
+            fontSize: 10.5,
+            iconSize: 11,
           ),
       ],
     );

@@ -346,6 +346,13 @@ class DetailCommentCard extends StatelessWidget {
                     ],
                   ),
                 ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: CollectionBadgeRow(
+                  itemId: comment.id,
+                  initialCollections: comment.collections,
+                ),
+              ),
               const Spacer(),
               ItemNoteButton(
                 itemId: comment.id,
@@ -437,6 +444,8 @@ class DetailCommentCard extends StatelessWidget {
                           );
                       } else if (val == 'open_reddit') {
                         openRedditUrl(context, comment.fullPermalink);
+                      } else if (val == 'collections') {
+                        showCollectionPickerSheet(context, comment.id);
                       } else if (val == 'delete') {
                         showConfirmDeleteDialog(
                           context,
@@ -494,6 +503,16 @@ class DetailCommentCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 10),
                             const Text('Open in Reddit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'collections',
+                        child: Row(
+                          children: [
+                            Icon(Icons.collections_bookmark_outlined, size: 18),
+                            SizedBox(width: 10),
+                            Text('Manage Collections'),
                           ],
                         ),
                       ),

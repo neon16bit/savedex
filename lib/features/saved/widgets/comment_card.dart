@@ -88,6 +88,7 @@ class CommentCard extends ConsumerWidget {
                       ),
                     ),
                   ],
+
                   if (item.enrichmentStatus == EnrichmentStatus.slugOnly) ...[
                     const SizedBox(width: 6),
                     Container(
@@ -133,6 +134,11 @@ class CommentCard extends ConsumerWidget {
                       ),
                     ),
                   ],
+
+                  CollectionBadgeRow(
+                    itemId: item.id,
+                    initialCollections: item.collections,
+                  ),
                 ],
               ),
 
