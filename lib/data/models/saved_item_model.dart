@@ -302,6 +302,7 @@ class Collection {
   final String? description;
   final int colorValue;
   final DateTime? createdAtUtc;
+  final int itemCount;
 
   const Collection({
     required this.id,
@@ -309,7 +310,26 @@ class Collection {
     this.description,
     required this.colorValue,
     this.createdAtUtc,
+    this.itemCount = 0,
   });
+
+  Collection copyWith({
+    int? id,
+    String? name,
+    String? description,
+    int? colorValue,
+    DateTime? createdAtUtc,
+    int? itemCount,
+  }) {
+    return Collection(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      colorValue: colorValue ?? this.colorValue,
+      createdAtUtc: createdAtUtc ?? this.createdAtUtc,
+      itemCount: itemCount ?? this.itemCount,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -319,11 +339,12 @@ class Collection {
           other.name == name &&
           other.description == description &&
           other.colorValue == colorValue &&
-          other.createdAtUtc == createdAtUtc;
+          other.createdAtUtc == createdAtUtc &&
+          other.itemCount == itemCount;
 
   @override
   int get hashCode =>
-      Object.hash(id, name, description, colorValue, createdAtUtc);
+      Object.hash(id, name, description, colorValue, createdAtUtc, itemCount);
 }
 
 class FilterCriteria {

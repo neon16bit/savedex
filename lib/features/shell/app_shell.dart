@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/features/library/library_view.dart';
 import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
 
@@ -23,7 +24,7 @@ class AppShell extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final screens = const [SavedView(), SettingsView()];
+    final screens = const [SavedView(), LibraryView(), SettingsView()];
 
     return Scaffold(
       body: IndexedStack(
@@ -48,6 +49,11 @@ class AppShell extends ConsumerWidget {
               icon: Icon(Icons.bookmarks_outlined),
               selectedIcon: Icon(Icons.bookmarks_rounded),
               label: 'Saved',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.folder_copy_outlined),
+              selectedIcon: Icon(Icons.folder_copy_rounded),
+              label: 'Library',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

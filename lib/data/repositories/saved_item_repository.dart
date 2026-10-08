@@ -1249,6 +1249,9 @@ class SavedItemRepository {
   Future<List<(String, int)>> getSubredditsWithCounts() =>
       db.getSubredditsWithCounts();
 
+  Stream<List<(String, int)>> watchSubredditsWithCounts() =>
+      db.watchSubredditsWithCounts();
+
   Future<List<(String, int)>> getAuthorsWithCounts() =>
       db.getAuthorsWithCounts();
 

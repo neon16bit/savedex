@@ -5,3 +5,4 @@ export 'item_star_button.dart';
 export 'note_indicator_badge.dart';
 export 'collection_picker_sheet.dart';
 export 'collection_badge.dart';
+export 'collection_form_dialog.dart';

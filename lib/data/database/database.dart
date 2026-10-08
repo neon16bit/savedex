@@ -785,6 +785,20 @@ class AppDatabase extends _$AppDatabase {
     }).toList();
   }
 
+  Stream<List<(String, int)>> watchSubredditsWithCounts() {
+    final countExp = savedItemsTable.id.count();
+    final query = selectOnly(savedItemsTable)
+      ..addColumns([savedItemsTable.subreddit, countExp])
+      ..groupBy([savedItemsTable.subreddit])
+      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
+
+    return query.watch().map((rows) {
+      return rows.map((row) {
+        return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
+      }).toList();
+    });
+  }
+
   Future<List<(String, int)>> getAuthorsWithCounts() async {
     final countExp = savedItemsTable.id.count();
     final query = selectOnly(savedItemsTable)
@@ -859,6 +873,55 @@ class AppDatabase extends _$AppDatabase {
     ])..where(itemCollectionsTable.itemId.equals(itemId));
 
     return query.map((r) => r.readTable(collectionsTable)).get();
+  }
+
+  Stream<List<(CollectionEntry, int)>> watchCollectionsWithCounts() {
+    final countExp = itemCollectionsTable.itemId.count();
+    final query =
+        select(collectionsTable).join([
+            leftOuterJoin(
+              itemCollectionsTable,
+              itemCollectionsTable.collectionId.equalsExp(collectionsTable.id),
+            ),
+          ])
+          ..addColumns([countExp])
+          ..groupBy([collectionsTable.id])
+          ..orderBy([
+            OrderingTerm(
+              expression: collectionsTable.name,
+              mode: OrderingMode.asc,
+            ),
+          ]);
+
+    return query.watch().map((rows) {
+      return rows.map((r) {
+        return (r.readTable(collectionsTable), r.read(countExp) ?? 0);
+      }).toList();
+    });
+  }
+
+  Future<List<(CollectionEntry, int)>> getCollectionsWithCounts() async {
+    final countExp = itemCollectionsTable.itemId.count();
+    final query =
+        select(collectionsTable).join([
+            leftOuterJoin(
+              itemCollectionsTable,
+              itemCollectionsTable.collectionId.equalsExp(collectionsTable.id),
+            ),
+          ])
+          ..addColumns([countExp])
+          ..groupBy([collectionsTable.id])
+          ..orderBy([
+            OrderingTerm(
+              expression: collectionsTable.name,
+              mode: OrderingMode.asc,
+            ),
+          ]);
+
+    final rows = await query.get();
+    return rows.map((r) {
+      return (r.readTable(collectionsTable), r.read(countExp) ?? 0);
+    }).toList();
   }
 
   Future<List<SavedItemEntry>> getPendingEnrichmentItems({

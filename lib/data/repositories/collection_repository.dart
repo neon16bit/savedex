@@ -174,4 +174,37 @@ class CollectionRepository {
         )
         .toList();
   }
+
+  Stream<List<Collection>> watchCollectionsWithCounts() {
+    return _db.watchCollectionsWithCounts().map((rows) {
+      return rows
+          .map(
+            (pair) => Collection(
+              id: pair.$1.id,
+              name: pair.$1.name,
+              description: pair.$1.description,
+              colorValue: pair.$1.colorValue,
+              createdAtUtc: pair.$1.createdAtUtc,
+              itemCount: pair.$2,
+            ),
+          )
+          .toList();
+    });
+  }
+
+  Future<List<Collection>> getCollectionsWithCounts() async {
+    final rows = await _db.getCollectionsWithCounts();
+    return rows
+        .map(
+          (pair) => Collection(
+            id: pair.$1.id,
+            name: pair.$1.name,
+            description: pair.$1.description,
+            colorValue: pair.$1.colorValue,
+            createdAtUtc: pair.$1.createdAtUtc,
+            itemCount: pair.$2,
+          ),
+        )
+        .toList();
+  }
 }
