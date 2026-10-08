@@ -7,7 +7,6 @@ import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/saved/widgets/comment_card.dart';
 import 'package:savedex/features/saved/widgets/post_card.dart';
-import 'package:savedex/shared/widgets/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ScopedFeedArgs {
@@ -54,6 +53,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   ItemType? _selectedItemType;
   bool? _isStarredOnly;
   SortOption _sortOption = SortOption.savedOrderDesc;
+  final Set<String> _selectedSubreddits = <String>{};
 
   @override
   void initState() {
@@ -83,7 +83,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
           : const {},
       selectedSubreddits: widget.args.isSubreddit
           ? {widget.args.subreddit!}
-          : const {},
+          : _selectedSubreddits,
       searchQuery: _searchQuery,
       itemType: _selectedItemType,
       isStarred: _isStarredOnly,
@@ -185,6 +185,36 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+  }
+
+  void _openSubredditFilterSheet(BuildContext context) {
+    if (!widget.args.isCollection) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => _CollectionSubredditFilterSheet(
+        collectionId: widget.args.collection!.id,
+        collectionName: widget.args.collection!.name,
+        selectedSubreddits: _selectedSubreddits,
+        onToggleSubreddit: (sub) {
+          setState(() {
+            if (_selectedSubreddits.contains(sub)) {
+              _selectedSubreddits.remove(sub);
+            } else {
+              _selectedSubreddits.add(sub);
+            }
+          });
+          _loadInitial();
+        },
+        onReset: () {
+          setState(() {
+            _selectedSubreddits.clear();
+          });
+          _loadInitial();
+        },
+      ),
+    );
   }
 
   @override
@@ -291,16 +321,28 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
             ],
           ),
           if (widget.args.isCollection) ...[
-            IconButton(
-              icon: const Icon(Icons.edit_note_rounded),
-              tooltip: 'Edit collection',
-              onPressed: () async {
-                await showCollectionFormDialog(
-                  context,
-                  initialCollection: widget.args.collection,
-                );
-                if (mounted) _loadInitial();
-              },
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.tune_rounded),
+                  tooltip: 'Filter subreddits',
+                  onPressed: () => _openSubredditFilterSheet(context),
+                ),
+                if (_selectedSubreddits.isNotEmpty)
+                  Positioned(
+                    top: 9,
+                    right: 9,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ],
           if (widget.args.isSubreddit) ...[
@@ -347,19 +389,24 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               ),
             ),
 
-          SizedBox(
-            height: 44,
+          Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               children: [
                 ChoiceChip(
                   label: const Text('All'),
-                  selected: _selectedItemType == null && _isStarredOnly != true,
+                  selected:
+                      _selectedItemType == null &&
+                      _isStarredOnly != true &&
+                      _selectedSubreddits.isEmpty,
                   onSelected: (_) {
                     setState(() {
                       _selectedItemType = null;
                       _isStarredOnly = null;
+                      _selectedSubreddits.clear();
                     });
                     _loadInitial();
                   },
@@ -404,6 +451,44 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                     _loadInitial();
                   },
                 ),
+                if (widget.args.isCollection &&
+                    _selectedSubreddits.isNotEmpty) ...[
+                  ..._selectedSubreddits.map(
+                    (sub) => Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Chip(
+                        avatar: Icon(
+                          SavedItem.isUserSubreddit(sub)
+                              ? Icons.person_rounded
+                              : Icons.tag_rounded,
+                          size: 14,
+                        ),
+                        label: Text(SavedItem.formatSubreddit(sub)),
+                        onDeleted: () {
+                          setState(() => _selectedSubreddits.remove(sub));
+                          _loadInitial();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+                if (_selectedItemType != null ||
+                    _isStarredOnly == true ||
+                    _selectedSubreddits.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: const Icon(Icons.close_rounded, size: 14),
+                    label: const Text('Clear Filters'),
+                    onPressed: () {
+                      setState(() {
+                        _selectedItemType = null;
+                        _isStarredOnly = null;
+                        _selectedSubreddits.clear();
+                      });
+                      _loadInitial();
+                    },
+                  ),
+                ],
               ],
             ),
           ),
@@ -461,6 +546,10 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
     if (_items.isEmpty) {
       final isSearching = _searchQuery != null && _searchQuery!.isNotEmpty;
+      final isFiltered =
+          _selectedSubreddits.isNotEmpty ||
+          _selectedItemType != null ||
+          _isStarredOnly == true;
 
       return Center(
         child: Padding(
@@ -475,7 +564,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  isSearching
+                  isSearching || isFiltered
                       ? Icons.search_off_rounded
                       : (widget.args.isCollection
                             ? Icons.bookmark_border_rounded
@@ -486,7 +575,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               ),
               const SizedBox(height: 20),
               Text(
-                isSearching
+                isSearching || isFiltered
                     ? 'No matching items'
                     : (widget.args.isCollection
                           ? 'Collection is empty'
@@ -497,7 +586,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               ),
               const SizedBox(height: 8),
               Text(
-                isSearching
+                isSearching || isFiltered
                     ? 'Try different keywords or reset your filters.'
                     : (widget.args.isCollection
                           ? 'Tap the Collections button or 3-dot menu on any saved post or comment to add it here.'
@@ -509,14 +598,28 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                   fontSize: 13,
                 ),
               ),
-              if (isSearching) ...[
+              if (isSearching || isFiltered) ...[
                 const SizedBox(height: 16),
                 FilledButton.tonal(
                   onPressed: () {
-                    _searchController.clear();
-                    _onSearchChanged('');
+                    if (isSearching) {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    }
+                    if (isFiltered) {
+                      setState(() {
+                        _selectedSubreddits.clear();
+                        _selectedItemType = null;
+                        _isStarredOnly = null;
+                      });
+                      _loadInitial();
+                    }
                   },
-                  child: const Text('Clear Search'),
+                  child: Text(
+                    isSearching && isFiltered
+                        ? 'Reset All'
+                        : (isSearching ? 'Clear Search' : 'Reset Filters'),
+                  ),
                 ),
               ],
             ],
@@ -554,6 +657,301 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
           }
         },
       ),
+    );
+  }
+}
+
+class _CollectionSubredditFilterSheet extends ConsumerStatefulWidget {
+  final int collectionId;
+  final String collectionName;
+  final Set<String> selectedSubreddits;
+  final ValueChanged<String> onToggleSubreddit;
+  final VoidCallback onReset;
+
+  const _CollectionSubredditFilterSheet({
+    required this.collectionId,
+    required this.collectionName,
+    required this.selectedSubreddits,
+    required this.onToggleSubreddit,
+    required this.onReset,
+  });
+
+  @override
+  ConsumerState<_CollectionSubredditFilterSheet> createState() =>
+      _CollectionSubredditFilterSheetState();
+}
+
+class _CollectionSubredditFilterSheetState
+    extends ConsumerState<_CollectionSubredditFilterSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  late Future<List<(String, int)>> _subredditsFuture;
+  late Set<String> _selected;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = Set<String>.from(widget.selectedSubreddits);
+    _subredditsFuture = ref
+        .read(collectionRepositoryProvider)
+        .getSubredditsForCollection(widget.collectionId);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 16, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Filter by Subreddit',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.collectionName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_selected.isNotEmpty)
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: colorScheme.error,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () {
+                          setState(() => _selected.clear());
+                          widget.onReset();
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text(
+                          'Reset',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (val) {
+                    setState(() => _searchQuery = val.trim().toLowerCase());
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search subreddits in collection...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(100),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<(String, int)>>(
+                  future: _subredditsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text('Error: ${snapshot.error}'),
+                        ),
+                      );
+                    }
+                    final allSubreddits = snapshot.data ?? [];
+                    if (allSubreddits.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'No subreddits found in this collection.',
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final filtered = _searchQuery.isEmpty
+                        ? allSubreddits
+                        : allSubreddits
+                              .where(
+                                (t) =>
+                                    t.$1.toLowerCase().contains(_searchQuery) ||
+                                    SavedItem.formatSubreddit(t.$1)
+                                        .toLowerCase()
+                                        .contains(_searchQuery),
+                              )
+                              .toList();
+
+                    if (filtered.isEmpty) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'No subreddits matching "$_searchQuery"',
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: filtered.map((tuple) {
+                            final name = tuple.$1;
+                            final count = tuple.$2;
+                            final isSelected = _selected.contains(name);
+
+                            return FilterChip(
+                              avatar: Icon(
+                                SavedItem.isUserSubreddit(name)
+                                    ? Icons.person_rounded
+                                    : Icons.tag_rounded,
+                                size: 14,
+                              ),
+                              label: Text(
+                                '${SavedItem.formatSubreddit(name)} ($count)',
+                              ),
+                              selected: isSelected,
+                              onSelected: (_) {
+                                setState(() {
+                                  if (isSelected) {
+                                    _selected.remove(name);
+                                  } else {
+                                    _selected.add(name);
+                                  }
+                                });
+                                widget.onToggleSubreddit(name);
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        _selected.isNotEmpty
+                            ? 'Show Results (${_selected.length} Selected)'
+                            : 'Done',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

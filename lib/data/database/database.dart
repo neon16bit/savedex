@@ -924,6 +924,30 @@ class AppDatabase extends _$AppDatabase {
     }).toList();
   }
 
+  Future<List<(String, int)>> getSubredditsForCollection(
+    int collectionId,
+  ) async {
+    final countExp = savedItemsTable.id.count();
+    final query =
+        selectOnly(savedItemsTable).join([
+            innerJoin(
+              itemCollectionsTable,
+              itemCollectionsTable.itemId.equalsExp(savedItemsTable.id),
+            ),
+          ])
+          ..addColumns([savedItemsTable.subreddit, countExp])
+          ..where(itemCollectionsTable.collectionId.equals(collectionId))
+          ..groupBy([savedItemsTable.subreddit])
+          ..orderBy([
+            OrderingTerm(expression: countExp, mode: OrderingMode.desc),
+          ]);
+
+    final rows = await query.get();
+    return rows.map((row) {
+      return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
+    }).toList();
+  }
+
   Future<List<SavedItemEntry>> getPendingEnrichmentItems({
     int limit = 50,
     List<String> excludeIds = const [],
