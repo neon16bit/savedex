@@ -445,7 +445,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   onNotification: (notification) {
                     if (notification.depth == 0 &&
                         notification.metrics.pixels >=
-                            notification.metrics.maxScrollExtent - 600) {
+                            notification.metrics.maxScrollExtent - 3000) {
                       final current = ref
                           .read(savedFeedPaginationProvider)
                           .value;

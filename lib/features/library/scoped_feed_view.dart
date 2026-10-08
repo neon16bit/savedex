@@ -159,7 +159,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
   void _onScroll() {
     if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 400) {
+        _scrollController.position.maxScrollExtent - 3000) {
       _loadMore();
     }
   }
