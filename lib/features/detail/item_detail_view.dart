@@ -93,6 +93,15 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     final notifier = ref.read(enrichingItemsProvider.notifier);
     if (notifier.isEnriching(item.id)) return;
     notifier.add(item.id);
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Trying archive recovery...'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 1),
+        ),
+      );
     try {
       final result = await actions.recoverFromArchive(item);
       if (!mounted) return;
@@ -263,6 +272,18 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       }
                     },
                     itemBuilder: (ctx) => [
+                      if (item.canAttemptArchiveRecovery)
+                        PopupMenuItem(
+                          value: 'recover_archive',
+                          enabled: !isEnriching,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.archive_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Try Archive Recovery'),
+                            ],
+                          ),
+                        ),
                       PopupMenuItem(
                         value: 'refresh',
                         enabled: !isEnriching,
@@ -278,17 +299,6 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           ],
                         ),
                       ),
-                      if (item.canAttemptArchiveRecovery)
-                        const PopupMenuItem(
-                          value: 'recover_archive',
-                          child: Row(
-                            children: [
-                              Icon(Icons.archive_rounded, size: 18),
-                              SizedBox(width: 10),
-                              Text('Try Archive Recovery'),
-                            ],
-                          ),
-                        ),
                       if (item.body != null && item.body!.trim().isNotEmpty)
                         const PopupMenuItem(
                           value: 'copy_text',
@@ -497,6 +507,8 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     : null,
                 onRefresh: (comment) =>
                     _refreshMetadata(actions, comment, colorScheme),
+                onRecoverArchive: (comment) =>
+                    _recoverFromArchive(actions, comment, colorScheme),
               ),
             ],
           ),

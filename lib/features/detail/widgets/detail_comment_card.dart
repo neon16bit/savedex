@@ -80,6 +80,7 @@ class DetailCommentsSection extends ConsumerWidget {
   final ItemDetailActions actions;
   final String? highlightedCommentId;
   final Future<void> Function(SavedItem item) onRefresh;
+  final Future<void> Function(SavedItem item)? onRecoverArchive;
 
   const DetailCommentsSection({
     super.key,
@@ -88,6 +89,7 @@ class DetailCommentsSection extends ConsumerWidget {
     required this.actions,
     this.highlightedCommentId,
     required this.onRefresh,
+    this.onRecoverArchive,
   });
 
   @override
@@ -200,6 +202,9 @@ class DetailCommentsSection extends ConsumerWidget {
             actions: actions,
             isHighlighted: comment.id == highlightedCommentId,
             onRefresh: () => onRefresh(comment),
+            onRecoverArchive: onRecoverArchive != null
+                ? () => onRecoverArchive!(comment)
+                : null,
           ),
         ),
         const SizedBox(height: 16),
@@ -213,6 +218,7 @@ class DetailCommentCard extends StatelessWidget {
   final ItemDetailActions actions;
   final bool isHighlighted;
   final VoidCallback onRefresh;
+  final VoidCallback? onRecoverArchive;
 
   const DetailCommentCard({
     super.key,
@@ -220,6 +226,7 @@ class DetailCommentCard extends StatelessWidget {
     required this.actions,
     this.isHighlighted = false,
     required this.onRefresh,
+    this.onRecoverArchive,
   });
 
   @override
@@ -391,6 +398,7 @@ class DetailCommentCard extends StatelessWidget {
                     tooltip: 'More options',
                     iconSize: 18,
                     padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -409,7 +417,13 @@ class DetailCommentCard extends StatelessWidget {
                             color: colorScheme.onSurfaceVariant,
                           ),
                     onSelected: (val) {
-                      if (val == 'refresh') {
+                      if (val == 'recover_archive') {
+                        if (onRecoverArchive != null) {
+                          onRecoverArchive!();
+                        } else {
+                          actions.recoverFromArchive(comment);
+                        }
+                      } else if (val == 'refresh') {
                         onRefresh();
                       } else if (val == 'copy_text') {
                         if (comment.body != null &&
@@ -456,6 +470,18 @@ class DetailCommentCard extends StatelessWidget {
                       }
                     },
                     itemBuilder: (ctx) => [
+                      if (comment.canAttemptArchiveRecovery)
+                        PopupMenuItem(
+                          value: 'recover_archive',
+                          enabled: !isEnriching,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.archive_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Try Archive Recovery'),
+                            ],
+                          ),
+                        ),
                       PopupMenuItem(
                         value: 'refresh',
                         enabled: !isEnriching,
