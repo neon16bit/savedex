@@ -353,12 +353,9 @@ class DetailCommentCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: CollectionBadgeRow(
-                  itemId: comment.id,
-                  initialCollections: comment.collections,
-                ),
+              CollectionBadgeRow(
+                itemId: comment.id,
+                initialCollections: comment.collections,
               ),
               const Spacer(),
               ItemNoteButton(
