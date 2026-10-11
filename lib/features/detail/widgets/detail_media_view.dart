@@ -27,6 +27,25 @@ class DetailMediaView extends StatelessWidget {
     }
   }
 
+  Future<void> _openExternalLink(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This link is not a valid web URL')),
+      );
+      return;
+    }
+
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+        context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open this link')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -204,10 +223,7 @@ class DetailMediaView extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => launchUrl(
-                Uri.parse(item.url!),
-                mode: LaunchMode.externalApplication,
-              ),
+              onTap: () => _openExternalLink(context, item.url!),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,

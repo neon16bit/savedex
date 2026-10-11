@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
@@ -59,10 +60,170 @@ class EnrichmentState {
   }
 }
 
+class ArchiveRecoveryState {
+  final bool isStarting;
+  final bool isRunning;
+  final int total;
+  final int completed;
+  final int failed;
+
+  const ArchiveRecoveryState({
+    this.isStarting = false,
+    this.isRunning = false,
+    this.total = 0,
+    this.completed = 0,
+    this.failed = 0,
+  });
+
+  int get processed => completed + failed;
+  double get progress => total == 0 ? 0 : (processed / total).clamp(0.0, 1.0);
+}
+
 final enrichmentViewModelProvider =
     NotifierProvider<EnrichmentViewModel, EnrichmentState>(() {
       return EnrichmentViewModel();
     });
+
+final archiveRecoveryStateProvider =
+    NotifierProvider<ArchiveRecoveryNotifier, ArchiveRecoveryState>(
+      ArchiveRecoveryNotifier.new,
+    );
+
+class ArchiveRecoveryNotifier extends Notifier<ArchiveRecoveryState> {
+  bool _stopRequested = false;
+  Future<void>? _runFuture;
+
+  @override
+  ArchiveRecoveryState build() => const ArchiveRecoveryState();
+
+  Future<void> start() async {
+    if (state.isStarting ||
+        state.isRunning ||
+        _runFuture != null ||
+        ref.read(enrichmentViewModelProvider).isRunning) {
+      return;
+    }
+    _stopRequested = false;
+    final completer = Completer<void>();
+    _runFuture = completer.future;
+    state = const ArchiveRecoveryState(isStarting: true);
+
+    try {
+      final repo = ref.read(savedItemRepositoryProvider);
+      final total = await repo.getArchiveRecoveryCount();
+      debugPrint(
+        '[ArchiveRecovery] Starting archive recovery. Total items eligible in DB: $total',
+      );
+      if (total == 0 || _stopRequested) {
+        debugPrint(
+          '[ArchiveRecovery] No eligible items found (or stopped immediately). Exiting.',
+        );
+        state = const ArchiveRecoveryState();
+        return;
+      }
+
+      state = ArchiveRecoveryState(isRunning: true, total: total);
+      final attemptedIds = <String>{};
+
+      while (!_stopRequested) {
+        final items = await repo.getArchiveRecoveryItems(
+          limit: 10,
+          excludeIds: attemptedIds.toList(),
+        );
+        if (items.isEmpty || _stopRequested) {
+          debugPrint(
+            '[ArchiveRecovery] No more items to process or stop requested.',
+          );
+          break;
+        }
+        for (final item in items) {
+          attemptedIds.add(item.id);
+        }
+        debugPrint(
+          '[ArchiveRecovery] Processing batch of ${items.length} items [${attemptedIds.length}/${state.total}]',
+        );
+
+        final resultById = await repo.recoverItemsFromArchive(
+          items,
+          isCancelled: () => _stopRequested,
+        );
+        if (_stopRequested) {
+          debugPrint(
+            '[ArchiveRecovery] Stop requested after recovery call. Exiting loop.',
+          );
+          break;
+        }
+
+        var batchRecovered = 0;
+        var batchFailed = 0;
+        for (final item in items) {
+          final result = resultById[item.id];
+          final isSuccess = result != null && result.success;
+          if (isSuccess) {
+            batchRecovered++;
+          } else {
+            batchFailed++;
+          }
+          debugPrint(
+            '[ArchiveRecovery] Item ${item.id} -> ${isSuccess ? "RECOVERED" : "FAILED: ${result?.error ?? 'Not found'}"}',
+          );
+        }
+
+        state = ArchiveRecoveryState(
+          isRunning: true,
+          total: state.total,
+          completed: state.completed + batchRecovered,
+          failed: state.failed + batchFailed,
+        );
+        if (!_stopRequested) {
+          await Future.delayed(const Duration(milliseconds: 1000));
+        }
+      }
+    } catch (e, stack) {
+      debugPrint('[ArchiveRecovery] ERROR in recovery loop: $e\n$stack');
+      if (!_stopRequested) {
+        state = ArchiveRecoveryState(
+          isRunning: false,
+          isStarting: false,
+          total: state.total,
+          completed: state.completed,
+          failed: state.failed,
+        );
+      }
+    } finally {
+      final wasStopRequested = _stopRequested;
+      _stopRequested = false;
+      _runFuture = null;
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+      if (state.isRunning || wasStopRequested) {
+        state = ArchiveRecoveryState(
+          total: state.total,
+          completed: state.completed,
+          failed: state.failed,
+        );
+      }
+      debugPrint(
+        '[ArchiveRecovery] Loop terminated. Summary: ${state.completed} recovered, ${state.failed} unavailable (stopped: $wasStopRequested)',
+      );
+    }
+  }
+
+  void stop() {
+    debugPrint('[ArchiveRecovery] Stop requested by user');
+    if (!state.isRunning && !state.isStarting && _runFuture == null) return;
+    _stopRequested = true;
+    ref.read(savedItemRepositoryProvider).cancelArchiveRecovery();
+    state = ArchiveRecoveryState(
+      isRunning: false,
+      isStarting: false,
+      total: state.total,
+      completed: state.completed,
+      failed: state.failed,
+    );
+  }
+}
 
 class EnrichmentViewModel extends Notifier<EnrichmentState> {
   bool _stopRequested = false;
@@ -284,5 +445,11 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
   ) async {
     final repo = ref.read(savedItemRepositoryProvider);
     return repo.enrichItem(item);
+  }
+
+  Future<({bool success, String? error})> recoverSingleItemFromArchive(
+    SavedItem item,
+  ) {
+    return ref.read(savedItemRepositoryProvider).recoverItemFromArchive(item);
   }
 }

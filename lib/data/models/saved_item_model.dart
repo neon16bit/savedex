@@ -63,6 +63,19 @@ class SavedItem {
   bool get isComment => itemType == ItemType.comment;
   bool get isPost => itemType == ItemType.post;
 
+  bool get canAttemptArchiveRecovery =>
+      enrichmentStatus == EnrichmentStatus.failed || hasRemovedContent;
+
+  bool get hasRemovedContent =>
+      _isRemovedMarker(author) ||
+      _isRemovedMarker(body) ||
+      _isRemovedMarker(title);
+
+  static bool _isRemovedMarker(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    return normalized == '[deleted]' || normalized == '[removed]';
+  }
+
   bool get isUserPost =>
       subredditType == 'user' ||
       subreddit.startsWith('u_') ||

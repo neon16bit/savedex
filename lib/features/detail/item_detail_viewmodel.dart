@@ -4,17 +4,17 @@ import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 
-final itemDetailProvider =
-    StreamProvider.autoDispose.family<SavedItem?, String>((ref, id) {
-  final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.watchItemById(id);
-});
+final itemDetailProvider = StreamProvider.autoDispose
+    .family<SavedItem?, String>((ref, id) {
+      final repo = ref.watch(savedItemRepositoryProvider);
+      return repo.watchItemById(id);
+    });
 
-final relatedThreadProvider =
-    StreamProvider.autoDispose.family<
-      ({SavedItem? parentPost, List<SavedItem> comments}),
-      String
-    >((ref, id) {
+final relatedThreadProvider = StreamProvider.autoDispose
+    .family<({SavedItem? parentPost, List<SavedItem> comments}), String>((
+      ref,
+      id,
+    ) {
       final itemAsync = ref.watch(itemDetailProvider(id));
       final item = itemAsync.value;
       if (item == null) {
@@ -119,12 +119,26 @@ class ItemDetailActions {
     return result;
   }
 
+  Future<({bool success, String? error})> recoverFromArchive(
+    SavedItem item,
+  ) async {
+    final result = await _ref
+        .read(enrichmentViewModelProvider.notifier)
+        .recoverSingleItemFromArchive(item);
+    _ref.invalidate(itemDetailProvider(item.id));
+    _ref.invalidate(relatedThreadProvider);
+    if (result.success) {
+      await _ref
+          .read(savedFeedPaginationProvider.notifier)
+          .refreshItem(item.id);
+    }
+    return result;
+  }
+
   Future<void> deleteItem(String id) async {
     if (!_busyItemIds.add(id)) return;
     try {
-      await _ref
-          .read(savedFeedPaginationProvider.notifier)
-          .deleteItemById(id);
+      await _ref.read(savedFeedPaginationProvider.notifier).deleteItemById(id);
       _ref.invalidate(itemDetailProvider(id));
       _ref.invalidate(relatedThreadProvider);
     } finally {

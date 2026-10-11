@@ -985,6 +985,57 @@ class AppDatabase extends _$AppDatabase {
     return row?.read(countExp) ?? 0;
   }
 
+  Future<List<SavedItemEntry>> getArchiveRecoveryItems({
+    int limit = 50,
+    List<String> excludeIds = const [],
+  }) {
+    Expression<bool> predicate =
+        savedItemsTable.enrichmentStatus.equals(EnrichmentStatus.failed.index) |
+        savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
+        savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
+        savedItemsTable.title.isIn(['[deleted]', '[removed]']);
+    if (excludeIds.isNotEmpty) {
+      predicate = predicate & savedItemsTable.id.isNotIn(excludeIds);
+    }
+    return (select(savedItemsTable)
+          ..where((tbl) => predicate)
+          ..orderBy([
+            (tbl) => OrderingTerm(
+              expression: tbl.importOrder,
+              mode: OrderingMode.asc,
+            ),
+          ])
+          ..limit(limit))
+        .get();
+  }
+
+  Future<int> getArchiveRecoveryCount() async {
+    final countExp = savedItemsTable.id.count();
+    final query = selectOnly(savedItemsTable)
+      ..addColumns([countExp])
+      ..where(
+        savedItemsTable.enrichmentStatus.equals(EnrichmentStatus.failed.index) |
+            savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
+            savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
+            savedItemsTable.title.isIn(['[deleted]', '[removed]']),
+      );
+    final row = await query.getSingleOrNull();
+    return row?.read(countExp) ?? 0;
+  }
+
+  Stream<int> watchArchiveRecoveryCount() {
+    final countExp = savedItemsTable.id.count();
+    final query = selectOnly(savedItemsTable)
+      ..addColumns([countExp])
+      ..where(
+        savedItemsTable.enrichmentStatus.equals(EnrichmentStatus.failed.index) |
+            savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
+            savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
+            savedItemsTable.title.isIn(['[deleted]', '[removed]']),
+      );
+    return query.watchSingle().map((row) => row.read(countExp) ?? 0);
+  }
+
   Stream<int> watchPendingEnrichmentCount() {
     final countExp = savedItemsTable.id.count();
     final query = selectOnly(savedItemsTable)

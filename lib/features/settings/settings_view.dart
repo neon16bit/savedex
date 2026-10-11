@@ -468,6 +468,115 @@ class SettingsView extends ConsumerWidget {
                   },
                 ),
                 const Divider(height: 1, indent: 16, endIndent: 16),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final recoveryState = ref.watch(
+                      archiveRecoveryStateProvider,
+                    );
+                    final recoveryVm = ref.read(
+                      archiveRecoveryStateProvider.notifier,
+                    );
+                    final isEnrichmentRunning = ref.watch(
+                      enrichmentViewModelProvider.select((s) => s.isRunning),
+                    );
+
+                    final count =
+                        ref.watch(archiveRecoveryCountProvider).asData?.value ??
+                        0;
+                    final isStarting = recoveryState.isStarting;
+                    final isRunning = recoveryState.isRunning;
+                    final hasSummary =
+                        !isStarting &&
+                        !isRunning &&
+                        recoveryState.total > 0 &&
+                        recoveryState.processed > 0;
+                    final subtitle = isStarting
+                        ? 'Preparing archive recovery...'
+                        : isRunning
+                        ? 'Recovering ${recoveryState.processed}/${recoveryState.total} items'
+                        : hasSummary
+                        ? '${recoveryState.completed} recovered, ${recoveryState.failed} unavailable'
+                        : count == 0
+                        ? 'No failed or removed items available'
+                        : '$count items available for archive recovery';
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isStarting || isRunning
+                                  ? colorScheme.primaryContainer
+                                  : colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              Icons.archive_rounded,
+                              color: isRunning
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          title: const Text(
+                            'Recover Removed Content',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(subtitle),
+                          trailing: FilledButton.tonal(
+                            onPressed:
+                                (count == 0 ||
+                                    isStarting ||
+                                    isRunning ||
+                                    isEnrichmentRunning)
+                                ? null
+                                : recoveryVm.start,
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: Text(
+                              isStarting
+                                  ? 'Preparing...'
+                                  : isRunning
+                                  ? 'Running...'
+                                  : 'Recover Now',
+                            ),
+                          ),
+                        ),
+                        if (isRunning)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(100),
+                                    child: LinearProgressIndicator(
+                                      value: recoveryState.progress,
+                                      minHeight: 5,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                TextButton(
+                                  onPressed: recoveryVm.stop,
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                  ),
+                                  child: const Text('Stop'),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(
                   leading: Container(
                     padding: const EdgeInsets.all(8),

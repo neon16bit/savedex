@@ -85,6 +85,48 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     }
   }
 
+  Future<void> _recoverFromArchive(
+    ItemDetailActions actions,
+    SavedItem item,
+    ColorScheme colorScheme,
+  ) async {
+    final notifier = ref.read(enrichingItemsProvider.notifier);
+    if (notifier.isEnriching(item.id)) return;
+    notifier.add(item.id);
+    try {
+      final result = await actions.recoverFromArchive(item);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              result.success
+                  ? 'Recovered metadata from archive'
+                  : (result.error ?? 'Archive recovery failed'),
+            ),
+            backgroundColor: result.success ? null : colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+    } finally {
+      notifier.remove(item.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final itemAsync = ref.watch(itemDetailProvider(widget.itemId));
@@ -172,6 +214,8 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     onSelected: (val) {
                       if (val == 'refresh') {
                         _refreshMetadata(actions, item, colorScheme);
+                      } else if (val == 'recover_archive') {
+                        _recoverFromArchive(actions, item, colorScheme);
                       } else if (val == 'copy_text') {
                         if (item.body != null && item.body!.trim().isNotEmpty) {
                           Clipboard.setData(
@@ -234,6 +278,17 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           ],
                         ),
                       ),
+                      if (item.canAttemptArchiveRecovery)
+                        const PopupMenuItem(
+                          value: 'recover_archive',
+                          child: Row(
+                            children: [
+                              Icon(Icons.archive_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Try Archive Recovery'),
+                            ],
+                          ),
+                        ),
                       if (item.body != null && item.body!.trim().isNotEmpty)
                         const PopupMenuItem(
                           value: 'copy_text',

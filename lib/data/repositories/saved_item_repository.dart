@@ -5,15 +5,20 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/database.dart';
+import 'package:savedex/data/models/enriched_reddit_data.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
+import 'package:savedex/data/services/arctic_shift_api_service.dart';
+import 'package:savedex/data/services/pullpush_api_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 
 class SavedItemRepository {
   final AppDatabase db;
   final CsvParserService _csvParser;
   final RedditApiService _redditApi;
+  final ArcticShiftApiService _arcticShiftApi;
+  final PullPushApiService _pullPushApi;
   final BackupExportService _backupExport;
   final Map<String, Future<({bool success, String? error})>>
   _inFlightEnrichments = {};
@@ -22,9 +27,13 @@ class SavedItemRepository {
     required this.db,
     CsvParserService? csvParser,
     RedditApiService? redditApi,
+    ArcticShiftApiService? arcticShiftApi,
+    PullPushApiService? pullPushApi,
     BackupExportService? backupExport,
   }) : _csvParser = csvParser ?? CsvParserService(),
        _redditApi = redditApi ?? RedditApiService(),
+       _arcticShiftApi = arcticShiftApi ?? ArcticShiftApiService(),
+       _pullPushApi = pullPushApi ?? PullPushApiService(),
        _backupExport = backupExport ?? BackupExportService();
 
   Stream<List<SavedItem>> watchSavedItems(FilterCriteria filter) {
@@ -1192,6 +1201,166 @@ class SavedItemRepository {
     });
   }
 
+  Future<({bool success, String? error})> recoverItemFromArchive(
+    SavedItem item,
+  ) async {
+    final current = await getItemById(item.id);
+    if (current == null) {
+      return (success: false, error: 'Item no longer exists');
+    }
+    if (!current.canAttemptArchiveRecovery) {
+      return (
+        success: false,
+        error:
+            'Archive recovery is available only for failed or removed content',
+      );
+    }
+
+    return _recoverItemsFromArchive([current]).then((results) {
+      return results[current.id] ??
+          (success: false, error: 'Archive recovery failed');
+    });
+  }
+
+  void cancelArchiveRecovery() {
+    _pullPushApi.cancelCurrentRequests();
+    _arcticShiftApi.cancelCurrentRequests();
+  }
+
+  Future<Map<String, ({bool success, String? error})>> recoverItemsFromArchive(
+    List<SavedItem> items, {
+    bool Function()? isCancelled,
+  }) {
+    return _recoverItemsFromArchive(items, isCancelled: isCancelled);
+  }
+
+  Future<Map<String, ({bool success, String? error})>> _recoverItemsFromArchive(
+    List<SavedItem> items, {
+    bool Function()? isCancelled,
+  }) async {
+    final results = <String, ({bool success, String? error})>{};
+    final currentItems = <SavedItem>[];
+    for (final item in items) {
+      if (isCancelled?.call() == true) return results;
+      final current = await getItemById(item.id);
+      if (current == null) {
+        debugPrint('[ArchiveRecovery] Item ${item.id} no longer exists in DB');
+        results[item.id] = (success: false, error: 'Item no longer exists');
+      } else if (!current.canAttemptArchiveRecovery) {
+        debugPrint(
+          '[ArchiveRecovery] Item ${item.id} ("${item.title}") not eligible (status: ${current.enrichmentStatus.name}, hasRemoved: ${current.hasRemovedContent})',
+        );
+        results[item.id] = (
+          success: false,
+          error: 'Item is no longer eligible for archive recovery',
+        );
+      } else {
+        currentItems.add(current);
+      }
+    }
+
+    for (final itemType in ItemType.values) {
+      if (isCancelled?.call() == true) break;
+      final typedItems = currentItems
+          .where((item) => item.itemType == itemType)
+          .toList();
+      if (typedItems.isEmpty) continue;
+
+      debugPrint(
+        '[ArchiveRecovery] [PullPush] Querying ${typedItems.length} ${itemType.name}(s): ${typedItems.map((e) => e.id).join(', ')}',
+      );
+      final pullPushMetadata = await _pullPushApi.fetchMetadataBatch(
+        ids: typedItems.map((item) => item.id).toList(),
+        itemType: itemType,
+        isCancelled: isCancelled,
+      );
+      if (isCancelled?.call() == true) break;
+
+      final pendingFallback = <SavedItem>[];
+
+      for (final item in typedItems) {
+        if (isCancelled?.call() == true) break;
+        final meta = pullPushMetadata[item.id];
+        if (meta != null && meta.isSuccess) {
+          final rowsUpdated = await _writeRecoveredMetadata(item, meta);
+          debugPrint(
+            '[ArchiveRecovery] [PullPush] Item ${item.id} SUCCESS -> Updated $rowsUpdated row(s) in DB (title: "${meta.title}", author: "${meta.author}", mediaUrl: "${meta.mediaUrl}")',
+          );
+          results[item.id] = (success: true, error: null);
+        } else {
+          pendingFallback.add(item);
+        }
+      }
+
+      if (isCancelled?.call() == true) break;
+
+      if (pendingFallback.isNotEmpty) {
+        debugPrint(
+          '[ArchiveRecovery] [ArcticShift Fallback] Querying ${pendingFallback.length} ${itemType.name}(s): ${pendingFallback.map((e) => e.id).join(', ')}',
+        );
+        final arcticShiftMetadata = await _arcticShiftApi.fetchMetadataBatch(
+          ids: pendingFallback.map((item) => item.id).toList(),
+          itemType: itemType,
+          isCancelled: isCancelled,
+        );
+
+        if (isCancelled?.call() == true) break;
+
+        for (final item in pendingFallback) {
+          if (isCancelled?.call() == true) break;
+          final meta = arcticShiftMetadata[item.id];
+          if (meta != null && meta.isSuccess) {
+            final rowsUpdated = await _writeRecoveredMetadata(item, meta);
+            debugPrint(
+              '[ArchiveRecovery] [ArcticShift] Item ${item.id} SUCCESS -> Updated $rowsUpdated row(s) in DB (title: "${meta.title}", author: "${meta.author}", mediaUrl: "${meta.mediaUrl}")',
+            );
+            results[item.id] = (success: true, error: null);
+          } else {
+            final err =
+                meta?.errorMessage ??
+                pullPushMetadata[item.id]?.errorMessage ??
+                'Archive lookup failed';
+            debugPrint(
+              '[ArchiveRecovery] Item ${item.id} failed across all archive sources: $err',
+            );
+            results[item.id] = (success: false, error: err);
+          }
+        }
+      }
+    }
+    return results;
+  }
+
+  Future<int> _writeRecoveredMetadata(
+    SavedItem current,
+    EnrichedRedditData meta,
+  ) {
+    return (db.update(
+      db.savedItemsTable,
+    )..where((t) => t.id.equals(current.id))).write(
+      SavedItemsTableCompanion(
+        title: Value(meta.title ?? current.title),
+        parentPostTitle: Value(meta.parentPostTitle ?? current.parentPostTitle),
+        parentPostId: Value(meta.parentPostId ?? current.parentPostId),
+        author: Value(meta.author ?? current.author),
+        body: Value(meta.body ?? current.body),
+        url: Value(meta.url ?? current.url),
+        thumbnailUrl: Value(meta.thumbnailUrl ?? current.thumbnailUrl),
+        mediaUrl: Value(meta.mediaUrl ?? current.mediaUrl),
+        mediaType: Value(
+          meta.mediaType != MediaType.text ? meta.mediaType : current.mediaType,
+        ),
+        score: Value(meta.score),
+        numComments: Value(meta.numComments),
+        isNsfw: Value(meta.isNsfw),
+        postFlair: Value(meta.postFlair ?? current.postFlair),
+        subredditType: Value(meta.subredditType),
+        createdAtUtc: Value(meta.createdAtUtc ?? current.createdAtUtc),
+        enrichmentStatus: const Value(EnrichmentStatus.enriched),
+      ),
+    );
+  }
+
   Future<({bool success, String? error})> _executeEnrichItem(
     SavedItem item, {
     String? clientId,
@@ -1258,6 +1427,21 @@ class SavedItemRepository {
   }
 
   Future<int> getPendingEnrichmentCount() => db.getPendingEnrichmentCount();
+
+  Future<List<SavedItem>> getArchiveRecoveryItems({
+    int limit = 50,
+    List<String> excludeIds = const [],
+  }) async {
+    final entries = await db.getArchiveRecoveryItems(
+      limit: limit,
+      excludeIds: excludeIds,
+    );
+    return entries.map((e) => e.toDomain()).toList();
+  }
+
+  Future<int> getArchiveRecoveryCount() => db.getArchiveRecoveryCount();
+
+  Stream<int> watchArchiveRecoveryCount() => db.watchArchiveRecoveryCount();
 
   Stream<int> watchPendingEnrichmentCount() => db.watchPendingEnrichmentCount();
 

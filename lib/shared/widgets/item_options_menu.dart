@@ -88,6 +88,42 @@ class ItemOptionsMenu extends ConsumerWidget {
           } finally {
             notifier.remove(item.id);
           }
+        } else if (val == 'recover_archive') {
+          final notifier = ref.read(enrichingItemsProvider.notifier);
+          if (notifier.isEnriching(item.id)) return;
+          notifier.add(item.id);
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('Trying archive recovery...'),
+                behavior: SnackBarBehavior.floating,
+                duration: Duration(seconds: 1),
+              ),
+            );
+          try {
+            final result = await ref
+                .read(enrichmentViewModelProvider.notifier)
+                .recoverSingleItemFromArchive(item);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context)
+                ..clearSnackBars()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      result.success
+                          ? 'Recovered metadata from archive'
+                          : (result.error ?? 'Archive recovery failed'),
+                    ),
+                    backgroundColor: result.success ? null : colorScheme.error,
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+            }
+          } finally {
+            notifier.remove(item.id);
+          }
         } else if (val == 'copy_link') {
           Clipboard.setData(ClipboardData(text: item.fullPermalink));
           ScaffoldMessenger.of(context)
@@ -132,6 +168,17 @@ class ItemOptionsMenu extends ConsumerWidget {
         }
       },
       itemBuilder: (ctx) => [
+        if (item.canAttemptArchiveRecovery)
+          const PopupMenuItem(
+            value: 'recover_archive',
+            child: Row(
+              children: [
+                Icon(Icons.archive_rounded, size: 18),
+                SizedBox(width: 10),
+                Text('Try Archive Recovery'),
+              ],
+            ),
+          ),
         PopupMenuItem(
           value: 'refresh',
           enabled: !isEnriching,

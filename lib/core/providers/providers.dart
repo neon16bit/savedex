@@ -5,6 +5,8 @@ import 'package:savedex/data/repositories/settings_repository.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/repositories/collection_repository.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
+import 'package:savedex/data/services/arctic_shift_api_service.dart';
+import 'package:savedex/data/services/pullpush_api_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -47,6 +49,20 @@ final redditApiServiceProvider = Provider<RedditApiService>((ref) {
   return api;
 });
 
+final arcticShiftApiServiceProvider = Provider<ArcticShiftApiService>((ref) {
+  final settings = ref.watch(settingsRepositoryProvider).settings;
+  final api = ArcticShiftApiService(userAgent: settings.userAgent);
+  ref.onDispose(api.dispose);
+  return api;
+});
+
+final pullPushApiServiceProvider = Provider<PullPushApiService>((ref) {
+  final settings = ref.watch(settingsRepositoryProvider).settings;
+  final api = PullPushApiService(userAgent: settings.userAgent);
+  ref.onDispose(api.dispose);
+  return api;
+});
+
 final backupExportServiceProvider = Provider<BackupExportService>((ref) {
   return BackupExportService();
 });
@@ -60,7 +76,15 @@ final savedItemRepositoryProvider = Provider<SavedItemRepository>((ref) {
   final db = ref.watch(databaseProvider);
   final parser = ref.watch(csvParserServiceProvider);
   final api = ref.watch(redditApiServiceProvider);
-  return SavedItemRepository(db: db, csvParser: parser, redditApi: api);
+  final arcticShiftApi = ref.watch(arcticShiftApiServiceProvider);
+  final pullPushApi = ref.watch(pullPushApiServiceProvider);
+  return SavedItemRepository(
+    db: db,
+    csvParser: parser,
+    redditApi: api,
+    arcticShiftApi: arcticShiftApi,
+    pullPushApi: pullPushApi,
+  );
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -73,13 +97,19 @@ final pendingEnrichmentCountProvider = StreamProvider<int>((ref) {
   return repo.watchPendingEnrichmentCount();
 });
 
+final archiveRecoveryCountProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(savedItemRepositoryProvider);
+  return repo.watchArchiveRecoveryCount();
+});
+
 final allCollectionsProvider = StreamProvider<List<Collection>>((ref) {
   final repo = ref.watch(collectionRepositoryProvider);
   return repo.watchAllCollections();
 });
 
-final itemCollectionsProvider =
-    StreamProvider.family<List<Collection>, String>((ref, itemId) {
-      final repo = ref.watch(collectionRepositoryProvider);
-      return repo.watchCollectionsForItem(itemId);
-    });
+final itemCollectionsProvider = StreamProvider.family<List<Collection>, String>(
+  (ref, itemId) {
+    final repo = ref.watch(collectionRepositoryProvider);
+    return repo.watchCollectionsForItem(itemId);
+  },
+);
