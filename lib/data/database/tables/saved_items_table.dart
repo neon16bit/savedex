@@ -34,6 +34,8 @@ class SavedItemsTable extends Table {
   IntColumn get enrichmentStatus => intEnum<EnrichmentStatus>().withDefault(
     Constant(EnrichmentStatus.slugOnly.index),
   )();
+  BoolColumn get isArchiveRecovered =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};

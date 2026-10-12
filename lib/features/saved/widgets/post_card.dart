@@ -169,6 +169,11 @@ class PostCard extends ConsumerWidget {
                     ),
                   ],
 
+                  if (item.isArchiveRecovered) ...[
+                    const SizedBox(width: 6),
+                    const ArchiveRecoveredBadge(),
+                  ],
+
                   CollectionBadgeRow(
                     itemId: item.id,
                     initialCollections: item.collections,

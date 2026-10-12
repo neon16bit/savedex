@@ -32,6 +32,7 @@ void main() {
           isNsfw: false,
           isStarred: true,
           isArchived: false,
+          isArchiveRecovered: true,
           userNote: 'Grimoire that sees through clothes found on floor 48',
           csvSource: 'reddit_api',
           importOrder: 1,
@@ -61,6 +62,7 @@ void main() {
           isNsfw: false,
           isStarred: false,
           isArchived: true,
+          isArchiveRecovered: false,
           userNote: null,
           csvSource: 'reddit_api',
           importOrder: 0,
@@ -109,6 +111,7 @@ void main() {
       expect(post.score.value, equals(1000));
       expect(post.isStarred.value, isTrue);
       expect(post.isArchived.value, isFalse);
+      expect(post.isArchiveRecovered.value, isTrue);
       expect(
         post.userNote.value,
         equals('Grimoire that sees through clothes found on floor 48'),
@@ -132,6 +135,7 @@ void main() {
       expect(comment.itemType.value, equals(ItemType.comment));
       expect(comment.parentPostId.value, equals('t3_official_reddit_app'));
       expect(comment.isArchived.value, isTrue);
+      expect(comment.isArchiveRecovered.value, isFalse);
       expect(comment.isStarred.value, isFalse);
     });
 
@@ -209,6 +213,7 @@ void main() {
         );
         expect(post.postFlair.value, equals('Grimoire Hunting'));
         expect(post.isStarred.value, isTrue);
+        expect(post.isArchiveRecovered.value, isTrue);
         expect(
           post.userNote.value,
           equals('Grimoire that sees through clothes found on floor 48'),
@@ -225,6 +230,7 @@ void main() {
         );
         expect(comment.itemType.value, equals(ItemType.comment));
         expect(comment.isArchived.value, isTrue);
+        expect(comment.isArchiveRecovered.value, isFalse);
 
         final collections = payload.itemCollections['post_frieren_mimic'];
         expect(collections, isNotNull);

@@ -20,6 +20,7 @@ class SavedItem {
   final bool isNsfw;
   final bool isStarred;
   final bool isArchived;
+  final bool isArchiveRecovered;
   final String? userNote;
   final String csvSource;
   final int importOrder;
@@ -49,6 +50,7 @@ class SavedItem {
     this.isNsfw = false,
     this.isStarred = false,
     this.isArchived = false,
+    this.isArchiveRecovered = false,
     this.userNote,
     this.csvSource = 'saved_posts.csv',
     required this.importOrder,
@@ -198,6 +200,7 @@ class SavedItem {
     bool? isNsfw,
     bool? isStarred,
     bool? isArchived,
+    bool? isArchiveRecovered,
     String? userNote,
     String? csvSource,
     int? importOrder,
@@ -243,6 +246,7 @@ class SavedItem {
       isNsfw: isNsfw ?? this.isNsfw,
       isStarred: isStarred ?? this.isStarred,
       isArchived: isArchived ?? this.isArchived,
+      isArchiveRecovered: isArchiveRecovered ?? this.isArchiveRecovered,
       userNote: clearUserNote ? null : (userNote ?? this.userNote),
       csvSource: csvSource ?? this.csvSource,
       importOrder: importOrder ?? this.importOrder,
@@ -279,6 +283,7 @@ class SavedItem {
         other.isNsfw == isNsfw &&
         other.isStarred == isStarred &&
         other.isArchived == isArchived &&
+        other.isArchiveRecovered == isArchiveRecovered &&
         other.userNote == userNote &&
         other.csvSource == csvSource &&
         other.importOrder == importOrder &&
@@ -310,6 +315,7 @@ class SavedItem {
     isNsfw,
     isStarred,
     isArchived,
+    isArchiveRecovered,
     userNote,
     csvSource,
     importOrder,

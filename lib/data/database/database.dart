@@ -41,7 +41,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -71,6 +71,9 @@ class AppDatabase extends _$AppDatabase {
         await customStatement('DROP TABLE IF EXISTS tags_table;');
         await m.createTable(collectionsTable);
         await m.createTable(itemCollectionsTable);
+      }
+      if (from < 7) {
+        await m.addColumn(savedItemsTable, savedItemsTable.isArchiveRecovered);
       }
     },
     beforeOpen: (details) async {
@@ -1126,6 +1129,7 @@ extension SavedItemEntryExtension on SavedItemEntry {
       postFlair: postFlair,
       subredditType: subredditType,
       enrichmentStatus: enrichmentStatus,
+      isArchiveRecovered: isArchiveRecovered,
       collections: collections,
     );
   }

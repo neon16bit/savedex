@@ -292,6 +292,20 @@ class DetailCommentCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (comment.isArchiveRecovered) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '•',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.outlineVariant,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const ArchiveRecoveredBadge(
+                  variant: ArchiveBadgeVariant.compact,
+                ),
+              ],
             ],
           ),
           if (comment.body != null && comment.body!.trim().isNotEmpty) ...[

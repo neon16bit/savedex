@@ -7,6 +7,7 @@ class DetailBadgeRow extends StatelessWidget {
   final bool isComment;
   final bool isNsfw;
   final String? postFlair;
+  final bool isArchiveRecovered;
   final List<Collection> collections;
   final ValueChanged<Collection>? onCollectionTap;
 
@@ -15,6 +16,7 @@ class DetailBadgeRow extends StatelessWidget {
     required this.isComment,
     required this.isNsfw,
     this.postFlair,
+    this.isArchiveRecovered = false,
     this.collections = const [],
     this.onCollectionTap,
   });
@@ -81,6 +83,8 @@ class DetailBadgeRow extends StatelessWidget {
               ),
             ),
           ),
+        if (isArchiveRecovered)
+          const ArchiveRecoveredBadge(variant: ArchiveBadgeVariant.detail),
         for (final col in collections)
           CollectionBadge(
             collection: col,

@@ -165,6 +165,7 @@ class BackupExportService {
         'enrichment_status',
         'saved_at',
         'created_at',
+        'is_archive_recovered',
       ],
     ];
 
@@ -196,6 +197,7 @@ class BackupExportService {
         item.enrichmentStatus.name,
         item.savedAtUtc.toIso8601String(),
         item.createdAtUtc?.toIso8601String() ?? '',
+        item.isArchiveRecovered ? 'true' : 'false',
       ]);
     }
 
@@ -316,6 +318,7 @@ class BackupExportService {
     final enrichmentStatusIndex = headerRow.indexOf('enrichment_status');
     final savedAtIndex = headerRow.indexOf('saved_at');
     final createdAtIndex = headerRow.indexOf('created_at');
+    final isArchiveRecoveredIndex = headerRow.indexOf('is_archive_recovered');
 
     final List<SavedItemsTableCompanion> companions = [];
     final Map<String, List<SavedexCollectionBackup>> itemCollections = {};
@@ -402,6 +405,13 @@ class BackupExportService {
           : 'false';
       final isArchived = isArchivedStr == 'true' || isArchivedStr == '1';
 
+      final isArchiveRecoveredStr =
+          isArchiveRecoveredIndex != -1 && isArchiveRecoveredIndex < row.length
+          ? row[isArchiveRecoveredIndex].trim().toLowerCase()
+          : 'false';
+      final isArchiveRecovered =
+          isArchiveRecoveredStr == 'true' || isArchiveRecoveredStr == '1';
+
       final userNote = userNoteIndex != -1 && userNoteIndex < row.length
           ? row[userNoteIndex].trim()
           : null;
@@ -475,6 +485,7 @@ class BackupExportService {
           isNsfw: Value(isNsfw),
           isStarred: Value(isStarred),
           isArchived: Value(isArchived),
+          isArchiveRecovered: Value(isArchiveRecovered),
           userNote: Value(
             userNote != null && userNote.isNotEmpty ? userNote : null,
           ),
@@ -555,6 +566,7 @@ class BackupExportService {
         'isNsfw': item.isNsfw,
         'isStarred': item.isStarred,
         'isArchived': item.isArchived,
+        'isArchiveRecovered': item.isArchiveRecovered,
         'userNote': item.userNote,
         'csvSource': item.csvSource,
         'importOrder': item.importOrder,
@@ -642,6 +654,7 @@ class BackupExportService {
       isNsfw: Value((map['isNsfw'] as bool?) ?? false),
       isStarred: Value((map['isStarred'] as bool?) ?? false),
       isArchived: Value((map['isArchived'] as bool?) ?? false),
+      isArchiveRecovered: Value((map['isArchiveRecovered'] as bool?) ?? false),
       userNote: Value(map['userNote'] as String?),
       csvSource: Value((map['csvSource'] as String?) ?? 'backup'),
       importOrder: Value((map['importOrder'] as num?)?.toInt() ?? 0),

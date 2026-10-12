@@ -297,6 +297,20 @@ class $SavedItemsTableTable extends SavedItemsTable
       ).withConverter<EnrichmentStatus>(
         $SavedItemsTableTable.$converterenrichmentStatus,
       );
+  static const VerificationMeta _isArchiveRecoveredMeta =
+      const VerificationMeta('isArchiveRecovered');
+  @override
+  late final GeneratedColumn<bool> isArchiveRecovered = GeneratedColumn<bool>(
+    'is_archive_recovered',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_archive_recovered" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -325,6 +339,7 @@ class $SavedItemsTableTable extends SavedItemsTable
     postFlair,
     subredditType,
     enrichmentStatus,
+    isArchiveRecovered,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -507,6 +522,15 @@ class $SavedItemsTableTable extends SavedItemsTable
         ),
       );
     }
+    if (data.containsKey('is_archive_recovered')) {
+      context.handle(
+        _isArchiveRecoveredMeta,
+        isArchiveRecovered.isAcceptableOrUnknown(
+          data['is_archive_recovered']!,
+          _isArchiveRecoveredMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -627,6 +651,10 @@ class $SavedItemsTableTable extends SavedItemsTable
               data['${effectivePrefix}enrichment_status'],
             )!,
           ),
+      isArchiveRecovered: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_archive_recovered'],
+      )!,
     );
   }
 
@@ -672,6 +700,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
   final String? postFlair;
   final String subredditType;
   final EnrichmentStatus enrichmentStatus;
+  final bool isArchiveRecovered;
   const SavedItemEntry({
     required this.id,
     required this.permalink,
@@ -699,6 +728,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     this.postFlair,
     required this.subredditType,
     required this.enrichmentStatus,
+    required this.isArchiveRecovered,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -763,6 +793,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
         ),
       );
     }
+    map['is_archive_recovered'] = Variable<bool>(isArchiveRecovered);
     return map;
   }
 
@@ -810,6 +841,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           : Value(postFlair),
       subredditType: Value(subredditType),
       enrichmentStatus: Value(enrichmentStatus),
+      isArchiveRecovered: Value(isArchiveRecovered),
     );
   }
 
@@ -850,6 +882,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
       subredditType: serializer.fromJson<String>(json['subredditType']),
       enrichmentStatus: $SavedItemsTableTable.$converterenrichmentStatus
           .fromJson(serializer.fromJson<int>(json['enrichmentStatus'])),
+      isArchiveRecovered: serializer.fromJson<bool>(json['isArchiveRecovered']),
     );
   }
   @override
@@ -890,6 +923,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           enrichmentStatus,
         ),
       ),
+      'isArchiveRecovered': serializer.toJson<bool>(isArchiveRecovered),
     };
   }
 
@@ -920,6 +954,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     Value<String?> postFlair = const Value.absent(),
     String? subredditType,
     EnrichmentStatus? enrichmentStatus,
+    bool? isArchiveRecovered,
   }) => SavedItemEntry(
     id: id ?? this.id,
     permalink: permalink ?? this.permalink,
@@ -949,6 +984,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     postFlair: postFlair.present ? postFlair.value : this.postFlair,
     subredditType: subredditType ?? this.subredditType,
     enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
+    isArchiveRecovered: isArchiveRecovered ?? this.isArchiveRecovered,
   );
   SavedItemEntry copyWithCompanion(SavedItemsTableCompanion data) {
     return SavedItemEntry(
@@ -998,6 +1034,9 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
       enrichmentStatus: data.enrichmentStatus.present
           ? data.enrichmentStatus.value
           : this.enrichmentStatus,
+      isArchiveRecovered: data.isArchiveRecovered.present
+          ? data.isArchiveRecovered.value
+          : this.isArchiveRecovered,
     );
   }
 
@@ -1029,7 +1068,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           ..write('savedAtUtc: $savedAtUtc, ')
           ..write('postFlair: $postFlair, ')
           ..write('subredditType: $subredditType, ')
-          ..write('enrichmentStatus: $enrichmentStatus')
+          ..write('enrichmentStatus: $enrichmentStatus, ')
+          ..write('isArchiveRecovered: $isArchiveRecovered')
           ..write(')'))
         .toString();
   }
@@ -1062,6 +1102,7 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     postFlair,
     subredditType,
     enrichmentStatus,
+    isArchiveRecovered,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1092,7 +1133,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           other.savedAtUtc == this.savedAtUtc &&
           other.postFlair == this.postFlair &&
           other.subredditType == this.subredditType &&
-          other.enrichmentStatus == this.enrichmentStatus);
+          other.enrichmentStatus == this.enrichmentStatus &&
+          other.isArchiveRecovered == this.isArchiveRecovered);
 }
 
 class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
@@ -1122,6 +1164,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
   final Value<String?> postFlair;
   final Value<String> subredditType;
   final Value<EnrichmentStatus> enrichmentStatus;
+  final Value<bool> isArchiveRecovered;
   final Value<int> rowid;
   const SavedItemsTableCompanion({
     this.id = const Value.absent(),
@@ -1150,6 +1193,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     this.postFlair = const Value.absent(),
     this.subredditType = const Value.absent(),
     this.enrichmentStatus = const Value.absent(),
+    this.isArchiveRecovered = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SavedItemsTableCompanion.insert({
@@ -1179,6 +1223,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     this.postFlair = const Value.absent(),
     this.subredditType = const Value.absent(),
     this.enrichmentStatus = const Value.absent(),
+    this.isArchiveRecovered = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        permalink = Value(permalink),
@@ -1213,6 +1258,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     Expression<String>? postFlair,
     Expression<String>? subredditType,
     Expression<int>? enrichmentStatus,
+    Expression<bool>? isArchiveRecovered,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1242,6 +1288,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
       if (postFlair != null) 'post_flair': postFlair,
       if (subredditType != null) 'subreddit_type': subredditType,
       if (enrichmentStatus != null) 'enrichment_status': enrichmentStatus,
+      if (isArchiveRecovered != null)
+        'is_archive_recovered': isArchiveRecovered,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1273,6 +1321,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     Value<String?>? postFlair,
     Value<String>? subredditType,
     Value<EnrichmentStatus>? enrichmentStatus,
+    Value<bool>? isArchiveRecovered,
     Value<int>? rowid,
   }) {
     return SavedItemsTableCompanion(
@@ -1302,6 +1351,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
       postFlair: postFlair ?? this.postFlair,
       subredditType: subredditType ?? this.subredditType,
       enrichmentStatus: enrichmentStatus ?? this.enrichmentStatus,
+      isArchiveRecovered: isArchiveRecovered ?? this.isArchiveRecovered,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1395,6 +1445,9 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
         ),
       );
     }
+    if (isArchiveRecovered.present) {
+      map['is_archive_recovered'] = Variable<bool>(isArchiveRecovered.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1430,6 +1483,7 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
           ..write('postFlair: $postFlair, ')
           ..write('subredditType: $subredditType, ')
           ..write('enrichmentStatus: $enrichmentStatus, ')
+          ..write('isArchiveRecovered: $isArchiveRecovered, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2096,6 +2150,7 @@ typedef $$SavedItemsTableTableCreateCompanionBuilder =
       Value<String?> postFlair,
       Value<String> subredditType,
       Value<EnrichmentStatus> enrichmentStatus,
+      Value<bool> isArchiveRecovered,
       Value<int> rowid,
     });
 typedef $$SavedItemsTableTableUpdateCompanionBuilder =
@@ -2126,6 +2181,7 @@ typedef $$SavedItemsTableTableUpdateCompanionBuilder =
       Value<String?> postFlair,
       Value<String> subredditType,
       Value<EnrichmentStatus> enrichmentStatus,
+      Value<bool> isArchiveRecovered,
       Value<int> rowid,
     });
 
@@ -2306,6 +2362,11 @@ class $$SavedItemsTableTableFilterComposer
     builder: (column) => ColumnWithTypeConverterFilters(column),
   );
 
+  ColumnFilters<bool> get isArchiveRecovered => $composableBuilder(
+    column: $table.isArchiveRecovered,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> itemCollectionsTableRefs(
     Expression<bool> Function($$ItemCollectionsTableTableFilterComposer f) f,
   ) {
@@ -2470,6 +2531,11 @@ class $$SavedItemsTableTableOrderingComposer
     column: $table.enrichmentStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isArchiveRecovered => $composableBuilder(
+    column: $table.isArchiveRecovered,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SavedItemsTableTableAnnotationComposer
@@ -2580,6 +2646,11 @@ class $$SavedItemsTableTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get isArchiveRecovered => $composableBuilder(
+    column: $table.isArchiveRecovered,
+    builder: (column) => column,
+  );
+
   Expression<T> itemCollectionsTableRefs<T extends Object>(
     Expression<T> Function($$ItemCollectionsTableTableAnnotationComposer a) f,
   ) {
@@ -2663,6 +2734,7 @@ class $$SavedItemsTableTableTableManager
                 Value<String?> postFlair = const Value.absent(),
                 Value<String> subredditType = const Value.absent(),
                 Value<EnrichmentStatus> enrichmentStatus = const Value.absent(),
+                Value<bool> isArchiveRecovered = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SavedItemsTableCompanion(
                 id: id,
@@ -2691,6 +2763,7 @@ class $$SavedItemsTableTableTableManager
                 postFlair: postFlair,
                 subredditType: subredditType,
                 enrichmentStatus: enrichmentStatus,
+                isArchiveRecovered: isArchiveRecovered,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2721,6 +2794,7 @@ class $$SavedItemsTableTableTableManager
                 Value<String?> postFlair = const Value.absent(),
                 Value<String> subredditType = const Value.absent(),
                 Value<EnrichmentStatus> enrichmentStatus = const Value.absent(),
+                Value<bool> isArchiveRecovered = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SavedItemsTableCompanion.insert(
                 id: id,
@@ -2749,6 +2823,7 @@ class $$SavedItemsTableTableTableManager
                 postFlair: postFlair,
                 subredditType: subredditType,
                 enrichmentStatus: enrichmentStatus,
+                isArchiveRecovered: isArchiveRecovered,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

@@ -480,6 +480,10 @@ class SavedItemRepository {
             final companionArchived = companion.isArchived.present
                 ? companion.isArchived.value
                 : false;
+            final companionArchiveRecovered =
+                companion.isArchiveRecovered.present
+                ? companion.isArchiveRecovered.value
+                : false;
             final companionNote = companion.userNote.present
                 ? companion.userNote.value
                 : null;
@@ -520,6 +524,8 @@ class SavedItemRepository {
             final starNeedsUpdate = !existing.isStarred && companionStarred;
             final archiveNeedsUpdate =
                 !existing.isArchived && companionArchived;
+            final archiveRecoveredNeedsUpdate =
+                !existing.isArchiveRecovered && companionArchiveRecovered;
             final noteNeedsUpdate =
                 (existing.userNote == null || existing.userNote!.isEmpty) &&
                 companionNote != null &&
@@ -580,6 +586,7 @@ class SavedItemRepository {
 
             if (starNeedsUpdate ||
                 archiveNeedsUpdate ||
+                archiveRecoveredNeedsUpdate ||
                 noteNeedsUpdate ||
                 titleNeedsUpdate ||
                 enrichmentNeedsUpdate ||
@@ -597,6 +604,11 @@ class SavedItemRepository {
                 companion.copyWith(
                   isStarred: Value(existing.isStarred || companionStarred),
                   isArchived: Value(existing.isArchived || companionArchived),
+                  isArchiveRecovered: Value(
+                    existing.isArchiveRecovered ||
+                        (companion.isArchiveRecovered.present &&
+                            companion.isArchiveRecovered.value),
+                  ),
                   userNote: noteNeedsUpdate
                       ? Value(companionNote)
                       : Value(existing.userNote),
@@ -909,6 +921,7 @@ class SavedItemRepository {
               // user flags, notes, and ordering
               isStarred: Value(existing.isStarred),
               isArchived: Value(existing.isArchived),
+              isArchiveRecovered: Value(existing.isArchiveRecovered),
               userNote: Value(existing.userNote),
               csvSource: needsOrderReconciliation
                   ? const Value('reddit_api')
@@ -1357,6 +1370,7 @@ class SavedItemRepository {
         subredditType: Value(meta.subredditType),
         createdAtUtc: Value(meta.createdAtUtc ?? current.createdAtUtc),
         enrichmentStatus: const Value(EnrichmentStatus.enriched),
+        isArchiveRecovered: const Value(true),
       ),
     );
   }

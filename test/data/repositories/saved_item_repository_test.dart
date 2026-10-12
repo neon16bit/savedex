@@ -215,6 +215,7 @@ void main() {
           body: 'Dark! It is so dark and terrifying!',
           score: 1000,
           isStarred: true,
+          isArchiveRecovered: true,
           userNote: 'Grimoire that sees through clothes found on floor 48',
           importOrder: 1,
           savedAtUtc: DateTime.utc(2026, 1, 1),
@@ -239,6 +240,7 @@ void main() {
           'It might be a real grimoire this time (99% chance of mimic)',
         );
         expect(merged.isStarred, isTrue);
+        expect(merged.isArchiveRecovered, isTrue);
         expect(
           merged.userNote,
           'Grimoire that sees through clothes found on floor 48',
