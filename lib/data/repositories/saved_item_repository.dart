@@ -1391,13 +1391,23 @@ class SavedItemRepository {
         await (db.update(
           db.savedItemsTable,
         )..where((t) => t.id.equals(item.id))).write(
-          const SavedItemsTableCompanion(
+          SavedItemsTableCompanion(
             enrichmentStatus: Value(EnrichmentStatus.failed),
+            isArchiveRecovered: Value(
+              _isDeletedOrInaccessibleError(meta.errorMessage)
+                  ? false
+                  : item.isArchiveRecovered,
+            ),
           ),
         );
         return (success: false, error: meta.errorMessage);
       }
 
+      final refreshedHasRemovedContent = _hasRemovedContent(
+        meta.author,
+        meta.body,
+        meta.title,
+      );
       await (db.update(
         db.savedItemsTable,
       )..where((t) => t.id.equals(item.id))).write(
@@ -1417,6 +1427,9 @@ class SavedItemRepository {
           subredditType: Value(meta.subredditType),
           createdAtUtc: Value(meta.createdAtUtc ?? item.createdAtUtc),
           enrichmentStatus: const Value(EnrichmentStatus.enriched),
+          isArchiveRecovered: Value(
+            refreshedHasRemovedContent ? false : item.isArchiveRecovered,
+          ),
         ),
       );
       return (success: true, error: null);
@@ -1424,12 +1437,31 @@ class SavedItemRepository {
       await (db.update(
         db.savedItemsTable,
       )..where((t) => t.id.equals(item.id))).write(
-        const SavedItemsTableCompanion(
+        SavedItemsTableCompanion(
           enrichmentStatus: Value(EnrichmentStatus.failed),
+          isArchiveRecovered: Value(item.isArchiveRecovered),
         ),
       );
       return (success: false, error: e.toString());
     }
+  }
+
+  static bool _isDeletedOrInaccessibleError(String? error) {
+    final normalized = error?.toLowerCase() ?? '';
+    return normalized.contains('deleted or inaccessible') ||
+        normalized.contains('item deleted') ||
+        normalized.contains('inaccessible');
+  }
+
+  static bool _hasRemovedContent(String? author, String? body, String? title) {
+    bool isRemovedMarker(String? value) {
+      final normalized = value?.trim().toLowerCase();
+      return normalized == '[deleted]' || normalized == '[removed]';
+    }
+
+    return isRemovedMarker(author) ||
+        isRemovedMarker(body) ||
+        isRemovedMarker(title);
   }
 
   Future<List<SavedItem>> getPendingEnrichmentItems({int limit = 50}) async {

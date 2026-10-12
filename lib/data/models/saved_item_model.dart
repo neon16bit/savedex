@@ -66,7 +66,8 @@ class SavedItem {
   bool get isPost => itemType == ItemType.post;
 
   bool get canAttemptArchiveRecovery =>
-      enrichmentStatus == EnrichmentStatus.failed || hasRemovedContent;
+      !isArchiveRecovered &&
+      (enrichmentStatus == EnrichmentStatus.failed || hasRemovedContent);
 
   bool get hasRemovedContent =>
       _isRemovedMarker(author) ||

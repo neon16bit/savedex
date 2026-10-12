@@ -993,10 +993,13 @@ class AppDatabase extends _$AppDatabase {
     List<String> excludeIds = const [],
   }) {
     Expression<bool> predicate =
-        savedItemsTable.enrichmentStatus.equals(EnrichmentStatus.failed.index) |
-        savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
-        savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
-        savedItemsTable.title.isIn(['[deleted]', '[removed]']);
+        savedItemsTable.isArchiveRecovered.equals(false) &
+        (savedItemsTable.enrichmentStatus.equals(
+              EnrichmentStatus.failed.index,
+            ) |
+            savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
+            savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
+            savedItemsTable.title.isIn(['[deleted]', '[removed]']));
     if (excludeIds.isNotEmpty) {
       predicate = predicate & savedItemsTable.id.isNotIn(excludeIds);
     }
@@ -1017,10 +1020,13 @@ class AppDatabase extends _$AppDatabase {
     final query = selectOnly(savedItemsTable)
       ..addColumns([countExp])
       ..where(
-        savedItemsTable.enrichmentStatus.equals(EnrichmentStatus.failed.index) |
-            savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
-            savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
-            savedItemsTable.title.isIn(['[deleted]', '[removed]']),
+        savedItemsTable.isArchiveRecovered.equals(false) &
+            (savedItemsTable.enrichmentStatus.equals(
+                  EnrichmentStatus.failed.index,
+                ) |
+                savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
+                savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
+                savedItemsTable.title.isIn(['[deleted]', '[removed]'])),
       );
     final row = await query.getSingleOrNull();
     return row?.read(countExp) ?? 0;
@@ -1031,10 +1037,13 @@ class AppDatabase extends _$AppDatabase {
     final query = selectOnly(savedItemsTable)
       ..addColumns([countExp])
       ..where(
-        savedItemsTable.enrichmentStatus.equals(EnrichmentStatus.failed.index) |
-            savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
-            savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
-            savedItemsTable.title.isIn(['[deleted]', '[removed]']),
+        savedItemsTable.isArchiveRecovered.equals(false) &
+            (savedItemsTable.enrichmentStatus.equals(
+                  EnrichmentStatus.failed.index,
+                ) |
+                savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
+                savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
+                savedItemsTable.title.isIn(['[deleted]', '[removed]'])),
       );
     return query.watchSingle().map((row) => row.read(countExp) ?? 0);
   }
