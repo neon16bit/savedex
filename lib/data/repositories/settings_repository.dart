@@ -3,6 +3,15 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+enum ArchiveBackend {
+  automatic('Automatic (PullPush, then Arctic Shift)'),
+  pullPush('PullPush'),
+  arcticShift('Arctic Shift');
+
+  final String label;
+  const ArchiveBackend(this.label);
+}
+
 class UserSettings {
   final ThemeMode themeMode;
   final int seedColorIndex;
@@ -18,6 +27,7 @@ class UserSettings {
   final DateTime? redditTokenExpiry;
   final String? redditUsername;
   final bool autoEnrichOnImport;
+  final ArchiveBackend archiveBackend;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -34,6 +44,7 @@ class UserSettings {
     this.redditTokenExpiry,
     this.redditUsername,
     this.autoEnrichOnImport = true,
+    this.archiveBackend = ArchiveBackend.automatic,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -61,6 +72,7 @@ class UserSettings {
     DateTime? redditTokenExpiry,
     String? redditUsername,
     bool? autoEnrichOnImport,
+    ArchiveBackend? archiveBackend,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -86,6 +98,7 @@ class UserSettings {
           ? null
           : (redditUsername ?? this.redditUsername),
       autoEnrichOnImport: autoEnrichOnImport ?? this.autoEnrichOnImport,
+      archiveBackend: archiveBackend ?? this.archiveBackend,
     );
   }
 }
@@ -131,6 +144,11 @@ class SettingsRepository {
         : null;
     final redditUsername = _prefs.getString('reddit_username');
     final autoEnrich = _prefs.getBool('auto_enrich_on_import') ?? true;
+    final archiveBackendIndex =
+        _prefs.getInt('archive_backend') ?? ArchiveBackend.automatic.index;
+    final archiveBackend =
+        ArchiveBackend.values.elementAtOrNull(archiveBackendIndex) ??
+        ArchiveBackend.automatic;
 
     return UserSettings(
       themeMode: themeMode,
@@ -147,6 +165,7 @@ class SettingsRepository {
       redditTokenExpiry: redditTokenExpiry,
       redditUsername: redditUsername,
       autoEnrichOnImport: autoEnrich,
+      archiveBackend: archiveBackend,
     );
   }
 
@@ -244,6 +263,7 @@ class SettingsRepository {
       'auto_enrich_on_import',
       newSettings.autoEnrichOnImport,
     );
+    await prefs.setInt('archive_backend', newSettings.archiveBackend.index);
   }
 
   Future<void> updateOAuthTokens({

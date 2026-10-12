@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/data/repositories/settings_repository.dart';
 import 'package:savedex/theme/app_theme.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/data/services/reddit_auth_service.dart';
@@ -575,6 +576,77 @@ class SettingsView extends ConsumerWidget {
                       ],
                     );
                   },
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              Icons.archive_outlined,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Archive Recovery Backend',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                SizedBox(height: 3),
+                                Text(
+                                  'Choose where recovered metadata is looked up.',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<ArchiveBackend>(
+                        initialValue: settings.archiveBackend,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'Backend',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
+                        onChanged: (backend) {
+                          if (backend != null) {
+                            viewModel.setArchiveBackend(backend);
+                          }
+                        },
+                        items: [
+                          for (final backend in ArchiveBackend.values)
+                            DropdownMenuItem(
+                              value: backend,
+                              child: Text(
+                                backend.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(

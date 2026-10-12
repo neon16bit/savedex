@@ -84,6 +84,7 @@ final savedItemRepositoryProvider = Provider<SavedItemRepository>((ref) {
     redditApi: api,
     arcticShiftApi: arcticShiftApi,
     pullPushApi: pullPushApi,
+    settingsRepository: ref.watch(settingsRepositoryProvider),
   );
 });
 

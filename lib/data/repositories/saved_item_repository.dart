@@ -12,6 +12,7 @@ import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/arctic_shift_api_service.dart';
 import 'package:savedex/data/services/pullpush_api_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
+import 'package:savedex/data/repositories/settings_repository.dart';
 
 class SavedItemRepository {
   final AppDatabase db;
@@ -19,6 +20,7 @@ class SavedItemRepository {
   final RedditApiService _redditApi;
   final ArcticShiftApiService _arcticShiftApi;
   final PullPushApiService _pullPushApi;
+  final SettingsRepository _settingsRepository;
   final BackupExportService _backupExport;
   final Map<String, Future<({bool success, String? error})>>
   _inFlightEnrichments = {};
@@ -29,11 +31,13 @@ class SavedItemRepository {
     RedditApiService? redditApi,
     ArcticShiftApiService? arcticShiftApi,
     PullPushApiService? pullPushApi,
+    SettingsRepository? settingsRepository,
     BackupExportService? backupExport,
   }) : _csvParser = csvParser ?? CsvParserService(),
        _redditApi = redditApi ?? RedditApiService(),
        _arcticShiftApi = arcticShiftApi ?? ArcticShiftApiService(),
        _pullPushApi = pullPushApi ?? PullPushApiService(),
+       _settingsRepository = settingsRepository ?? SettingsRepository(),
        _backupExport = backupExport ?? BackupExportService();
 
   Stream<List<SavedItem>> watchSavedItems(FilterCriteria filter) {
@@ -1279,60 +1283,66 @@ class SavedItemRepository {
           .toList();
       if (typedItems.isEmpty) continue;
 
-      debugPrint(
-        '[ArchiveRecovery] [PullPush] Querying ${typedItems.length} ${itemType.name}(s): ${typedItems.map((e) => e.id).join(', ')}',
-      );
-      final pullPushMetadata = await _pullPushApi.fetchMetadataBatch(
-        ids: typedItems.map((item) => item.id).toList(),
-        itemType: itemType,
-        isCancelled: isCancelled,
-      );
+      final backend = _settingsRepository.settings.archiveBackend;
+      final primaryIsPullPush = backend != ArchiveBackend.arcticShift;
+      final primaryMetadata = primaryIsPullPush
+          ? await _pullPushApi.fetchMetadataBatch(
+              ids: typedItems.map((item) => item.id).toList(),
+              itemType: itemType,
+              isCancelled: isCancelled,
+            )
+          : await _arcticShiftApi.fetchMetadataBatch(
+              ids: typedItems.map((item) => item.id).toList(),
+              itemType: itemType,
+              isCancelled: isCancelled,
+            );
       if (isCancelled?.call() == true) break;
 
       final pendingFallback = <SavedItem>[];
-
       for (final item in typedItems) {
         if (isCancelled?.call() == true) break;
-        final meta = pullPushMetadata[item.id];
+        final meta = primaryMetadata[item.id];
         if (meta != null && meta.isSuccess) {
-          final rowsUpdated = await _writeRecoveredMetadata(item, meta);
-          debugPrint(
-            '[ArchiveRecovery] [PullPush] Item ${item.id} SUCCESS -> Updated $rowsUpdated row(s) in DB (title: "${meta.title}", author: "${meta.author}", mediaUrl: "${meta.mediaUrl}")',
-          );
+          await _writeRecoveredMetadata(item, meta);
           results[item.id] = (success: true, error: null);
-        } else {
+        } else if (backend == ArchiveBackend.automatic) {
           pendingFallback.add(item);
+        } else {
+          results[item.id] = (
+            success: false,
+            error: meta?.errorMessage ?? 'Archive lookup failed',
+          );
         }
       }
 
       if (isCancelled?.call() == true) break;
-
       if (pendingFallback.isNotEmpty) {
+        final fallbackIsPullPush = !primaryIsPullPush;
         debugPrint(
-          '[ArchiveRecovery] [ArcticShift Fallback] Querying ${pendingFallback.length} ${itemType.name}(s): ${pendingFallback.map((e) => e.id).join(', ')}',
+          '[ArchiveRecovery] [${fallbackIsPullPush ? 'PullPush' : 'ArcticShift'} Fallback] Querying ${pendingFallback.length} ${itemType.name}(s)',
         );
-        final arcticShiftMetadata = await _arcticShiftApi.fetchMetadataBatch(
-          ids: pendingFallback.map((item) => item.id).toList(),
-          itemType: itemType,
-          isCancelled: isCancelled,
-        );
+        final fallbackMetadata = fallbackIsPullPush
+            ? await _pullPushApi.fetchMetadataBatch(
+                ids: pendingFallback.map((item) => item.id).toList(),
+                itemType: itemType,
+                isCancelled: isCancelled,
+              )
+            : await _arcticShiftApi.fetchMetadataBatch(
+                ids: pendingFallback.map((item) => item.id).toList(),
+                itemType: itemType,
+                isCancelled: isCancelled,
+              );
 
         if (isCancelled?.call() == true) break;
 
         for (final item in pendingFallback) {
           if (isCancelled?.call() == true) break;
-          final meta = arcticShiftMetadata[item.id];
+          final meta = fallbackMetadata[item.id];
           if (meta != null && meta.isSuccess) {
-            final rowsUpdated = await _writeRecoveredMetadata(item, meta);
-            debugPrint(
-              '[ArchiveRecovery] [ArcticShift] Item ${item.id} SUCCESS -> Updated $rowsUpdated row(s) in DB (title: "${meta.title}", author: "${meta.author}", mediaUrl: "${meta.mediaUrl}")',
-            );
+            await _writeRecoveredMetadata(item, meta);
             results[item.id] = (success: true, error: null);
           } else {
-            final err =
-                meta?.errorMessage ??
-                pullPushMetadata[item.id]?.errorMessage ??
-                'Archive lookup failed';
+            final err = meta?.errorMessage ?? 'Archive lookup failed';
             debugPrint(
               '[ArchiveRecovery] Item ${item.id} failed across all archive sources: $err',
             );

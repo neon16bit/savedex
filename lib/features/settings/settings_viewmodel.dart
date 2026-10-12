@@ -122,4 +122,9 @@ class SettingsViewModel extends Notifier<UserSettings> {
     state = state.copyWith(autoEnrichOnImport: autoEnrich);
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
+
+  void setArchiveBackend(ArchiveBackend backend) {
+    state = state.copyWith(archiveBackend: backend);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
 }
