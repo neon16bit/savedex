@@ -145,6 +145,32 @@ void showConfirmDeleteDialog(
   );
 }
 
+Future<bool> showArchiveRefreshWarningDialog(BuildContext context) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: const Text('Refresh archived item?'),
+      content: const Text(
+        'This item was recovered from the archive. Refreshing it may replace '
+        'the recovered metadata with Reddit\'s current response, including '
+        'deleted or removed content.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Refresh'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
 class _NoteDialog extends StatefulWidget {
   final String? initialNote;
   final ValueChanged<String?> onSave;

@@ -45,6 +45,10 @@ class ItemOptionsMenu extends ConsumerWidget {
         if (val == 'refresh') {
           final notifier = ref.read(enrichingItemsProvider.notifier);
           if (notifier.isEnriching(item.id)) return;
+          if (item.isArchiveRecovered) {
+            final confirmed = await showArchiveRefreshWarningDialog(context);
+            if (!confirmed || !context.mounted) return;
+          }
           notifier.add(item.id);
           ScaffoldMessenger.of(context)
             ..clearSnackBars()

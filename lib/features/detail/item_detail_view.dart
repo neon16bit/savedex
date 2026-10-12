@@ -33,6 +33,10 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   ) async {
     final notifier = ref.read(enrichingItemsProvider.notifier);
     if (notifier.isEnriching(item.id)) return;
+    if (item.isArchiveRecovered) {
+      final confirmed = await showArchiveRefreshWarningDialog(context);
+      if (!confirmed || !mounted) return;
+    }
     notifier.add(item.id);
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
