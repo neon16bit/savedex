@@ -50,6 +50,7 @@ class CompactListItem extends ConsumerWidget {
                           cacheHeight: 120,
                           fit: BoxFit.cover,
                           cache: true,
+                          retries: 1,
                           printError: false,
                           loadStateChanged: (state) {
                             if (state.extendedImageLoadState ==

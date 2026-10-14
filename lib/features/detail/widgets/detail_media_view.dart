@@ -94,6 +94,7 @@ class DetailMediaView extends StatelessWidget {
                       fit: BoxFit.contain,
                       cache: true,
                       cacheWidth: 800,
+                      retries: 1,
                       printError: false,
                       loadStateChanged: (state) {
                         if (state.extendedImageLoadState == LoadState.failed) {
@@ -119,6 +120,7 @@ class DetailMediaView extends StatelessWidget {
                         item.fullImageUrl!,
                         fit: BoxFit.contain,
                         cache: true,
+                        retries: 1,
                         printError: false,
                         loadStateChanged: (state) {
                           if (state.extendedImageLoadState ==

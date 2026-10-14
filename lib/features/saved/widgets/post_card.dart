@@ -565,6 +565,7 @@ class _SavedFeedMediaState extends State<_SavedFeedMedia> {
       cacheWidth: 800,
       fit: BoxFit.cover,
       cache: true,
+      retries: 1,
       printError: false,
       loadStateChanged: (state) {
         if (state.extendedImageLoadState == LoadState.loading) {

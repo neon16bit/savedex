@@ -41,6 +41,7 @@ class GalleryItem extends ConsumerWidget {
                 cacheWidth: 400,
                 fit: BoxFit.cover,
                 cache: true,
+                retries: 1,
                 printError: false,
                 loadStateChanged: (state) {
                   if (state.extendedImageLoadState == LoadState.loading) {
