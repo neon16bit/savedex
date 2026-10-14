@@ -10,6 +10,7 @@ import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:extended_image/extended_image.dart' hide MediaType;
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
@@ -69,6 +70,8 @@ class SettingsView extends ConsumerWidget {
                     );
                   },
                 ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                const _ImageCacheTile(),
                 const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(
@@ -1618,3 +1621,169 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     );
   }
 }
+
+class _ImageCacheTile extends StatefulWidget {
+  const _ImageCacheTile();
+
+  @override
+  State<_ImageCacheTile> createState() => _ImageCacheTileState();
+}
+
+class _ImageCacheTileState extends State<_ImageCacheTile> {
+  int? _cacheSizeBytes;
+  bool _isLoading = true;
+  bool _isClearing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCacheSize();
+  }
+
+  Future<void> _loadCacheSize() async {
+    try {
+      final size = await getCachedSizeBytes();
+      if (mounted) {
+        setState(() {
+          _cacheSizeBytes = size;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _cacheSizeBytes = 0;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB'];
+    int i = 0;
+    double count = bytes.toDouble();
+    while (count >= 1024 && i < suffixes.length - 1) {
+      count /= 1024;
+      i++;
+    }
+    return '${count.toStringAsFixed(i == 0 ? 0 : 1)} ${suffixes[i]}';
+  }
+
+  Future<void> _confirmClearCache() async {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.delete_outline_rounded,
+              color: colorScheme.primary,
+              size: 26,
+            ),
+            const SizedBox(width: 10),
+            const Text('Clear Image Cache?'),
+          ],
+        ),
+        content: const Text(
+          'This will remove temporary image files cached on your device. '
+          'Your saved posts and notes will not be affected, and images will reload from the web when viewed again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear Cache'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _clearCache();
+    }
+  }
+
+  Future<void> _clearCache() async {
+    if (_isClearing) return;
+    setState(() => _isClearing = true);
+
+    try {
+      await clearDiskCachedImages();
+      PaintingBinding.instance.imageCache.clear();
+      PaintingBinding.instance.imageCache.clearLiveImages();
+      await _loadCacheSize();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image cache cleared successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not clear image cache: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isClearing = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final size = _cacheSizeBytes ?? 0;
+    final hasCache = size > 0;
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: colorScheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(
+          Icons.image_outlined,
+          color: colorScheme.onSecondaryContainer,
+        ),
+      ),
+      title: const Text(
+        'Image Cache',
+        style: TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        _isLoading
+            ? 'Calculating cache size...'
+            : '${_formatBytes(size)} temporary media on disk',
+      ),
+      trailing: _isClearing
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : OutlinedButton(
+              onPressed: hasCache ? _confirmClearCache : null,
+              child: const Text('Clear'),
+            ),
+    );
+  }
+}
+
