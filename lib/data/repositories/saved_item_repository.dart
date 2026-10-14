@@ -1370,6 +1370,16 @@ class SavedItemRepository {
         url: Value(meta.url ?? current.url),
         thumbnailUrl: Value(meta.thumbnailUrl ?? current.thumbnailUrl),
         mediaUrl: Value(meta.mediaUrl ?? current.mediaUrl),
+        galleryImages: Value(
+          meta.galleryImages.isEmpty
+              ? current.galleryImagesJson
+              : meta.galleryImagesJson,
+        ),
+        galleryPreviewImages: Value(
+          meta.galleryPreviewImages.isEmpty
+              ? current.galleryPreviewImagesJson
+              : meta.galleryPreviewImagesJson,
+        ),
         mediaType: Value(
           meta.mediaType != MediaType.text ? meta.mediaType : current.mediaType,
         ),
@@ -1429,6 +1439,16 @@ class SavedItemRepository {
           url: Value(meta.url ?? item.url),
           thumbnailUrl: Value(meta.thumbnailUrl ?? item.thumbnailUrl),
           mediaUrl: Value(meta.mediaUrl ?? item.mediaUrl),
+          galleryImages: Value(
+            meta.galleryImages.isEmpty
+                ? item.galleryImagesJson
+                : meta.galleryImagesJson,
+          ),
+          galleryPreviewImages: Value(
+            meta.galleryPreviewImages.isEmpty
+                ? item.galleryPreviewImagesJson
+                : meta.galleryPreviewImagesJson,
+          ),
           mediaType: Value(meta.mediaType),
           score: Value(meta.score),
           numComments: Value(meta.numComments),

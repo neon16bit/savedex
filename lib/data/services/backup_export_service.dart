@@ -149,6 +149,8 @@ class BackupExportService {
         'url',
         'thumbnail_url',
         'media_url',
+        'gallery_images',
+        'gallery_preview_images',
         'media_type',
         'score',
         'num_comments',
@@ -181,6 +183,10 @@ class BackupExportService {
         item.url ?? '',
         item.thumbnailUrl ?? '',
         item.mediaUrl ?? '',
+        item.galleryImages.isEmpty ? '' : jsonEncode(item.galleryImages),
+        item.galleryPreviewImages.isEmpty
+            ? ''
+            : jsonEncode(item.galleryPreviewImages),
         item.mediaType.name,
         item.score,
         item.numComments,
@@ -302,6 +308,10 @@ class BackupExportService {
     final urlIndex = headerRow.indexOf('url');
     final thumbnailUrlIndex = headerRow.indexOf('thumbnail_url');
     final mediaUrlIndex = headerRow.indexOf('media_url');
+    final galleryImagesIndex = headerRow.indexOf('gallery_images');
+    final galleryPreviewImagesIndex = headerRow.indexOf(
+      'gallery_preview_images',
+    );
     final mediaTypeIndex = headerRow.indexOf('media_type');
     final scoreIndex = headerRow.indexOf('score');
     final numCommentsIndex = headerRow.indexOf('num_comments');
@@ -364,6 +374,15 @@ class BackupExportService {
           : null;
       final mediaUrl = mediaUrlIndex != -1 && mediaUrlIndex < row.length
           ? row[mediaUrlIndex].trim()
+          : null;
+      final galleryImages =
+          galleryImagesIndex != -1 && galleryImagesIndex < row.length
+          ? row[galleryImagesIndex].trim()
+          : null;
+      final galleryPreviewImages =
+          galleryPreviewImagesIndex != -1 &&
+              galleryPreviewImagesIndex < row.length
+          ? row[galleryPreviewImagesIndex].trim()
           : null;
 
       final mediaTypeStr = mediaTypeIndex != -1 && mediaTypeIndex < row.length
@@ -479,6 +498,16 @@ class BackupExportService {
           mediaUrl: Value(
             mediaUrl != null && mediaUrl.isNotEmpty ? mediaUrl : null,
           ),
+          galleryImages: Value(
+            galleryImages != null && galleryImages.isNotEmpty
+                ? _galleryJsonFromValue(galleryImages)
+                : null,
+          ),
+          galleryPreviewImages: Value(
+            galleryPreviewImages != null && galleryPreviewImages.isNotEmpty
+                ? _galleryJsonFromValue(galleryPreviewImages)
+                : null,
+          ),
           mediaType: Value(mediaType),
           score: Value(score),
           numComments: Value(numComments),
@@ -560,6 +589,8 @@ class BackupExportService {
         'url': item.url,
         'thumbnailUrl': item.thumbnailUrl,
         'mediaUrl': item.mediaUrl,
+        'galleryImages': item.galleryImages,
+        'galleryPreviewImages': item.galleryPreviewImages,
         'mediaType': item.mediaType.name,
         'score': item.score,
         'numComments': item.numComments,
@@ -608,6 +639,25 @@ class BackupExportService {
     }
   }
 
+  String? _galleryJsonFromValue(dynamic value) {
+    if (value is List) {
+      final urls = value.whereType<String>().toList();
+      return urls.isEmpty ? null : jsonEncode(urls);
+    }
+    if (value is! String || value.trim().isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is List) {
+        final urls = decoded.whereType<String>().toList();
+        return urls.isEmpty ? null : jsonEncode(urls);
+      }
+    } on FormatException {
+      return null;
+    }
+    return null;
+  }
+
   SavedItemsTableCompanion _itemFromJson(Map<String, dynamic> map) {
     final itemTypeStr = map['itemType'] as String?;
     final itemType = itemTypeStr == 'comment'
@@ -648,6 +698,10 @@ class BackupExportService {
       url: Value(map['url'] as String?),
       thumbnailUrl: Value(map['thumbnailUrl'] as String?),
       mediaUrl: Value(map['mediaUrl'] as String?),
+      galleryImages: Value(_galleryJsonFromValue(map['galleryImages'])),
+      galleryPreviewImages: Value(
+        _galleryJsonFromValue(map['galleryPreviewImages']),
+      ),
       mediaType: Value(mediaType),
       score: Value((map['score'] as num?)?.toInt() ?? 0),
       numComments: Value((map['numComments'] as num?)?.toInt() ?? 0),

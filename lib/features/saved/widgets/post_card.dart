@@ -1,4 +1,5 @@
 import 'package:extended_image/extended_image.dart' hide MediaType;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
@@ -285,48 +286,7 @@ class PostCard extends ConsumerWidget {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        ExtendedImage.network(
-                          item.displayImageUrl!,
-                          width: double.infinity,
-                          cacheWidth: 800,
-                          fit: BoxFit.cover,
-                          cache: true,
-                          printError: false,
-                          loadStateChanged: (state) {
-                            if (state.extendedImageLoadState ==
-                                LoadState.loading) {
-                              return Container(
-                                height: 180,
-                                color: colorScheme.surfaceContainerHigh,
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.2,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            } else if (state.extendedImageLoadState ==
-                                LoadState.failed) {
-                              return Container(
-                                height: 100,
-                                color: colorScheme.surfaceContainerHigh,
-                                child: Center(
-                                  child: Icon(
-                                    item.isVideo
-                                        ? Icons.videocam_rounded
-                                        : Icons.image_not_supported_outlined,
-                                    size: 28,
-                                    color: colorScheme.outline,
-                                  ),
-                                ),
-                              );
-                            }
-                            return null;
-                          },
-                        ),
+                        _SavedFeedMedia(item: item, colorScheme: colorScheme),
                         if (item.isVideo)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -554,4 +514,196 @@ class PostCard extends ConsumerWidget {
         return Icons.text_snippet_rounded;
     }
   }
+}
+
+class _SavedFeedMedia extends StatefulWidget {
+  final SavedItem item;
+  final ColorScheme colorScheme;
+
+  const _SavedFeedMedia({required this.item, required this.colorScheme});
+
+  @override
+  State<_SavedFeedMedia> createState() => _SavedFeedMediaState();
+}
+
+class _SavedFeedMediaState extends State<_SavedFeedMedia> {
+  late final PageController _controller;
+  int _index = 0;
+
+  bool get _desktop =>
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SavedFeedMedia oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id) {
+      _index = 0;
+      if (_controller.hasClients) {
+        _controller.jumpToPage(0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _buildImage(String url) {
+    return ExtendedImage.network(
+      url,
+      width: double.infinity,
+      cacheWidth: 800,
+      fit: BoxFit.cover,
+      cache: true,
+      printError: false,
+      loadStateChanged: (state) {
+        if (state.extendedImageLoadState == LoadState.loading) {
+          return Container(
+            height: 180,
+            color: widget.colorScheme.surfaceContainerHigh,
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+            ),
+          );
+        }
+        if (state.extendedImageLoadState == LoadState.failed) {
+          return Container(
+            height: 100,
+            color: widget.colorScheme.surfaceContainerHigh,
+            child: Center(
+              child: Icon(
+                widget.item.isVideo
+                    ? Icons.videocam_rounded
+                    : Icons.image_not_supported_outlined,
+                size: 28,
+                color: widget.colorScheme.outline,
+              ),
+            ),
+          );
+        }
+        return null;
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final urls = item.galleryPreviewUrls;
+    final isGallery = item.mediaType == MediaType.gallery && urls.length > 1;
+
+    if (!isGallery) {
+      final singleUrl = urls.isNotEmpty ? urls.first : item.displayImageUrl;
+      if (singleUrl == null) return const SizedBox.shrink();
+      return _buildImage(singleUrl);
+    }
+
+    return SizedBox(
+      height: 240,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: urls.length,
+            onPageChanged: (index) => setState(() => _index = index),
+            itemBuilder: (context, index) => _buildImage(urls[index]),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: _GalleryCounter(current: _index + 1, total: urls.length),
+          ),
+          if (_desktop)
+            Positioned.fill(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _GalleryButton(
+                    icon: Icons.chevron_left_rounded,
+                    enabled: _index > 0,
+                    onPressed: () => _controller.previousPage(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOut,
+                    ),
+                  ),
+                  _GalleryButton(
+                    icon: Icons.chevron_right_rounded,
+                    enabled: _index < urls.length - 1,
+                    onPressed: () => _controller.nextPage(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOut,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GalleryCounter extends StatelessWidget {
+  final int current;
+  final int total;
+
+  const _GalleryCounter({required this.current, required this.total});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.7),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(
+      '$current/$total',
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
+
+class _GalleryButton extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  const _GalleryButton({
+    required this.icon,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 6),
+    child: IconButton(
+      onPressed: enabled ? onPressed : null,
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.black.withValues(alpha: 0.65),
+        foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white38,
+      ),
+      icon: Icon(icon),
+    ),
+  );
 }

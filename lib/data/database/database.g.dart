@@ -129,6 +129,28 @@ class $SavedItemsTableTable extends SavedItemsTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _galleryImagesMeta = const VerificationMeta(
+    'galleryImages',
+  );
+  @override
+  late final GeneratedColumn<String> galleryImages = GeneratedColumn<String>(
+    'gallery_images',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _galleryPreviewImagesMeta =
+      const VerificationMeta('galleryPreviewImages');
+  @override
+  late final GeneratedColumn<String> galleryPreviewImages =
+      GeneratedColumn<String>(
+        'gallery_preview_images',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   late final GeneratedColumnWithTypeConverter<MediaType, int> mediaType =
       GeneratedColumn<int>(
@@ -325,6 +347,8 @@ class $SavedItemsTableTable extends SavedItemsTable
     url,
     thumbnailUrl,
     mediaUrl,
+    galleryImages,
+    galleryPreviewImages,
     mediaType,
     score,
     numComments,
@@ -431,6 +455,24 @@ class $SavedItemsTableTable extends SavedItemsTable
       context.handle(
         _mediaUrlMeta,
         mediaUrl.isAcceptableOrUnknown(data['media_url']!, _mediaUrlMeta),
+      );
+    }
+    if (data.containsKey('gallery_images')) {
+      context.handle(
+        _galleryImagesMeta,
+        galleryImages.isAcceptableOrUnknown(
+          data['gallery_images']!,
+          _galleryImagesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('gallery_preview_images')) {
+      context.handle(
+        _galleryPreviewImagesMeta,
+        galleryPreviewImages.isAcceptableOrUnknown(
+          data['gallery_preview_images']!,
+          _galleryPreviewImagesMeta,
+        ),
       );
     }
     if (data.containsKey('score')) {
@@ -590,6 +632,14 @@ class $SavedItemsTableTable extends SavedItemsTable
         DriftSqlType.string,
         data['${effectivePrefix}media_url'],
       ),
+      galleryImages: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gallery_images'],
+      ),
+      galleryPreviewImages: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}gallery_preview_images'],
+      ),
       mediaType: $SavedItemsTableTable.$convertermediaType.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.int,
@@ -686,6 +736,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
   final String? url;
   final String? thumbnailUrl;
   final String? mediaUrl;
+  final String? galleryImages;
+  final String? galleryPreviewImages;
   final MediaType mediaType;
   final int score;
   final int numComments;
@@ -714,6 +766,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     this.url,
     this.thumbnailUrl,
     this.mediaUrl,
+    this.galleryImages,
+    this.galleryPreviewImages,
     required this.mediaType,
     required this.score,
     required this.numComments,
@@ -762,6 +816,12 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     }
     if (!nullToAbsent || mediaUrl != null) {
       map['media_url'] = Variable<String>(mediaUrl);
+    }
+    if (!nullToAbsent || galleryImages != null) {
+      map['gallery_images'] = Variable<String>(galleryImages);
+    }
+    if (!nullToAbsent || galleryPreviewImages != null) {
+      map['gallery_preview_images'] = Variable<String>(galleryPreviewImages);
     }
     {
       map['media_type'] = Variable<int>(
@@ -821,6 +881,12 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
       mediaUrl: mediaUrl == null && nullToAbsent
           ? const Value.absent()
           : Value(mediaUrl),
+      galleryImages: galleryImages == null && nullToAbsent
+          ? const Value.absent()
+          : Value(galleryImages),
+      galleryPreviewImages: galleryPreviewImages == null && nullToAbsent
+          ? const Value.absent()
+          : Value(galleryPreviewImages),
       mediaType: Value(mediaType),
       score: Value(score),
       numComments: Value(numComments),
@@ -865,6 +931,10 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
       url: serializer.fromJson<String?>(json['url']),
       thumbnailUrl: serializer.fromJson<String?>(json['thumbnailUrl']),
       mediaUrl: serializer.fromJson<String?>(json['mediaUrl']),
+      galleryImages: serializer.fromJson<String?>(json['galleryImages']),
+      galleryPreviewImages: serializer.fromJson<String?>(
+        json['galleryPreviewImages'],
+      ),
       mediaType: $SavedItemsTableTable.$convertermediaType.fromJson(
         serializer.fromJson<int>(json['mediaType']),
       ),
@@ -903,6 +973,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
       'url': serializer.toJson<String?>(url),
       'thumbnailUrl': serializer.toJson<String?>(thumbnailUrl),
       'mediaUrl': serializer.toJson<String?>(mediaUrl),
+      'galleryImages': serializer.toJson<String?>(galleryImages),
+      'galleryPreviewImages': serializer.toJson<String?>(galleryPreviewImages),
       'mediaType': serializer.toJson<int>(
         $SavedItemsTableTable.$convertermediaType.toJson(mediaType),
       ),
@@ -940,6 +1012,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     Value<String?> url = const Value.absent(),
     Value<String?> thumbnailUrl = const Value.absent(),
     Value<String?> mediaUrl = const Value.absent(),
+    Value<String?> galleryImages = const Value.absent(),
+    Value<String?> galleryPreviewImages = const Value.absent(),
     MediaType? mediaType,
     int? score,
     int? numComments,
@@ -970,6 +1044,12 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     url: url.present ? url.value : this.url,
     thumbnailUrl: thumbnailUrl.present ? thumbnailUrl.value : this.thumbnailUrl,
     mediaUrl: mediaUrl.present ? mediaUrl.value : this.mediaUrl,
+    galleryImages: galleryImages.present
+        ? galleryImages.value
+        : this.galleryImages,
+    galleryPreviewImages: galleryPreviewImages.present
+        ? galleryPreviewImages.value
+        : this.galleryPreviewImages,
     mediaType: mediaType ?? this.mediaType,
     score: score ?? this.score,
     numComments: numComments ?? this.numComments,
@@ -1006,6 +1086,12 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           ? data.thumbnailUrl.value
           : this.thumbnailUrl,
       mediaUrl: data.mediaUrl.present ? data.mediaUrl.value : this.mediaUrl,
+      galleryImages: data.galleryImages.present
+          ? data.galleryImages.value
+          : this.galleryImages,
+      galleryPreviewImages: data.galleryPreviewImages.present
+          ? data.galleryPreviewImages.value
+          : this.galleryPreviewImages,
       mediaType: data.mediaType.present ? data.mediaType.value : this.mediaType,
       score: data.score.present ? data.score.value : this.score,
       numComments: data.numComments.present
@@ -1055,6 +1141,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           ..write('url: $url, ')
           ..write('thumbnailUrl: $thumbnailUrl, ')
           ..write('mediaUrl: $mediaUrl, ')
+          ..write('galleryImages: $galleryImages, ')
+          ..write('galleryPreviewImages: $galleryPreviewImages, ')
           ..write('mediaType: $mediaType, ')
           ..write('score: $score, ')
           ..write('numComments: $numComments, ')
@@ -1088,6 +1176,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
     url,
     thumbnailUrl,
     mediaUrl,
+    galleryImages,
+    galleryPreviewImages,
     mediaType,
     score,
     numComments,
@@ -1120,6 +1210,8 @@ class SavedItemEntry extends DataClass implements Insertable<SavedItemEntry> {
           other.url == this.url &&
           other.thumbnailUrl == this.thumbnailUrl &&
           other.mediaUrl == this.mediaUrl &&
+          other.galleryImages == this.galleryImages &&
+          other.galleryPreviewImages == this.galleryPreviewImages &&
           other.mediaType == this.mediaType &&
           other.score == this.score &&
           other.numComments == this.numComments &&
@@ -1150,6 +1242,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
   final Value<String?> url;
   final Value<String?> thumbnailUrl;
   final Value<String?> mediaUrl;
+  final Value<String?> galleryImages;
+  final Value<String?> galleryPreviewImages;
   final Value<MediaType> mediaType;
   final Value<int> score;
   final Value<int> numComments;
@@ -1179,6 +1273,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     this.url = const Value.absent(),
     this.thumbnailUrl = const Value.absent(),
     this.mediaUrl = const Value.absent(),
+    this.galleryImages = const Value.absent(),
+    this.galleryPreviewImages = const Value.absent(),
     this.mediaType = const Value.absent(),
     this.score = const Value.absent(),
     this.numComments = const Value.absent(),
@@ -1209,6 +1305,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     this.url = const Value.absent(),
     this.thumbnailUrl = const Value.absent(),
     this.mediaUrl = const Value.absent(),
+    this.galleryImages = const Value.absent(),
+    this.galleryPreviewImages = const Value.absent(),
     this.mediaType = const Value.absent(),
     this.score = const Value.absent(),
     this.numComments = const Value.absent(),
@@ -1244,6 +1342,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     Expression<String>? url,
     Expression<String>? thumbnailUrl,
     Expression<String>? mediaUrl,
+    Expression<String>? galleryImages,
+    Expression<String>? galleryPreviewImages,
     Expression<int>? mediaType,
     Expression<int>? score,
     Expression<int>? numComments,
@@ -1274,6 +1374,9 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
       if (url != null) 'url': url,
       if (thumbnailUrl != null) 'thumbnail_url': thumbnailUrl,
       if (mediaUrl != null) 'media_url': mediaUrl,
+      if (galleryImages != null) 'gallery_images': galleryImages,
+      if (galleryPreviewImages != null)
+        'gallery_preview_images': galleryPreviewImages,
       if (mediaType != null) 'media_type': mediaType,
       if (score != null) 'score': score,
       if (numComments != null) 'num_comments': numComments,
@@ -1307,6 +1410,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     Value<String?>? url,
     Value<String?>? thumbnailUrl,
     Value<String?>? mediaUrl,
+    Value<String?>? galleryImages,
+    Value<String?>? galleryPreviewImages,
     Value<MediaType>? mediaType,
     Value<int>? score,
     Value<int>? numComments,
@@ -1337,6 +1442,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
       url: url ?? this.url,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       mediaUrl: mediaUrl ?? this.mediaUrl,
+      galleryImages: galleryImages ?? this.galleryImages,
+      galleryPreviewImages: galleryPreviewImages ?? this.galleryPreviewImages,
       mediaType: mediaType ?? this.mediaType,
       score: score ?? this.score,
       numComments: numComments ?? this.numComments,
@@ -1396,6 +1503,14 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
     }
     if (mediaUrl.present) {
       map['media_url'] = Variable<String>(mediaUrl.value);
+    }
+    if (galleryImages.present) {
+      map['gallery_images'] = Variable<String>(galleryImages.value);
+    }
+    if (galleryPreviewImages.present) {
+      map['gallery_preview_images'] = Variable<String>(
+        galleryPreviewImages.value,
+      );
     }
     if (mediaType.present) {
       map['media_type'] = Variable<int>(
@@ -1469,6 +1584,8 @@ class SavedItemsTableCompanion extends UpdateCompanion<SavedItemEntry> {
           ..write('url: $url, ')
           ..write('thumbnailUrl: $thumbnailUrl, ')
           ..write('mediaUrl: $mediaUrl, ')
+          ..write('galleryImages: $galleryImages, ')
+          ..write('galleryPreviewImages: $galleryPreviewImages, ')
           ..write('mediaType: $mediaType, ')
           ..write('score: $score, ')
           ..write('numComments: $numComments, ')
@@ -2136,6 +2253,8 @@ typedef $$SavedItemsTableTableCreateCompanionBuilder =
       Value<String?> url,
       Value<String?> thumbnailUrl,
       Value<String?> mediaUrl,
+      Value<String?> galleryImages,
+      Value<String?> galleryPreviewImages,
       Value<MediaType> mediaType,
       Value<int> score,
       Value<int> numComments,
@@ -2167,6 +2286,8 @@ typedef $$SavedItemsTableTableUpdateCompanionBuilder =
       Value<String?> url,
       Value<String?> thumbnailUrl,
       Value<String?> mediaUrl,
+      Value<String?> galleryImages,
+      Value<String?> galleryPreviewImages,
       Value<MediaType> mediaType,
       Value<int> score,
       Value<int> numComments,
@@ -2287,6 +2408,16 @@ class $$SavedItemsTableTableFilterComposer
 
   ColumnFilters<String> get mediaUrl => $composableBuilder(
     column: $table.mediaUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get galleryImages => $composableBuilder(
+    column: $table.galleryImages,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get galleryPreviewImages => $composableBuilder(
+    column: $table.galleryPreviewImages,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2462,6 +2593,16 @@ class $$SavedItemsTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get galleryImages => $composableBuilder(
+    column: $table.galleryImages,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get galleryPreviewImages => $composableBuilder(
+    column: $table.galleryPreviewImages,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get mediaType => $composableBuilder(
     column: $table.mediaType,
     builder: (column) => ColumnOrderings(column),
@@ -2588,6 +2729,16 @@ class $$SavedItemsTableTableAnnotationComposer
 
   GeneratedColumn<String> get mediaUrl =>
       $composableBuilder(column: $table.mediaUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get galleryImages => $composableBuilder(
+    column: $table.galleryImages,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get galleryPreviewImages => $composableBuilder(
+    column: $table.galleryPreviewImages,
+    builder: (column) => column,
+  );
 
   GeneratedColumnWithTypeConverter<MediaType, int> get mediaType =>
       $composableBuilder(column: $table.mediaType, builder: (column) => column);
@@ -2720,6 +2871,8 @@ class $$SavedItemsTableTableTableManager
                 Value<String?> url = const Value.absent(),
                 Value<String?> thumbnailUrl = const Value.absent(),
                 Value<String?> mediaUrl = const Value.absent(),
+                Value<String?> galleryImages = const Value.absent(),
+                Value<String?> galleryPreviewImages = const Value.absent(),
                 Value<MediaType> mediaType = const Value.absent(),
                 Value<int> score = const Value.absent(),
                 Value<int> numComments = const Value.absent(),
@@ -2749,6 +2902,8 @@ class $$SavedItemsTableTableTableManager
                 url: url,
                 thumbnailUrl: thumbnailUrl,
                 mediaUrl: mediaUrl,
+                galleryImages: galleryImages,
+                galleryPreviewImages: galleryPreviewImages,
                 mediaType: mediaType,
                 score: score,
                 numComments: numComments,
@@ -2780,6 +2935,8 @@ class $$SavedItemsTableTableTableManager
                 Value<String?> url = const Value.absent(),
                 Value<String?> thumbnailUrl = const Value.absent(),
                 Value<String?> mediaUrl = const Value.absent(),
+                Value<String?> galleryImages = const Value.absent(),
+                Value<String?> galleryPreviewImages = const Value.absent(),
                 Value<MediaType> mediaType = const Value.absent(),
                 Value<int> score = const Value.absent(),
                 Value<int> numComments = const Value.absent(),
@@ -2809,6 +2966,8 @@ class $$SavedItemsTableTableTableManager
                 url: url,
                 thumbnailUrl: thumbnailUrl,
                 mediaUrl: mediaUrl,
+                galleryImages: galleryImages,
+                galleryPreviewImages: galleryPreviewImages,
                 mediaType: mediaType,
                 score: score,
                 numComments: numComments,

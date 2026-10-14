@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:savedex/core/constants/constants.dart';
 
@@ -14,6 +16,8 @@ class SavedItem {
   final String? url;
   final String? thumbnailUrl;
   final String? mediaUrl;
+  final List<String> galleryImages;
+  final List<String> galleryPreviewImages;
   final MediaType mediaType;
   final int score;
   final int numComments;
@@ -44,6 +48,8 @@ class SavedItem {
     this.url,
     this.thumbnailUrl,
     this.mediaUrl,
+    this.galleryImages = const [],
+    this.galleryPreviewImages = const [],
     this.mediaType = MediaType.text,
     this.score = 0,
     this.numComments = 0,
@@ -141,7 +147,8 @@ class SavedItem {
     if (trimmed == 'default' ||
         trimmed == 'self' ||
         trimmed == 'nsfw' ||
-        trimmed == 'spoiler') {
+        trimmed == 'spoiler' ||
+        Uri.tryParse(trimmed)?.path.contains('/gallery/') == true) {
       return false;
     }
     return true;
@@ -150,8 +157,27 @@ class SavedItem {
   bool get isVideo =>
       mediaType == MediaType.video || isVideoUrl(mediaUrl) || isVideoUrl(url);
 
+  List<String> get galleryPreviewUrls {
+    if (galleryPreviewImages.isNotEmpty) return galleryPreviewImages;
+    return galleryImages;
+  }
+
   String? get displayImageUrl {
     if (isVideo) {
+      if (thumbnailUrl != null && isImageUrl(thumbnailUrl)) {
+        return thumbnailUrl;
+      }
+      return null;
+    }
+
+    if (galleryPreviewUrls.isNotEmpty && isImageUrl(galleryPreviewUrls.first)) {
+      return galleryPreviewUrls.first;
+    }
+
+    if (mediaType == MediaType.gallery) {
+      if (galleryImages.isNotEmpty && isImageUrl(galleryImages.first)) {
+        return galleryImages.first;
+      }
       if (thumbnailUrl != null && isImageUrl(thumbnailUrl)) {
         return thumbnailUrl;
       }
@@ -175,12 +201,30 @@ class SavedItem {
 
   String? get fullImageUrl {
     if (isVideo) return null;
+    if (galleryImages.isNotEmpty && isImageUrl(galleryImages.first)) {
+      return galleryImages.first;
+    }
     if (mediaUrl != null && isImageUrl(mediaUrl)) return mediaUrl;
     if (url != null && isImageUrl(url)) return url;
     return displayImageUrl;
   }
 
   bool get hasDisplayImage => displayImageUrl != null;
+
+  String? get galleryImagesJson =>
+      galleryImages.isEmpty ? null : jsonEncode(galleryImages);
+
+  String? get galleryPreviewImagesJson =>
+      galleryPreviewImages.isEmpty ? null : jsonEncode(galleryPreviewImages);
+
+  static List<String> parseGalleryImagesJson(String? json) {
+    if (json == null || json.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(json);
+      if (decoded is List) return decoded.whereType<String>().toList();
+    } catch (_) {}
+    return const [];
+  }
 
   SavedItem copyWith({
     String? id,
@@ -195,6 +239,8 @@ class SavedItem {
     String? url,
     String? thumbnailUrl,
     String? mediaUrl,
+    List<String>? galleryImages,
+    List<String>? galleryPreviewImages,
     MediaType? mediaType,
     int? score,
     int? numComments,
@@ -241,6 +287,8 @@ class SavedItem {
           ? null
           : (thumbnailUrl ?? this.thumbnailUrl),
       mediaUrl: clearMediaUrl ? null : (mediaUrl ?? this.mediaUrl),
+      galleryImages: galleryImages ?? this.galleryImages,
+      galleryPreviewImages: galleryPreviewImages ?? this.galleryPreviewImages,
       mediaType: mediaType ?? this.mediaType,
       score: score ?? this.score,
       numComments: numComments ?? this.numComments,
@@ -278,6 +326,8 @@ class SavedItem {
         other.url == url &&
         other.thumbnailUrl == thumbnailUrl &&
         other.mediaUrl == mediaUrl &&
+        listEquals(other.galleryImages, galleryImages) &&
+        listEquals(other.galleryPreviewImages, galleryPreviewImages) &&
         other.mediaType == mediaType &&
         other.score == score &&
         other.numComments == numComments &&
@@ -310,6 +360,8 @@ class SavedItem {
     url,
     thumbnailUrl,
     mediaUrl,
+    Object.hashAll(galleryImages),
+    Object.hashAll(galleryPreviewImages),
     mediaType,
     score,
     numComments,

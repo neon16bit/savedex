@@ -749,6 +749,16 @@ class RedditApiService {
         mediaType = MediaType.image;
       }
     }
+    final galleryMedia = extractGalleryMedia(data);
+    final galleryImages = galleryMedia.images;
+    final galleryPreviewImages = galleryMedia.previews;
+    if (galleryImages.isNotEmpty) {
+      mediaType = MediaType.gallery;
+      mediaUrl ??= galleryImages.first;
+      thumbnailUrl ??= galleryPreviewImages.isNotEmpty
+          ? galleryPreviewImages.first
+          : galleryImages.first;
+    }
 
     // video
     if (isVideo) {
@@ -794,6 +804,8 @@ class RedditApiService {
       thumbnailUrl: thumbnailUrl,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
+      galleryImages: galleryImages,
+      galleryPreviewImages: galleryPreviewImages,
       score: score,
       numComments: numComments,
       isNsfw: isNsfw,

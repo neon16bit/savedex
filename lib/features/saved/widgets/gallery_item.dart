@@ -13,7 +13,10 @@ class GalleryItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final imageUrl = item.displayImageUrl;
+    final galleryUrls = item.galleryPreviewUrls;
+    final imageUrl = galleryUrls.isNotEmpty
+        ? galleryUrls.first
+        : item.displayImageUrl;
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -120,6 +123,29 @@ class GalleryItem extends ConsumerWidget {
                     Icons.play_arrow_rounded,
                     size: 14,
                     color: Colors.white,
+                  ),
+                ),
+              ),
+            if (galleryUrls.length > 1)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${galleryUrls.length} images',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),

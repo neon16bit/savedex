@@ -13,10 +13,17 @@ class DetailMediaView extends StatelessWidget {
   const DetailMediaView({super.key, required this.item});
 
   void _openFullscreen(BuildContext context, String imageUrl) {
+    final imageUrls = item.galleryImages.isNotEmpty
+        ? item.galleryImages
+        : [imageUrl];
+    final targetIndex = imageUrls.indexOf(imageUrl);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (ctx) =>
-            _FullscreenImageViewer(imageUrl: imageUrl, itemTitle: item.title),
+        builder: (ctx) => _FullscreenImageViewer(
+          imageUrls: imageUrls,
+          initialIndex: targetIndex >= 0 ? targetIndex : 0,
+          itemTitle: item.title,
+        ),
       ),
     );
   }
@@ -162,6 +169,29 @@ class DetailMediaView extends StatelessWidget {
                           ],
                         ),
                       ),
+                    if (item.galleryImages.length > 1)
+                      Positioned(
+                        right: 12,
+                        bottom: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(100),
+                          ),
+                          child: Text(
+                            '${item.galleryImages.length} images',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -287,10 +317,15 @@ class DetailMediaView extends StatelessWidget {
 }
 
 class _FullscreenImageViewer extends StatefulWidget {
-  final String imageUrl;
+  final List<String> imageUrls;
+  final int initialIndex;
   final String? itemTitle;
 
-  const _FullscreenImageViewer({required this.imageUrl, this.itemTitle});
+  const _FullscreenImageViewer({
+    required this.imageUrls,
+    this.initialIndex = 0,
+    this.itemTitle,
+  });
 
   @override
   State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
@@ -298,6 +333,27 @@ class _FullscreenImageViewer extends StatefulWidget {
 
 class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
   bool _isDownloading = false;
+  late final ExtendedPageController _pageController;
+  late int _currentIndex;
+
+  String get _currentImageUrl => widget.imageUrls[_currentIndex];
+  bool get _isDesktop =>
+      defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = ExtendedPageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   Future<void> _downloadImage() async {
     if (_isDownloading) return;
@@ -308,7 +364,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
 
       // directly from extended_image cache
       try {
-        bytes = await getNetworkImageData(widget.imageUrl, useCache: true);
+        bytes = await getNetworkImageData(_currentImageUrl, useCache: true);
       } catch (_) {
         bytes = null;
       }
@@ -316,7 +372,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
       // if not cached or failed, fetch via HTTP
       if (bytes == null || bytes.isEmpty) {
         final response = await http
-            .get(Uri.parse(widget.imageUrl))
+            .get(Uri.parse(_currentImageUrl))
             .timeout(const Duration(seconds: 25));
         if (response.statusCode == 200) {
           bytes = response.bodyBytes;
@@ -414,26 +470,136 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
           const SizedBox(width: 4),
         ],
       ),
-      body: Center(
-        child: ExtendedImage.network(
-          widget.imageUrl,
-          fit: BoxFit.contain,
-          mode: ExtendedImageMode.gesture,
-          cache: true,
-          printError: false,
-          initGestureConfigHandler: (state) {
-            return GestureConfig(
-              minScale: 0.9,
-              animationMinScale: 0.7,
-              maxScale: 4.0,
-              animationMaxScale: 4.5,
-              speed: 1.0,
-              inertialSpeed: 100.0,
-              initialScale: 1.0,
-              inPageView: false,
-            );
-          },
-        ),
+      body: Stack(
+        children: [
+          ExtendedImageGesturePageView.builder(
+            controller: _pageController,
+            itemCount: widget.imageUrls.length,
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            itemBuilder: (context, index) {
+              return ExtendedImage.network(
+                widget.imageUrls[index],
+                fit: BoxFit.contain,
+                mode: ExtendedImageMode.gesture,
+                cache: true,
+                printError: false,
+                loadStateChanged: (state) {
+                  if (state.extendedImageLoadState == LoadState.failed) {
+                    return const Center(
+                      child: Icon(
+                        Icons.broken_image_rounded,
+                        size: 64,
+                        color: Colors.white70,
+                      ),
+                    );
+                  }
+                  return null;
+                },
+                initGestureConfigHandler: (state) {
+                  return GestureConfig(
+                    minScale: 0.9,
+                    animationMinScale: 0.7,
+                    maxScale: 4.0,
+                    animationMaxScale: 4.5,
+                    speed: 1.0,
+                    inertialSpeed: 100.0,
+                    initialScale: 1.0,
+                    inPageView: true,
+                  );
+                },
+              );
+            },
+          ),
+          if (_isDesktop && widget.imageUrls.length > 1) ...[
+            Positioned(
+              left: 16,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _GalleryNavigationButton(
+                  icon: Icons.chevron_left_rounded,
+                  tooltip: 'Previous image',
+                  onPressed: _currentIndex == 0
+                      ? null
+                      : () => _pageController.previousPage(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut,
+                        ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 16,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: _GalleryNavigationButton(
+                  icon: Icons.chevron_right_rounded,
+                  tooltip: 'Next image',
+                  onPressed: _currentIndex == widget.imageUrls.length - 1
+                      ? null
+                      : () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut,
+                        ),
+                ),
+              ),
+            ),
+          ],
+          if (widget.imageUrls.length > 1)
+            Positioned(
+              bottom: 24,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: Text(
+                    '${_currentIndex + 1} / ${widget.imageUrls.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GalleryNavigationButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  const _GalleryNavigationButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 34),
+      color: Colors.white,
+      disabledColor: Colors.white30,
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.black.withValues(alpha: 0.55),
+        disabledBackgroundColor: Colors.black.withValues(alpha: 0.25),
+        padding: const EdgeInsets.all(10),
       ),
     );
   }

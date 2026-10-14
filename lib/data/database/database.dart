@@ -41,7 +41,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -74,6 +74,15 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 7) {
         await m.addColumn(savedItemsTable, savedItemsTable.isArchiveRecovered);
+      }
+      if (from < 8) {
+        await m.addColumn(savedItemsTable, savedItemsTable.galleryImages);
+      }
+      if (from < 9) {
+        await m.addColumn(
+          savedItemsTable,
+          savedItemsTable.galleryPreviewImages,
+        );
       }
     },
     beforeOpen: (details) async {
@@ -1124,6 +1133,10 @@ extension SavedItemEntryExtension on SavedItemEntry {
       url: url,
       thumbnailUrl: thumbnailUrl,
       mediaUrl: mediaUrl,
+      galleryImages: SavedItem.parseGalleryImagesJson(galleryImages),
+      galleryPreviewImages: SavedItem.parseGalleryImagesJson(
+        galleryPreviewImages,
+      ),
       mediaType: mediaType,
       score: score,
       numComments: numComments,

@@ -15,6 +15,8 @@ class SavedItemsTable extends Table {
   TextColumn get url => text().nullable()();
   TextColumn get thumbnailUrl => text().nullable()();
   TextColumn get mediaUrl => text().nullable()();
+  TextColumn get galleryImages => text().nullable()();
+  TextColumn get galleryPreviewImages => text().nullable()();
   IntColumn get mediaType =>
       intEnum<MediaType>().withDefault(Constant(MediaType.text.index))();
   IntColumn get score => integer().withDefault(const Constant(0))();
