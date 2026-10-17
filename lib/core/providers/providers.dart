@@ -9,6 +9,7 @@ import 'package:savedex/data/services/arctic_shift_api_service.dart';
 import 'package:savedex/data/services/pullpush_api_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
+import 'package:savedex/data/services/redgifs_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) {
@@ -59,6 +60,12 @@ final arcticShiftApiServiceProvider = Provider<ArcticShiftApiService>((ref) {
 final pullPushApiServiceProvider = Provider<PullPushApiService>((ref) {
   final settings = ref.watch(settingsRepositoryProvider).settings;
   final api = PullPushApiService(userAgent: settings.userAgent);
+  ref.onDispose(api.dispose);
+  return api;
+});
+
+final redgifsApiServiceProvider = Provider<RedGifsApiService>((ref) {
+  final api = RedGifsApiService();
   ref.onDispose(api.dispose);
   return api;
 });

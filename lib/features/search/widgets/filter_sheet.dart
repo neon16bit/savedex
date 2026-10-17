@@ -174,6 +174,13 @@ class FilterSheet extends ConsumerWidget {
                           filter,
                           viewModel,
                         ),
+                        _buildMediaChip(
+                          MediaType.gif,
+                          'GIFs',
+                          Icons.gif_box_outlined,
+                          filter,
+                          viewModel,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),

@@ -15,7 +15,7 @@ class AppConstants {
 
 enum ItemType { post, comment }
 
-enum MediaType { text, image, video, gallery, link, comment }
+enum MediaType { text, image, video, gallery, link, comment, gif }
 
 enum EnrichmentStatus { slugOnly, pending, enriched, failed }
 

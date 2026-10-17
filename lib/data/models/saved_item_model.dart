@@ -124,10 +124,27 @@ class SavedItem {
       mediaUrl != null ||
       mediaType == MediaType.image ||
       mediaType == MediaType.video ||
+      mediaType == MediaType.gif ||
       mediaType == MediaType.gallery;
+
+  static bool isRedGifs(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    final clean = url.split('?').first.toLowerCase();
+    return clean.contains('redgifs.com');
+  }
+
+  static bool isGifUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return false;
+    if (isRedGifs(url) || url.toLowerCase().contains('v.redd.it')) {
+      return false;
+    }
+    final clean = url.split('?').first.toLowerCase();
+    return clean.endsWith('.gif') || clean.endsWith('.gifv');
+  }
 
   static bool isVideoUrl(String? url) {
     if (url == null || url.trim().isEmpty) return false;
+    if (isRedGifs(url)) return true;
     final clean = url.split('?').first.toLowerCase();
     return clean.endsWith('.mp4') ||
         clean.endsWith('.m3u8') ||
@@ -140,6 +157,7 @@ class SavedItem {
   static bool isImageUrl(String? url) {
     if (url == null || url.trim().isEmpty) return false;
     if (isVideoUrl(url)) return false;
+    if (isGifUrl(url)) return false;
     final trimmed = url.trim();
     if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
       return false;
@@ -154,8 +172,47 @@ class SavedItem {
     return true;
   }
 
-  bool get isVideo =>
-      mediaType == MediaType.video || isVideoUrl(mediaUrl) || isVideoUrl(url);
+  bool get isGif {
+    final lower = (mediaUrl ?? url ?? '').toLowerCase();
+    if (lower.contains('redgifs.com') || lower.contains('v.redd.it')) {
+      return false;
+    }
+    return mediaType == MediaType.gif || isGifUrl(mediaUrl) || isGifUrl(url);
+  }
+
+  bool get isVideo {
+    final lower = (mediaUrl ?? url ?? '').toLowerCase();
+    if (lower.contains('redgifs.com')) {
+      return true;
+    }
+    return mediaType == MediaType.video ||
+        (!isGif && (isVideoUrl(mediaUrl) || isVideoUrl(url)));
+  }
+
+  bool get isPlayableMedia => isVideo || isGif;
+
+  String? get playMediaUrl {
+    if (isPlayableMedia) {
+      if (isRedGifs(url)) {
+        return url;
+      }
+      if (mediaUrl != null && (isVideoUrl(mediaUrl) || isGifUrl(mediaUrl))) {
+        return mediaUrl;
+      }
+      return url ?? mediaUrl;
+    }
+    return null;
+  }
+
+  String? get fallbackPlayMediaUrl {
+    if (isRedGifs(url) &&
+        mediaUrl != null &&
+        mediaUrl != url &&
+        (isVideoUrl(mediaUrl) || isGifUrl(mediaUrl))) {
+      return mediaUrl;
+    }
+    return null;
+  }
 
   List<String> get galleryPreviewUrls {
     if (galleryPreviewImages.isNotEmpty) return galleryPreviewImages;
@@ -163,9 +220,12 @@ class SavedItem {
   }
 
   String? get displayImageUrl {
-    if (isVideo) {
-      if (thumbnailUrl != null && isImageUrl(thumbnailUrl)) {
+    if (isVideo || isGif) {
+      if (thumbnailUrl != null && !isVideoUrl(thumbnailUrl)) {
         return thumbnailUrl;
+      }
+      if (mediaUrl != null && !isVideoUrl(mediaUrl)) {
+        return mediaUrl;
       }
       return null;
     }
@@ -204,8 +264,12 @@ class SavedItem {
     if (galleryImages.isNotEmpty && isImageUrl(galleryImages.first)) {
       return galleryImages.first;
     }
-    if (mediaUrl != null && isImageUrl(mediaUrl)) return mediaUrl;
-    if (url != null && isImageUrl(url)) return url;
+    if (mediaUrl != null && (isImageUrl(mediaUrl) || isGifUrl(mediaUrl))) {
+      return mediaUrl;
+    }
+    if (url != null && (isImageUrl(url) || isGifUrl(url))) {
+      return url;
+    }
     return displayImageUrl;
   }
 

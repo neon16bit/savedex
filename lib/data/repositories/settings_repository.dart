@@ -28,6 +28,7 @@ class UserSettings {
   final String? redditUsername;
   final bool autoEnrichOnImport;
   final ArchiveBackend archiveBackend;
+  final bool startVideosMuted;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -45,6 +46,7 @@ class UserSettings {
     this.redditUsername,
     this.autoEnrichOnImport = true,
     this.archiveBackend = ArchiveBackend.automatic,
+    this.startVideosMuted = false,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -73,6 +75,7 @@ class UserSettings {
     String? redditUsername,
     bool? autoEnrichOnImport,
     ArchiveBackend? archiveBackend,
+    bool? startVideosMuted,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -99,6 +102,7 @@ class UserSettings {
           : (redditUsername ?? this.redditUsername),
       autoEnrichOnImport: autoEnrichOnImport ?? this.autoEnrichOnImport,
       archiveBackend: archiveBackend ?? this.archiveBackend,
+      startVideosMuted: startVideosMuted ?? this.startVideosMuted,
     );
   }
 }
@@ -149,6 +153,7 @@ class SettingsRepository {
     final archiveBackend =
         ArchiveBackend.values.elementAtOrNull(archiveBackendIndex) ??
         ArchiveBackend.automatic;
+    final startVideosMuted = _prefs.getBool('start_videos_muted') ?? false;
 
     return UserSettings(
       themeMode: themeMode,
@@ -166,6 +171,7 @@ class SettingsRepository {
       redditUsername: redditUsername,
       autoEnrichOnImport: autoEnrich,
       archiveBackend: archiveBackend,
+      startVideosMuted: startVideosMuted,
     );
   }
 
@@ -264,6 +270,7 @@ class SettingsRepository {
       newSettings.autoEnrichOnImport,
     );
     await prefs.setInt('archive_backend', newSettings.archiveBackend.index);
+    await prefs.setBool('start_videos_muted', newSettings.startVideosMuted);
   }
 
   Future<void> updateOAuthTokens({

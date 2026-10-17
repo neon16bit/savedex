@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/models/enriched_reddit_data.dart';
+import 'package:savedex/data/models/saved_item_model.dart';
 
 class RedditApiService {
   final http.Client _client;
@@ -722,6 +723,8 @@ class RedditApiService {
       thumbnailUrl = rawThumbnail;
     }
 
+    final isGifFlag = data['is_gif'] == true;
+
     // use a medium preview in feeds
     final preview = data['preview'];
     if (preview != null &&
@@ -746,7 +749,54 @@ class RedditApiService {
         } else {
           thumbnailUrl = mediaUrl;
         }
-        mediaType = MediaType.image;
+        mediaType = isGifFlag ? MediaType.gif : MediaType.image;
+
+        final variants = image['variants'] as Map?;
+        if (variants != null) {
+          final mp4Variant = variants['mp4'];
+          final gifVariant = variants['gif'];
+          String? variantUrl;
+          if (mp4Variant is Map &&
+              mp4Variant['source'] is Map &&
+              mp4Variant['source']['url'] is String) {
+            variantUrl = (mp4Variant['source']['url'] as String).replaceAll(
+              '&amp;',
+              '&',
+            );
+          } else if (gifVariant is Map &&
+              gifVariant['source'] is Map &&
+              gifVariant['source']['url'] is String) {
+            variantUrl = (gifVariant['source']['url'] as String).replaceAll(
+              '&amp;',
+              '&',
+            );
+          }
+          if (variantUrl != null) {
+            mediaUrl = variantUrl;
+            mediaType = MediaType.gif;
+          }
+        }
+      }
+
+      final videoPreview = preview['reddit_video_preview'];
+      if (videoPreview is Map) {
+        final previewVideoUrl =
+            (videoPreview['hls_url'] ?? videoPreview['fallback_url'])
+                as String?;
+        if (previewVideoUrl != null) {
+          mediaUrl = previewVideoUrl.replaceAll('&amp;', '&');
+          final domain = (data['domain'] as String? ?? '').toLowerCase();
+          final isRedGifs =
+              domain.contains('redgifs.com') ||
+              (url ?? '').toLowerCase().contains('redgifs.com');
+          if (isRedGifs) {
+            mediaType = MediaType.video;
+          } else {
+            mediaType = (videoPreview['is_gif'] == true || isGifFlag)
+                ? MediaType.gif
+                : MediaType.video;
+          }
+        }
       }
     }
     final galleryMedia = extractGalleryMedia(data);
@@ -760,9 +810,8 @@ class RedditApiService {
           : galleryImages.first;
     }
 
-    // video
+    // video / gif
     if (isVideo) {
-      mediaType = MediaType.video;
       final media = data['media'] ?? data['secure_media'];
       if (media != null && media['reddit_video'] != null) {
         final redditVideo = media['reddit_video'];
@@ -770,24 +819,39 @@ class RedditApiService {
           mediaUrl =
               (redditVideo['hls_url'] ?? redditVideo['fallback_url'])
                   as String?;
+          if (redditVideo['is_gif'] == true || isGifFlag) {
+            mediaType = MediaType.gif;
+          } else {
+            mediaType = MediaType.video;
+          }
         }
+      } else {
+        mediaType = isGifFlag ? MediaType.gif : MediaType.video;
       }
     } else if (url != null) {
       final lowerUrl = url.toLowerCase();
-      if (lowerUrl.endsWith('.jpg') ||
+      if (lowerUrl.contains('redgifs.com') ||
+          lowerUrl.endsWith('.mp4') ||
+          lowerUrl.contains('v.redd.it')) {
+        mediaType = MediaType.video;
+        if (mediaUrl == null ||
+            (!SavedItem.isVideoUrl(mediaUrl) &&
+                !SavedItem.isGifUrl(mediaUrl))) {
+          mediaUrl = url;
+        }
+      } else if (lowerUrl.endsWith('.gif') ||
+          lowerUrl.endsWith('.gifv') ||
+          isGifFlag) {
+        mediaType = MediaType.gif;
+        mediaUrl ??= url;
+        thumbnailUrl ??= url;
+      } else if (lowerUrl.endsWith('.jpg') ||
           lowerUrl.endsWith('.jpeg') ||
           lowerUrl.endsWith('.png') ||
-          lowerUrl.endsWith('.webp') ||
-          lowerUrl.endsWith('.gif')) {
+          lowerUrl.endsWith('.webp')) {
         mediaType = MediaType.image;
         mediaUrl ??= url;
         thumbnailUrl ??= url;
-      } else if (lowerUrl.endsWith('.mp4') ||
-          lowerUrl.contains('v.redd.it') ||
-          lowerUrl.contains('gfycat.com') ||
-          lowerUrl.contains('redgifs.com')) {
-        mediaType = MediaType.video;
-        mediaUrl ??= url;
       } else if (url.contains('reddit.com/gallery')) {
         mediaType = MediaType.gallery;
       } else if (!url.contains('reddit.com/r/')) {

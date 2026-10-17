@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/models/enriched_reddit_data.dart';
+import 'package:savedex/data/models/saved_item_model.dart';
 
 class PullPushApiService {
   static const _baseUrl = 'https://api.pullpush.io';
@@ -310,20 +311,26 @@ class PullPushApiService {
       }
     } else if (url != null) {
       final lowerUrl = url.toLowerCase();
-      if (lowerUrl.endsWith('.jpg') ||
+      if (lowerUrl.contains('redgifs.com') ||
+          lowerUrl.endsWith('.mp4') ||
+          lowerUrl.contains('v.redd.it')) {
+        mediaType = MediaType.video;
+        if (mediaUrl == null ||
+            (!SavedItem.isVideoUrl(mediaUrl) &&
+                !SavedItem.isGifUrl(mediaUrl))) {
+          mediaUrl = url;
+        }
+      } else if (lowerUrl.endsWith('.gif') || lowerUrl.endsWith('.gifv')) {
+        mediaType = MediaType.gif;
+        mediaUrl ??= url;
+        thumbnailUrl ??= url;
+      } else if (lowerUrl.endsWith('.jpg') ||
           lowerUrl.endsWith('.jpeg') ||
           lowerUrl.endsWith('.png') ||
-          lowerUrl.endsWith('.webp') ||
-          lowerUrl.endsWith('.gif')) {
+          lowerUrl.endsWith('.webp')) {
         mediaType = MediaType.image;
         mediaUrl ??= url;
         thumbnailUrl ??= url;
-      } else if (lowerUrl.endsWith('.mp4') ||
-          lowerUrl.contains('v.redd.it') ||
-          lowerUrl.contains('gfycat.com') ||
-          lowerUrl.contains('redgifs.com')) {
-        mediaType = MediaType.video;
-        mediaUrl ??= url;
       } else if (url.contains('reddit.com/gallery')) {
         mediaType = MediaType.gallery;
       } else if (!url.contains('reddit.com/r/')) {

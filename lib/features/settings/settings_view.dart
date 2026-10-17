@@ -114,6 +114,22 @@ class SettingsView extends ConsumerWidget {
             ),
           ),
 
+          _buildSectionHeader('Media Playback', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  secondary: const Icon(Icons.volume_off_outlined),
+                  title: const Text('Start Videos Muted'),
+                  subtitle: const Text('Videos start muted by default.'),
+                  value: settings.startVideosMuted,
+                  onChanged: (val) => viewModel.toggleStartVideosMuted(val),
+                ),
+              ],
+            ),
+          ),
+
           _buildSectionHeader('Appearance & Theme', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
@@ -1786,4 +1802,3 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
     );
   }
 }
-

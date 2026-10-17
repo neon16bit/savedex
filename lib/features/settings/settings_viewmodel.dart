@@ -9,6 +9,20 @@ final settingsViewModelProvider =
       return SettingsViewModel();
     });
 
+final sessionMuteStateProvider =
+    NotifierProvider<SessionMuteStateNotifier, bool?>(() {
+      return SessionMuteStateNotifier();
+    });
+
+class SessionMuteStateNotifier extends Notifier<bool?> {
+  @override
+  bool? build() => null;
+
+  void setMuted(bool isMuted) {
+    state = isMuted;
+  }
+}
+
 class SettingsViewModel extends Notifier<UserSettings> {
   @override
   UserSettings build() {
@@ -38,6 +52,11 @@ class SettingsViewModel extends Notifier<UserSettings> {
 
   void setFeedLayoutMode(FeedLayoutMode mode) {
     state = state.copyWith(feedLayoutMode: mode);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
+  void toggleStartVideosMuted(bool val) {
+    state = state.copyWith(startVideosMuted: val);
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 

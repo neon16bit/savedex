@@ -138,11 +138,13 @@ GalleryMedia extractGalleryMedia(Map<String, dynamic> data) {
     if (entry is! Map) continue;
 
     final source = entry['s'];
-    final imageUrl = source is Map ? source['u'] : null;
-    if (imageUrl is! String || !imageUrl.startsWith('http')) {
+    final rawUrl = source is Map
+        ? ((source['mp4'] ?? source['gif'] ?? source['u']) as String?)
+        : null;
+    if (rawUrl is! String || !rawUrl.startsWith('http')) {
       continue;
     }
-    final normalizedImageUrl = imageUrl.replaceAll('&amp;', '&');
+    final normalizedImageUrl = rawUrl.replaceAll('&amp;', '&');
     images.add(normalizedImageUrl);
 
     final resolutions = entry['p'];
@@ -150,14 +152,22 @@ GalleryMedia extractGalleryMedia(Map<String, dynamic> data) {
     if (resolutions is List) {
       Map? selectedPreview;
       for (final resolution in resolutions) {
-        if (resolution is! Map || resolution['u'] is! String) continue;
+        if (resolution is! Map) continue;
+        final resUrl =
+            (resolution['u'] ?? resolution['gif'] ?? resolution['mp4'])
+                as String?;
+        if (resUrl is! String) continue;
 
         selectedPreview = resolution;
         final width = resolution['x'];
         if (width is num && width >= 800) break;
       }
-      final rawPreviewUrl = selectedPreview?['u'];
-      if (rawPreviewUrl is String && rawPreviewUrl.startsWith('http')) {
+      final rawPreviewUrl =
+          (selectedPreview?['u'] ??
+                  selectedPreview?['gif'] ??
+                  selectedPreview?['mp4'])
+              as String?;
+      if (rawPreviewUrl != null && rawPreviewUrl.startsWith('http')) {
         previewUrl = rawPreviewUrl.replaceAll('&amp;', '&');
       }
     }

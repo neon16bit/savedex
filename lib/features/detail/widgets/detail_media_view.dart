@@ -1,10 +1,16 @@
+import 'dart:io';
+
 import 'package:extended_image/extended_image.dart' hide MediaType;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/features/detail/widgets/media_video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class DetailMediaView extends StatelessWidget {
@@ -12,26 +18,13 @@ class DetailMediaView extends StatelessWidget {
 
   const DetailMediaView({super.key, required this.item});
 
-  void _openFullscreen(BuildContext context, String imageUrl) {
-    final imageUrls = item.galleryImages.isNotEmpty
-        ? item.galleryImages
-        : [imageUrl];
-    final targetIndex = imageUrls.indexOf(imageUrl);
+  void _openMediaViewer(BuildContext context, {int initialIndex = 0}) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (ctx) => _FullscreenImageViewer(
-          imageUrls: imageUrls,
-          initialIndex: targetIndex >= 0 ? targetIndex : 0,
-          itemTitle: item.title,
-        ),
+        builder: (ctx) =>
+            FullscreenMediaViewer(item: item, initialIndex: initialIndex),
       ),
     );
-  }
-
-  void _playVideo(String? videoUrl) {
-    if (videoUrl != null) {
-      launchUrl(Uri.parse(videoUrl), mode: LaunchMode.externalApplication);
-    }
   }
 
   Future<void> _openExternalLink(BuildContext context, String url) async {
@@ -64,16 +57,7 @@ class DetailMediaView extends StatelessWidget {
         if (item.hasDisplayImage) ...[
           const SizedBox(height: 16),
           GestureDetector(
-            onTap: () {
-              if (item.isVideo) {
-                _playVideo(item.mediaUrl ?? item.url);
-              } else {
-                _openFullscreen(
-                  context,
-                  item.fullImageUrl ?? item.displayImageUrl!,
-                );
-              }
-            },
+            onTap: () => _openMediaViewer(context),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: Container(
@@ -102,8 +86,10 @@ class DetailMediaView extends StatelessWidget {
                             child: Padding(
                               padding: const EdgeInsets.all(24),
                               child: Icon(
-                                item.isVideo
-                                    ? Icons.videocam_rounded
+                                item.isPlayableMedia
+                                    ? (item.isGif
+                                          ? Icons.gif_box_rounded
+                                          : Icons.videocam_rounded)
                                     : Icons.broken_image_rounded,
                                 size: 44,
                                 color: Colors.grey,
@@ -114,34 +100,7 @@ class DetailMediaView extends StatelessWidget {
                         return null;
                       },
                     ),
-                    if (item.fullImageUrl != null &&
-                        item.fullImageUrl != item.displayImageUrl)
-                      ExtendedImage.network(
-                        item.fullImageUrl!,
-                        fit: BoxFit.contain,
-                        cache: true,
-                        retries: 1,
-                        printError: false,
-                        loadStateChanged: (state) {
-                          if (state.extendedImageLoadState ==
-                              LoadState.loading) {
-                            return const IgnorePointer(
-                              child: Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(32),
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                            );
-                          }
-                          if (state.extendedImageLoadState ==
-                              LoadState.failed) {
-                            return const SizedBox.shrink();
-                          }
-                          return null;
-                        },
-                      ),
-                    if (item.isVideo)
+                    if (item.isPlayableMedia)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -151,18 +110,20 @@ class DetailMediaView extends StatelessWidget {
                           color: Colors.black.withValues(alpha: 0.7),
                           borderRadius: BorderRadius.circular(100),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.play_arrow_rounded,
+                              item.isGif
+                                  ? Icons.gif_rounded
+                                  : Icons.play_arrow_rounded,
                               color: Colors.white,
                               size: 24,
                             ),
-                            SizedBox(width: 6),
+                            const SizedBox(width: 6),
                             Text(
-                              'Play Video',
-                              style: TextStyle(
+                              item.isGif ? 'Play GIF' : 'Play Video',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
@@ -185,7 +146,7 @@ class DetailMediaView extends StatelessWidget {
                             borderRadius: BorderRadius.circular(100),
                           ),
                           child: Text(
-                            '${item.galleryImages.length} images',
+                            '${item.galleryImages.length} items',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -199,14 +160,14 @@ class DetailMediaView extends StatelessWidget {
               ),
             ),
           ),
-        ] else if (item.isVideo) ...[
+        ] else if (item.isPlayableMedia) ...[
           const SizedBox(height: 16),
           Material(
             color: colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(18),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => _playVideo(item.mediaUrl ?? item.url),
+              onTap: () => _openMediaViewer(context),
               child: Container(
                 height: 140,
                 width: double.infinity,
@@ -221,20 +182,22 @@ class DetailMediaView extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.play_circle_fill_rounded,
+                        item.isGif
+                            ? Icons.gif_box_rounded
+                            : Icons.play_circle_fill_rounded,
                         size: 48,
                         color: colorScheme.primary,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Reddit Video',
+                        item.isGif ? 'GIF' : 'Video',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Tap to play external video',
+                        'Tap to play media',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                         ),
@@ -246,20 +209,25 @@ class DetailMediaView extends StatelessWidget {
             ),
           ),
         ],
+
         if (item.url != null &&
-            !item.url!.contains('reddit.com') &&
-            item.mediaType == MediaType.link) ...[
-          const SizedBox(height: 14),
+            item.url!.trim().isNotEmpty &&
+            !item.url!.contains('v.redd.it') &&
+            !item.url!.contains('i.redd.it') &&
+            !item.url!.contains('reddit.com/gallery') &&
+            (item.mediaType == MediaType.link ||
+                !item.hasDisplayImage && !item.isPlayableMedia)) ...[
+          const SizedBox(height: 16),
           Material(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            color: colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(16),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => _openExternalLink(context, item.url!),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
+                  horizontal: 16,
+                  vertical: 14,
                 ),
                 child: Row(
                   children: [
@@ -318,27 +286,26 @@ class DetailMediaView extends StatelessWidget {
   }
 }
 
-class _FullscreenImageViewer extends StatefulWidget {
-  final List<String> imageUrls;
+class FullscreenMediaViewer extends StatefulWidget {
+  final SavedItem item;
   final int initialIndex;
-  final String? itemTitle;
 
-  const _FullscreenImageViewer({
-    required this.imageUrls,
+  const FullscreenMediaViewer({
+    super.key,
+    required this.item,
     this.initialIndex = 0,
-    this.itemTitle,
   });
 
   @override
-  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+  State<FullscreenMediaViewer> createState() => _FullscreenMediaViewerState();
 }
 
-class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
+class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
   bool _isDownloading = false;
   late final ExtendedPageController _pageController;
   late int _currentIndex;
+  late final List<String> _mediaUrls;
 
-  String get _currentImageUrl => widget.imageUrls[_currentIndex];
   bool get _isDesktop =>
       defaultTargetPlatform == TargetPlatform.windows ||
       defaultTargetPlatform == TargetPlatform.macOS ||
@@ -347,7 +314,20 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex;
+    if (widget.item.galleryImages.isNotEmpty) {
+      _mediaUrls = widget.item.galleryImages;
+    } else {
+      final single =
+          widget.item.playMediaUrl ??
+          widget.item.fullImageUrl ??
+          widget.item.displayImageUrl;
+      _mediaUrls = single != null ? [single] : [];
+    }
+
+    _currentIndex = widget.initialIndex.clamp(
+      0,
+      _mediaUrls.isNotEmpty ? _mediaUrls.length - 1 : 0,
+    );
     _pageController = ExtendedPageController(initialPage: _currentIndex);
   }
 
@@ -357,25 +337,101 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
     super.dispose();
   }
 
-  Future<void> _downloadImage() async {
+  String get _currentUrl =>
+      _mediaUrls.isNotEmpty ? _mediaUrls[_currentIndex] : '';
+
+  bool _isCurrentVideo(String url) {
+    if (widget.item.galleryImages.isEmpty) {
+      return widget.item.isVideo;
+    }
+    return SavedItem.isVideoUrl(url);
+  }
+
+  bool _isCurrentGif(String url) {
+    if (widget.item.galleryImages.isEmpty) {
+      return widget.item.isGif;
+    }
+    return SavedItem.isGifUrl(url);
+  }
+
+  Future<void> _handleDownloadTap() async {
+    final current = _currentUrl;
+    if (current.isEmpty) return;
+
+    if (_isCurrentGif(current)) {
+      _showGifDownloadDialog();
+    } else if (_isCurrentVideo(current)) {
+      _downloadMedia(current, extension: 'mp4');
+    } else {
+      _downloadMedia(current, extension: 'jpg');
+    }
+  }
+
+  void _showGifDownloadDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    'Download GIF',
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.videocam_rounded),
+                  title: const Text('Save as MP4 Video'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _downloadMedia(_currentUrl, extension: 'mp4');
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.gif_box_rounded),
+                  title: const Text('Save as GIF Image'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _downloadMedia(_currentUrl, extension: 'gif');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _downloadMedia(String url, {required String extension}) async {
     if (_isDownloading) return;
     setState(() => _isDownloading = true);
 
     try {
       Uint8List? bytes;
 
-      // directly from extended_image cache
       try {
-        bytes = await getNetworkImageData(_currentImageUrl, useCache: true);
+        bytes = await getNetworkImageData(url, useCache: true);
       } catch (_) {
         bytes = null;
       }
 
-      // if not cached or failed, fetch via HTTP
       if (bytes == null || bytes.isEmpty) {
         final response = await http
-            .get(Uri.parse(_currentImageUrl))
-            .timeout(const Duration(seconds: 25));
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 40));
         if (response.statusCode == 200) {
           bytes = response.bodyBytes;
         } else {
@@ -383,9 +439,9 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
         }
       }
 
-      String baseName = 'savedex_image';
-      if (widget.itemTitle != null && widget.itemTitle!.trim().isNotEmpty) {
-        final sanitized = widget.itemTitle!
+      String baseName = 'savedex_media';
+      if (widget.item.title.trim().isNotEmpty) {
+        final sanitized = widget.item.title
             .trim()
             .replaceAll(RegExp(r'[\\/:*?"<>|\s]+'), '_')
             .replaceAll(RegExp(r'_+'), '_');
@@ -395,39 +451,67 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
               : sanitized;
         }
       }
-      final name = '${baseName}_${DateTime.now().millisecondsSinceEpoch}';
+      final filename =
+          '${baseName}_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
-      final hasAccess = await Gal.hasAccess(toAlbum: true);
-      if (!hasAccess) {
-        final granted = await Gal.requestAccess(toAlbum: true);
-        if (!granted) {
+      final mimeType = switch (extension.toLowerCase()) {
+        'mp4' => 'video/mp4',
+        'gif' => 'image/gif',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => 'image/jpeg',
+      };
+
+      if (_isDesktop) {
+        final saveUri = await FilePickerPlatform.instance.saveFile(
+          dialogTitle: 'Save File',
+          fileName: filename,
+          mimeType: mimeType,
+          bytes: bytes,
+        );
+        if (saveUri != null) {
+          final filePath = saveUri.toFilePath();
+          final file = File(filePath);
+          if (!await file.exists() || await file.length() == 0) {
+            await file.writeAsBytes(bytes);
+          }
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Storage access permission denied'),
+            SnackBar(
+              content: Text('Saved to $filePath'),
               behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
+              duration: const Duration(seconds: 2),
             ),
           );
-          return;
         }
+      } else {
+        if (extension == 'mp4') {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File(p.join(tempDir.path, filename));
+          await tempFile.writeAsBytes(bytes);
+          await Gal.putVideo(tempFile.path, album: 'Savedex');
+        } else {
+          await Gal.putImageBytes(
+            bytes,
+            album: 'Savedex',
+            name: filename.replaceAll('.$extension', ''),
+          );
+        }
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved to gallery'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
-
-      await Gal.putImageBytes(bytes, album: 'Savedex', name: name);
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Image saved to Pictures/Savedex'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save image: $e'),
+            content: Text('Failed to save: $e'),
             backgroundColor: Colors.red.shade800,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
@@ -443,11 +527,36 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
 
   @override
   Widget build(BuildContext context) {
+    if (_mediaUrls.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Text(
+            'No media available',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         foregroundColor: Colors.white,
+        title: _mediaUrls.length > 1
+            ? Text(
+                '${_currentIndex + 1} / ${_mediaUrls.length}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              )
+            : null,
         actions: [
           if (_isDownloading)
             const Padding(
@@ -466,8 +575,8 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
           else
             IconButton(
               icon: const Icon(Icons.download_rounded),
-              tooltip: 'Download image',
-              onPressed: _downloadImage,
+              tooltip: 'Download media',
+              onPressed: _handleDownloadTap,
             ),
           const SizedBox(width: 4),
         ],
@@ -476,16 +585,43 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
         children: [
           ExtendedImageGesturePageView.builder(
             controller: _pageController,
-            itemCount: widget.imageUrls.length,
+            itemCount: _mediaUrls.length,
             onPageChanged: (index) => setState(() => _currentIndex = index),
             itemBuilder: (context, index) {
+              final url = _mediaUrls[index];
+              final isVid = _isCurrentVideo(url);
+              final isG = _isCurrentGif(url);
+
+              if (isVid || isG) {
+                return Center(
+                  child: MediaVideoPlayer(
+                    videoUrl: url,
+                    fallbackUrl: widget.item.fallbackPlayMediaUrl,
+                    isGif: isG,
+                    autoPlay: true,
+                  ),
+                );
+              }
+
               return ExtendedImage.network(
-                widget.imageUrls[index],
+                url,
                 fit: BoxFit.contain,
                 mode: ExtendedImageMode.gesture,
                 cache: true,
                 printError: false,
                 loadStateChanged: (state) {
+                  if (state.extendedImageLoadState == LoadState.loading) {
+                    return const Center(
+                      child: SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                    );
+                  }
                   if (state.extendedImageLoadState == LoadState.failed) {
                     return const Center(
                       child: Icon(
@@ -512,7 +648,8 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
               );
             },
           ),
-          if (_isDesktop && widget.imageUrls.length > 1) ...[
+
+          if (_isDesktop && _mediaUrls.length > 1) ...[
             Positioned(
               left: 16,
               top: 0,
@@ -520,7 +657,7 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
               child: Center(
                 child: _GalleryNavigationButton(
                   icon: Icons.chevron_left_rounded,
-                  tooltip: 'Previous image',
+                  tooltip: 'Previous media',
                   onPressed: _currentIndex == 0
                       ? null
                       : () => _pageController.previousPage(
@@ -537,8 +674,8 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
               child: Center(
                 child: _GalleryNavigationButton(
                   icon: Icons.chevron_right_rounded,
-                  tooltip: 'Next image',
-                  onPressed: _currentIndex == widget.imageUrls.length - 1
+                  tooltip: 'Next media',
+                  onPressed: _currentIndex == _mediaUrls.length - 1
                       ? null
                       : () => _pageController.nextPage(
                           duration: const Duration(milliseconds: 220),
@@ -548,31 +685,6 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
               ),
             ),
           ],
-          if (widget.imageUrls.length > 1)
-            Positioned(
-              bottom: 24,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Text(
-                    '${_currentIndex + 1} / ${widget.imageUrls.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
