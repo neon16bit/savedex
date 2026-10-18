@@ -86,19 +86,19 @@ class _SavedViewState extends ConsumerState<SavedView> {
           ),
         );
     } else if (showErrorSnackbar) {
-      final error = ref.read(importExportViewModelProvider).errorMessage;
-      if (error != null) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(error),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-      }
+      final error =
+          ref.read(importExportViewModelProvider).errorMessage ??
+          'Sync from Reddit failed';
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: Theme.of(context).colorScheme.error,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
     }
     return summary;
   }
@@ -463,7 +463,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   child: RefreshIndicator(
                     onRefresh: () async {
                       if (isAuthenticatedWithOAuth) {
-                        await _syncFromReddit(showErrorSnackbar: false);
+                        await _syncFromReddit(showErrorSnackbar: true);
                       }
                       ref.invalidate(savedFeedPaginationProvider);
                       await ref.read(savedFeedPaginationProvider.future);

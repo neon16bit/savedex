@@ -49,8 +49,11 @@ class ItemOptionsMenu extends ConsumerWidget {
             final confirmed = await showArchiveRefreshWarningDialog(context);
             if (!confirmed || !context.mounted) return;
           }
+          final messenger = ScaffoldMessenger.of(context);
+          final errorColor = colorScheme.error;
+
           notifier.add(item.id);
-          ScaffoldMessenger.of(context)
+          messenger
             ..clearSnackBars()
             ..showSnackBar(
               const SnackBar(
@@ -63,9 +66,16 @@ class ItemOptionsMenu extends ConsumerWidget {
             final result = await ref
                 .read(enrichmentViewModelProvider.notifier)
                 .enrichSingleItem(item);
-            if (context.mounted) {
+
+            if (result.success) {
+              await ref
+                  .read(savedFeedPaginationProvider.notifier)
+                  .refreshItem(item.id);
+            }
+
+            if (messenger.mounted) {
               if (result.success) {
-                ScaffoldMessenger.of(context)
+                messenger
                   ..clearSnackBars()
                   ..showSnackBar(
                     const SnackBar(
@@ -75,19 +85,34 @@ class ItemOptionsMenu extends ConsumerWidget {
                     ),
                   );
               } else {
-                ScaffoldMessenger.of(context)
+                messenger
                   ..clearSnackBars()
                   ..showSnackBar(
                     SnackBar(
                       content: Text(
-                        result.error ?? 'Failed to refresh metadata',
+                        result.error?.isNotEmpty == true
+                            ? result.error!
+                            : 'Failed to refresh metadata',
                       ),
-                      backgroundColor: colorScheme.error,
+                      backgroundColor: errorColor,
                       behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
+                      duration: const Duration(seconds: 3),
                     ),
                   );
               }
+            }
+          } catch (e) {
+            if (messenger.mounted) {
+              messenger
+                ..clearSnackBars()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to refresh metadata: $e'),
+                    backgroundColor: errorColor,
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
             }
           } finally {
             notifier.remove(item.id);
@@ -95,8 +120,11 @@ class ItemOptionsMenu extends ConsumerWidget {
         } else if (val == 'recover_archive') {
           final notifier = ref.read(enrichingItemsProvider.notifier);
           if (notifier.isEnriching(item.id)) return;
+          final messenger = ScaffoldMessenger.of(context);
+          final errorColor = colorScheme.error;
+
           notifier.add(item.id);
-          ScaffoldMessenger.of(context)
+          messenger
             ..clearSnackBars()
             ..showSnackBar(
               const SnackBar(
@@ -109,19 +137,41 @@ class ItemOptionsMenu extends ConsumerWidget {
             final result = await ref
                 .read(enrichmentViewModelProvider.notifier)
                 .recoverSingleItemFromArchive(item);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context)
+
+            if (result.success) {
+              await ref
+                  .read(savedFeedPaginationProvider.notifier)
+                  .refreshItem(item.id);
+            }
+
+            if (messenger.mounted) {
+              messenger
                 ..clearSnackBars()
                 ..showSnackBar(
                   SnackBar(
                     content: Text(
                       result.success
                           ? 'Recovered metadata from archive'
-                          : (result.error ?? 'Archive recovery failed'),
+                          : (result.error?.isNotEmpty == true
+                                ? result.error!
+                                : 'Archive recovery failed'),
                     ),
-                    backgroundColor: result.success ? null : colorScheme.error,
+                    backgroundColor: result.success ? null : errorColor,
                     behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 2),
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+            }
+          } catch (e) {
+            if (messenger.mounted) {
+              messenger
+                ..clearSnackBars()
+                ..showSnackBar(
+                  SnackBar(
+                    content: Text('Archive recovery failed: $e'),
+                    backgroundColor: errorColor,
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 3),
                   ),
                 );
             }

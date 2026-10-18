@@ -38,7 +38,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounceTimer;
+  Timer? _dbDebounceTimer;
   StreamSubscription? _dbUpdatesSub;
+  int _generation = 0;
 
   List<SavedItem> _items = [];
   FeedCursor? _nextCursor;
@@ -68,10 +70,31 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   }
 
   @override
+  void didUpdateWidget(covariant ScopedFeedView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final collectionChanged =
+        oldWidget.args.collection?.id != widget.args.collection?.id ||
+        oldWidget.args.collection?.name != widget.args.collection?.name;
+    final subredditChanged = oldWidget.args.subreddit != widget.args.subreddit;
+
+    if (collectionChanged || subredditChanged) {
+      _searchDebounceTimer?.cancel();
+      _dbDebounceTimer?.cancel();
+      _selectedSubreddits.clear();
+      _searchQuery = null;
+      _searchController.clear();
+      _selectedItemType = null;
+      _isStarredOnly = null;
+      _loadInitial();
+    }
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
     _searchDebounceTimer?.cancel();
+    _dbDebounceTimer?.cancel();
     _dbUpdatesSub?.cancel();
     super.dispose();
   }
@@ -92,6 +115,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   }
 
   Future<void> _loadInitial() async {
+    _generation++;
+    final currentGen = _generation;
+
     if (!mounted) return;
     setState(() {
       _isLoading = true;
@@ -108,7 +134,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         db.countFilteredSavedItems(filter),
       ]);
 
-      if (!mounted) return;
+      if (!mounted || currentGen != _generation) return;
       final page = results[0] as PagedRows<SavedItem>;
       final count = results[1] as int;
 
@@ -120,7 +146,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         _isLoading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || currentGen != _generation) return;
       setState(() {
         _isLoading = false;
         _errorMessage = e.toString();
@@ -128,8 +154,46 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     }
   }
 
+  Future<void> _reloadInBackground() async {
+    if (!mounted || _isLoading) return;
+    final currentGen = _generation;
+
+    try {
+      final repo = ref.read(savedItemRepositoryProvider);
+      final db = ref.read(databaseProvider);
+      final filter = _buildFilter();
+
+      final targetLimit = _items.length <= _pageSize
+          ? _pageSize
+          : (_items.length > 200 ? 200 : _items.length);
+
+      final results = await Future.wait([
+        repo.getSavedItemsPage(
+          filter: filter,
+          cursor: null,
+          limit: targetLimit,
+        ),
+        db.countFilteredSavedItems(filter),
+      ]);
+
+      if (!mounted || currentGen != _generation || _isLoading) return;
+      final page = results[0] as PagedRows<SavedItem>;
+      final count = results[1] as int;
+
+      setState(() {
+        _items = page.items;
+        _nextCursor = page.nextCursor;
+        _totalCount = count;
+        _hasMore = page.items.length < count;
+      });
+    } catch (_) {
+      // do not wipe items on background update failure
+    }
+  }
+
   Future<void> _loadMore() async {
-    if (_isLoadingMore || !_hasMore) return;
+    if (_isLoading || _isLoadingMore || !_hasMore) return;
+    final currentGen = _generation;
     setState(() => _isLoadingMore = true);
 
     try {
@@ -142,7 +206,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         limit: _pageSize,
       );
 
-      if (!mounted) return;
+      if (!mounted || currentGen != _generation) return;
       final existingIds = _items.map((i) => i.id).toSet();
       final newItems = page.items.where((i) => !existingIds.contains(i.id));
 
@@ -153,19 +217,26 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         _isLoadingMore = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _isLoadingMore = false);
+      if (mounted && currentGen == _generation) {
+        setState(() => _isLoadingMore = false);
+      }
     }
   }
 
   void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_isLoading || _isLoadingMore || !_hasMore) return;
     if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 3000) {
+        _scrollController.position.maxScrollExtent - 2000) {
       _loadMore();
     }
   }
 
   void _onDbUpdate() {
-    _loadInitial();
+    _dbDebounceTimer?.cancel();
+    _dbDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      _reloadInBackground();
+    });
   }
 
   void _onSearchChanged(String val) {

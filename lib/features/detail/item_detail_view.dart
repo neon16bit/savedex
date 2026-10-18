@@ -37,8 +37,11 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       final confirmed = await showArchiveRefreshWarningDialog(context);
       if (!confirmed || !mounted) return;
     }
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = colorScheme.error;
+
     notifier.add(item.id);
-    ScaffoldMessenger.of(context)
+    messenger
       ..clearSnackBars()
       ..showSnackBar(
         const SnackBar(
@@ -49,9 +52,9 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       );
     try {
       final result = await actions.reEnrich(item);
-      if (!mounted) return;
+      if (!messenger.mounted) return;
       if (result.success) {
-        ScaffoldMessenger.of(context)
+        messenger
           ..clearSnackBars()
           ..showSnackBar(
             const SnackBar(
@@ -61,27 +64,31 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             ),
           );
       } else {
-        ScaffoldMessenger.of(context)
+        messenger
           ..clearSnackBars()
           ..showSnackBar(
             SnackBar(
-              content: Text(result.error ?? 'Failed to refresh metadata'),
-              backgroundColor: colorScheme.error,
+              content: Text(
+                result.error?.isNotEmpty == true
+                    ? result.error!
+                    : 'Failed to refresh metadata',
+              ),
+              backgroundColor: errorColor,
               behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
+              duration: const Duration(seconds: 3),
             ),
           );
       }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
+      if (!messenger.mounted) return;
+      messenger
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: colorScheme.error,
+            backgroundColor: errorColor,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
     } finally {
@@ -96,8 +103,11 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   ) async {
     final notifier = ref.read(enrichingItemsProvider.notifier);
     if (notifier.isEnriching(item.id)) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = colorScheme.error;
+
     notifier.add(item.id);
-    ScaffoldMessenger.of(context)
+    messenger
       ..clearSnackBars()
       ..showSnackBar(
         const SnackBar(
@@ -108,31 +118,33 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       );
     try {
       final result = await actions.recoverFromArchive(item);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
+      if (!messenger.mounted) return;
+      messenger
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
             content: Text(
               result.success
                   ? 'Recovered metadata from archive'
-                  : (result.error ?? 'Archive recovery failed'),
+                  : (result.error?.isNotEmpty == true
+                        ? result.error!
+                        : 'Archive recovery failed'),
             ),
-            backgroundColor: result.success ? null : colorScheme.error,
+            backgroundColor: result.success ? null : errorColor,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
+      if (!messenger.mounted) return;
+      messenger
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
             content: Text('Error: $e'),
-            backgroundColor: colorScheme.error,
+            backgroundColor: errorColor,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
     } finally {

@@ -477,8 +477,19 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     }
   }
 
-  Future<void> enrichItem(SavedItem item) async {
-    await ref.read(enrichmentViewModelProvider.notifier).enrichSingleItem(item);
+  Future<({bool success, String? error})> enrichItem(SavedItem item) async {
+    _localMutationsInProgress++;
+    try {
+      final result = await ref
+          .read(enrichmentViewModelProvider.notifier)
+          .enrichSingleItem(item);
+      if (result.success) {
+        await refreshItem(item.id);
+      }
+      return result;
+    } finally {
+      _localMutationsInProgress--;
+    }
   }
 
   void clearFeed() {
@@ -520,7 +531,8 @@ class SavedViewModel extends Notifier<void> {
   Future<void> updateItemNote(String id, String? note) =>
       _feedNotifier.updateItemNote(id, note);
 
-  Future<void> enrichItem(SavedItem item) => _feedNotifier.enrichItem(item);
+  Future<({bool success, String? error})> enrichItem(SavedItem item) =>
+      _feedNotifier.enrichItem(item);
 
   void clearFeed() => _feedNotifier.clearFeed();
 }
