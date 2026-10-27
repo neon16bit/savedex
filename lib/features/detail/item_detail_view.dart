@@ -421,7 +421,6 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           isNsfw: item.isNsfw,
                           postFlair: item.postFlair,
                           isArchiveRecovered: item.isArchiveRecovered,
-                          isCrosspost: item.isCrosspost,
                           collections: cols,
                           onCollectionTap: (_) =>
                               showCollectionPickerSheet(context, item.id),

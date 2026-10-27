@@ -21,18 +21,20 @@ class CollectionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = Color(collection.colorValue);
+    final textColor = color.computeLuminance() > 0.55
+        ? Colors.black87
+        : Colors.white;
 
     final badge = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: color.withValues(alpha: 0.4), width: 0.8),
+        color: color,
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.bookmark_rounded, size: iconSize, color: color),
+          Icon(Icons.bookmark_rounded, size: iconSize, color: textColor),
           const SizedBox(width: 3.5),
           Flexible(
             child: Text(
@@ -43,7 +45,7 @@ class CollectionBadge extends StatelessWidget {
                 fontSize: fontSize,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.1,
-                color: color,
+                color: textColor,
               ),
             ),
           ),
@@ -53,7 +55,14 @@ class CollectionBadge extends StatelessWidget {
 
     if (onTap == null) return badge;
 
-    return GestureDetector(onTap: onTap, child: badge);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: badge,
+      ),
+    );
   }
 }
 
@@ -62,6 +71,8 @@ class CollectionBadgeRow extends ConsumerWidget {
   final List<Collection> initialCollections;
   final ValueChanged<Collection>? onCollectionTap;
   final bool isInteractive;
+  final bool leadingSpacing;
+  final int maxBadges;
 
   const CollectionBadgeRow({
     super.key,
@@ -69,32 +80,78 @@ class CollectionBadgeRow extends ConsumerWidget {
     this.initialCollections = const [],
     this.onCollectionTap,
     this.isInteractive = true,
+    this.leadingSpacing = true,
+    this.maxBadges = 1,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final collectionsAsync = ref.watch(itemCollectionsProvider(itemId));
     final collections = collectionsAsync.asData?.value ?? initialCollections;
 
     if (collections.isEmpty) return const SizedBox.shrink();
 
+    final visibleCount = collections.length > maxBadges
+        ? maxBadges
+        : collections.length;
+    final extraCount = collections.length - visibleCount;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        for (final col in collections) ...[
-          const SizedBox(width: 6),
+        for (var i = 0; i < visibleCount; i++) ...[
+          if (i > 0 || leadingSpacing) const SizedBox(width: 6),
           Flexible(
             child: CollectionBadge(
-              collection: col,
+              collection: collections[i],
               onTap: isInteractive
                   ? () {
                       if (onCollectionTap != null) {
-                        onCollectionTap!(col);
+                        onCollectionTap!(collections[i]);
                       } else {
                         showCollectionPickerSheet(context, itemId);
                       }
                     }
                   : null,
+            ),
+          ),
+        ],
+        if (extraCount > 0) ...[
+          const SizedBox(width: 4),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: isInteractive
+                  ? () {
+                      if (onCollectionTap != null) {
+                        onCollectionTap!(collections.first);
+                      } else {
+                        showCollectionPickerSheet(context, itemId);
+                      }
+                    }
+                  : null,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 6,
+                  vertical: 3.5,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '+$extraCount',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ),
             ),
           ),
         ],

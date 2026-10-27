@@ -125,7 +125,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 24),
+            padding: const EdgeInsets.only(bottom: 24),
             itemCount: items.length,
             itemBuilder: (context, index) {
               final item = items[index];

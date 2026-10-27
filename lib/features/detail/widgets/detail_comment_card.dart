@@ -303,7 +303,7 @@ class DetailCommentCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 const ArchiveRecoveredBadge(
-                  variant: ArchiveBadgeVariant.compact,
+                  variant: ArchiveBadgeVariant.comment,
                 ),
               ],
             ],

@@ -378,7 +378,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     content = ListView.builder(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(top: 4, bottom: 28),
+                      padding: const EdgeInsets.only(bottom: 28),
                       itemCount: items.length + (showFooter ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (index >= items.length) {

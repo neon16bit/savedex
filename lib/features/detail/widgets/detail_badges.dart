@@ -8,7 +8,6 @@ class DetailBadgeRow extends StatelessWidget {
   final bool isNsfw;
   final String? postFlair;
   final bool isArchiveRecovered;
-  final bool isCrosspost;
   final List<Collection> collections;
   final ValueChanged<Collection>? onCollectionTap;
 
@@ -18,7 +17,6 @@ class DetailBadgeRow extends StatelessWidget {
     required this.isNsfw,
     this.postFlair,
     this.isArchiveRecovered = false,
-    this.isCrosspost = false,
     this.collections = const [],
     this.onCollectionTap,
   });
@@ -33,19 +31,19 @@ class DetailBadgeRow extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
           decoration: BoxDecoration(
             color: isComment
-                ? colorScheme.tertiaryContainer.withValues(alpha: 0.8)
-                : colorScheme.primaryContainer.withValues(alpha: 0.8),
-            borderRadius: BorderRadius.circular(8),
+                ? colorScheme.tertiaryContainer
+                : colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
             isComment ? 'COMMENT' : 'POST',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
+              letterSpacing: 0.4,
               color: isComment
                   ? colorScheme.onTertiaryContainer
                   : colorScheme.onPrimaryContainer,
@@ -54,71 +52,40 @@ class DetailBadgeRow extends StatelessWidget {
         ),
         if (isNsfw)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+              color: Colors.red.shade700,
+              borderRadius: BorderRadius.circular(6),
             ),
             child: const Text(
               'NSFW',
               style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                color: Colors.red,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.3,
+                color: Colors.white,
               ),
             ),
           ),
         if (postFlair != null && postFlair!.trim().isNotEmpty)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
             decoration: BoxDecoration(
-              color: colorScheme.secondaryContainer.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(8),
+              color: colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
               postFlair!.trim(),
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w700,
+                letterSpacing: -0.1,
                 color: colorScheme.onSecondaryContainer,
               ),
             ),
           ),
-        if (isCrosspost)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                width: 0.8,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.repeat_rounded,
-                  size: 11,
-                  color: colorScheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'CROSSPOST',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                    color: colorScheme.onSecondaryContainer,
-                  ),
-                ),
-              ],
-            ),
-          ),
         if (isArchiveRecovered)
-          const ArchiveRecoveredBadge(variant: ArchiveBadgeVariant.detail),
+          const ArchiveRecoveredBadge(variant: ArchiveBadgeVariant.badge),
         for (final col in collections)
           CollectionBadge(
             collection: col,
