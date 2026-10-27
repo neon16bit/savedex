@@ -8,6 +8,7 @@ class DetailBadgeRow extends StatelessWidget {
   final bool isNsfw;
   final String? postFlair;
   final bool isArchiveRecovered;
+  final bool isCrosspost;
   final List<Collection> collections;
   final ValueChanged<Collection>? onCollectionTap;
 
@@ -17,6 +18,7 @@ class DetailBadgeRow extends StatelessWidget {
     required this.isNsfw,
     this.postFlair,
     this.isArchiveRecovered = false,
+    this.isCrosspost = false,
     this.collections = const [],
     this.onCollectionTap,
   });
@@ -81,6 +83,38 @@ class DetailBadgeRow extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 color: colorScheme.onSecondaryContainer,
               ),
+            ),
+          ),
+        if (isCrosspost)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+                width: 0.8,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.repeat_rounded,
+                  size: 11,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'CROSSPOST',
+                  style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                    color: colorScheme.onSecondaryContainer,
+                  ),
+                ),
+              ],
             ),
           ),
         if (isArchiveRecovered)

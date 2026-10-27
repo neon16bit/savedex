@@ -1434,6 +1434,7 @@ class SavedItemRepository {
         SavedItemsTableCompanion(
           title: Value(meta.title ?? item.title),
           parentPostTitle: Value(meta.parentPostTitle ?? item.parentPostTitle),
+          parentPostId: Value(meta.parentPostId ?? item.parentPostId),
           author: Value(meta.author ?? item.author),
           body: Value(meta.body ?? item.body),
           url: Value(meta.url ?? item.url),

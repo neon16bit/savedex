@@ -11,6 +11,8 @@ class AppConstants {
 
   static const Duration anonymousRequestDelay = Duration(milliseconds: 1200);
   static const Duration oauthRequestDelay = Duration(milliseconds: 250);
+
+  static const String crosspostDelimiter = '\u001F';
 }
 
 enum ItemType { post, comment }

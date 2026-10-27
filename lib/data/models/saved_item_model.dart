@@ -71,6 +71,48 @@ class SavedItem {
   bool get isComment => itemType == ItemType.comment;
   bool get isPost => itemType == ItemType.post;
 
+  bool get isCrosspost =>
+      isPost && parentPostTitle != null && parentPostTitle!.trim().isNotEmpty;
+
+  static const String crosspostDelimiter = AppConstants.crosspostDelimiter;
+
+  String? get crosspostSubreddit {
+    if (!isCrosspost) return null;
+    final title = parentPostTitle!;
+    final sep = title.indexOf(crosspostDelimiter);
+    if (sep != -1) {
+      return title.substring(0, sep).trim();
+    }
+    return null;
+  }
+
+  String? get originalPostTitle {
+    if (!isCrosspost) return null;
+    final title = parentPostTitle!;
+    final sep = title.indexOf(crosspostDelimiter);
+    if (sep != -1) {
+      return title.substring(sep + 1).trim();
+    }
+    return title.trim();
+  }
+
+  bool get hasDifferentOriginalTitle {
+    if (!isCrosspost) return false;
+    final orig = originalPostTitle;
+    if (orig == null) return false;
+    return title.trim().toLowerCase() != orig.toLowerCase();
+  }
+
+  String? get originalPostPermalink {
+    if (!isCrosspost) return null;
+    if (parentPostId == null || parentPostId!.trim().isEmpty) return null;
+    final cleanId = parentPostId!.trim().replaceFirst('t3_', '');
+    if (crosspostSubreddit != null) {
+      return 'https://www.reddit.com/$crosspostSubreddit/comments/$cleanId';
+    }
+    return 'https://www.reddit.com/comments/$cleanId';
+  }
+
   bool get canAttemptArchiveRecovery =>
       !isArchiveRecovered &&
       (enrichmentStatus == EnrichmentStatus.failed || hasRemovedContent);

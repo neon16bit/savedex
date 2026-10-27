@@ -189,6 +189,48 @@ class PostCard extends ConsumerWidget {
                     const ArchiveRecoveredBadge(),
                   ],
 
+                  if (item.isCrosspost) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colorScheme.secondaryContainer.withValues(
+                          alpha: 0.65,
+                        ),
+                        borderRadius: BorderRadius.circular(100),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withValues(
+                            alpha: 0.4,
+                          ),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.repeat_rounded,
+                            size: 11,
+                            color: colorScheme.onSecondaryContainer,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'CROSSPOST',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3,
+                              color: colorScheme.onSecondaryContainer,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   CollectionBadgeRow(
                     itemId: item.id,
                     initialCollections: item.collections,

@@ -421,6 +421,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           isNsfw: item.isNsfw,
                           postFlair: item.postFlair,
                           isArchiveRecovered: item.isArchiveRecovered,
+                          isCrosspost: item.isCrosspost,
                           collections: cols,
                           onCollectionTap: (_) =>
                               showCollectionPickerSheet(context, item.id),
@@ -448,6 +449,10 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                             ),
                         ],
                       ),
+                    ],
+                    if (item.isCrosspost) ...[
+                      const SizedBox(height: 12),
+                      DetailCrosspostOriginCard(item: item),
                     ],
                     DetailMediaView(item: item),
                     if (item.body != null && item.body!.trim().isNotEmpty) ...[
@@ -542,6 +547,99 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       error: (e, _) => Scaffold(
         appBar: AppBar(),
         body: Center(child: Text('Error: $e')),
+      ),
+    );
+  }
+}
+
+class DetailCrosspostOriginCard extends StatelessWidget {
+  final SavedItem item;
+
+  const DetailCrosspostOriginCard({super.key, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final permalink = item.originalPostPermalink;
+    final originSub = item.crosspostSubreddit;
+    final origTitle = item.originalPostTitle;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+          width: 0.8,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.repeat_rounded, size: 15, color: colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                originSub != null
+                    ? 'Crossposted from $originSub'
+                    : 'Crossposted from',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const Spacer(),
+              if (permalink != null) ...[
+                InkWell(
+                  onTap: () => openRedditUrl(context, permalink),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Original',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Icon(
+                          Icons.open_in_new_rounded,
+                          size: 11,
+                          color: colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (origTitle != null && origTitle.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              origTitle.trim(),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

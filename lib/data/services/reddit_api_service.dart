@@ -692,14 +692,83 @@ class RedditApiService {
     Map<String, dynamic> data, {
     required String id,
   }) {
-    final title = data['title'] as String?;
+    final crosspostList = data['crosspost_parent_list'];
+    final parentData =
+        (crosspostList is List &&
+            crosspostList.isNotEmpty &&
+            crosspostList.first is Map)
+        ? Map<String, dynamic>.from(crosspostList.first as Map)
+        : null;
+
+    Map<String, dynamic>? rootParentData = parentData;
+    while (rootParentData != null &&
+        rootParentData['crosspost_parent_list'] is List &&
+        (rootParentData['crosspost_parent_list'] as List).isNotEmpty &&
+        (rootParentData['crosspost_parent_list'] as List).first is Map) {
+      rootParentData = Map<String, dynamic>.from(
+        (rootParentData['crosspost_parent_list'] as List).first as Map,
+      );
+    }
+
+    final parentPostId =
+        (parentData?['id'] as String?) ??
+        ((data['crosspost_parent'] as String?)?.replaceFirst('t3_', ''));
+
+    final sourceSub =
+        (parentData?['subreddit'] as String?) ??
+        (rootParentData?['subreddit'] as String?);
+    final rawParentTitle =
+        (parentData?['title'] as String?) ??
+        (rootParentData?['title'] as String?);
+    final formattedSub = (sourceSub != null && sourceSub.trim().isNotEmpty)
+        ? (sourceSub.startsWith('u_') || sourceSub.startsWith('u/')
+              ? 'u/${sourceSub.replaceFirst(RegExp(r'^u[/_]'), '')}'
+              : 'r/$sourceSub')
+        : null;
+    final parentPostTitle =
+        (formattedSub != null &&
+            rawParentTitle != null &&
+            rawParentTitle.trim().isNotEmpty)
+        ? '$formattedSub${AppConstants.crosspostDelimiter}${rawParentTitle.trim()}'
+        : (rawParentTitle?.trim() ?? formattedSub);
+
+    final rawTitle = data['title'] as String?;
+    final title = (rawTitle != null && rawTitle.trim().isNotEmpty)
+        ? rawTitle.trim()
+        : rawParentTitle;
+
     final author = data['author'] as String?;
     final score = data['score'] as int? ?? (data['ups'] as int? ?? 0);
     final numComments = data['num_comments'] as int? ?? 0;
-    final selftext = data['selftext'] as String?;
-    final url = data['url'] as String?;
-    final isNsfw = data['over_18'] as bool? ?? false;
-    final isVideo = data['is_video'] as bool? ?? false;
+
+    final rawSelftext = data['selftext'] as String?;
+    final parentSelftext =
+        (parentData?['selftext'] as String?) ??
+        (rootParentData?['selftext'] as String?);
+    final selftext = (rawSelftext != null && rawSelftext.trim().isNotEmpty)
+        ? rawSelftext
+        : ((parentSelftext != null && parentSelftext.trim().isNotEmpty)
+              ? parentSelftext
+              : rawSelftext);
+
+    bool isRedditThreadUrl(String? u) {
+      if (u == null || u.isEmpty) return false;
+      final l = u.toLowerCase();
+      return l.contains('reddit.com/r/') || l.contains('/comments/');
+    }
+
+    final rawUrl = data['url'] as String?;
+    final parentUrl =
+        (parentData?['url'] as String?) ?? (rootParentData?['url'] as String?);
+    final effectiveUrl = (rawUrl != null && !isRedditThreadUrl(rawUrl))
+        ? rawUrl
+        : (parentUrl != null && parentUrl.isNotEmpty ? parentUrl : rawUrl);
+
+    final isNsfw =
+        (data['over_18'] as bool? ?? false) ||
+        (parentData?['over_18'] as bool? ?? false) ||
+        (rootParentData?['over_18'] as bool? ?? false);
+
     final createdUtcSec = data['created_utc'] as num?;
     final createdAt = createdUtcSec != null
         ? DateTime.fromMillisecondsSinceEpoch(
@@ -708,7 +777,9 @@ class RedditApiService {
           )
         : null;
 
-    final rawFlair = data['link_flair_text'] as String?;
+    final rawFlair =
+        (data['link_flair_text'] as String?) ??
+        (parentData?['link_flair_text'] as String?);
     final postFlair = (rawFlair != null && rawFlair.trim().isNotEmpty)
         ? rawFlair.trim()
         : null;
@@ -719,14 +790,34 @@ class RedditApiService {
     MediaType mediaType = MediaType.text;
 
     final rawThumbnail = data['thumbnail'] as String?;
+    final parentThumbnail =
+        (parentData?['thumbnail'] as String?) ??
+        (rootParentData?['thumbnail'] as String?);
     if (rawThumbnail != null && rawThumbnail.startsWith('http')) {
       thumbnailUrl = rawThumbnail;
+    } else if (parentThumbnail != null && parentThumbnail.startsWith('http')) {
+      thumbnailUrl = parentThumbnail;
     }
 
-    final isGifFlag = data['is_gif'] == true;
+    final isGifFlag =
+        data['is_gif'] == true ||
+        parentData?['is_gif'] == true ||
+        rootParentData?['is_gif'] == true;
 
     // use a medium preview in feeds
-    final preview = data['preview'];
+    final parentPreview = (parentData?['preview'] is Map)
+        ? parentData!['preview'] as Map
+        : (rootParentData?['preview'] is Map)
+        ? rootParentData!['preview'] as Map
+        : null;
+    final dataPreview = data['preview'];
+    final preview =
+        (dataPreview is Map &&
+            dataPreview['images'] is List &&
+            (dataPreview['images'] as List).isNotEmpty)
+        ? dataPreview
+        : parentPreview;
+
     if (preview != null &&
         preview['images'] is List &&
         (preview['images'] as List).isNotEmpty) {
@@ -778,17 +869,27 @@ class RedditApiService {
         }
       }
 
-      final videoPreview = preview['reddit_video_preview'];
-      if (videoPreview is Map) {
+      final videoPreview = (preview['reddit_video_preview'] is Map)
+          ? preview['reddit_video_preview'] as Map
+          : (parentPreview != null &&
+                parentPreview['reddit_video_preview'] is Map)
+          ? parentPreview['reddit_video_preview'] as Map
+          : null;
+      if (videoPreview != null) {
         final previewVideoUrl =
             (videoPreview['hls_url'] ?? videoPreview['fallback_url'])
                 as String?;
         if (previewVideoUrl != null) {
           mediaUrl = previewVideoUrl.replaceAll('&amp;', '&');
-          final domain = (data['domain'] as String? ?? '').toLowerCase();
+          final domain =
+              ((data['domain'] as String?) ??
+                      (parentData?['domain'] as String?) ??
+                      (rootParentData?['domain'] as String?) ??
+                      '')
+                  .toLowerCase();
           final isRedGifs =
               domain.contains('redgifs.com') ||
-              (url ?? '').toLowerCase().contains('redgifs.com');
+              (effectiveUrl ?? '').toLowerCase().contains('redgifs.com');
           if (isRedGifs) {
             mediaType = MediaType.video;
           } else {
@@ -799,7 +900,16 @@ class RedditApiService {
         }
       }
     }
-    final galleryMedia = extractGalleryMedia(data);
+
+    var galleryMedia = extractGalleryMedia(data);
+    if (galleryMedia.images.isEmpty && parentData != null) {
+      galleryMedia = extractGalleryMedia(parentData);
+    }
+    if (galleryMedia.images.isEmpty &&
+        rootParentData != null &&
+        rootParentData != parentData) {
+      galleryMedia = extractGalleryMedia(rootParentData);
+    }
     final galleryImages = galleryMedia.images;
     final galleryPreviewImages = galleryMedia.previews;
     if (galleryImages.isNotEmpty) {
@@ -811,9 +921,29 @@ class RedditApiService {
     }
 
     // video / gif
-    if (isVideo) {
-      final media = data['media'] ?? data['secure_media'];
-      if (media != null && media['reddit_video'] != null) {
+    final isVideo =
+        (data['is_video'] as bool? ?? false) ||
+        (parentData?['is_video'] as bool? ?? false) ||
+        (rootParentData?['is_video'] as bool? ?? false) ||
+        (parentData?['media'] is Map &&
+            (parentData!['media'] as Map)['reddit_video'] != null) ||
+        (parentData?['secure_media'] is Map &&
+            (parentData!['secure_media'] as Map)['reddit_video'] != null) ||
+        (rootParentData?['media'] is Map &&
+            (rootParentData!['media'] as Map)['reddit_video'] != null) ||
+        (rootParentData?['secure_media'] is Map &&
+            (rootParentData!['secure_media'] as Map)['reddit_video'] != null);
+
+    if (galleryImages.isNotEmpty) {
+    } else if (isVideo) {
+      final media =
+          data['media'] ??
+          data['secure_media'] ??
+          parentData?['media'] ??
+          parentData?['secure_media'] ??
+          rootParentData?['media'] ??
+          rootParentData?['secure_media'];
+      if (media is Map && media['reddit_video'] != null) {
         final redditVideo = media['reddit_video'];
         if (redditVideo is Map) {
           mediaUrl =
@@ -828,8 +958,8 @@ class RedditApiService {
       } else {
         mediaType = isGifFlag ? MediaType.gif : MediaType.video;
       }
-    } else if (url != null) {
-      final lowerUrl = url.toLowerCase();
+    } else if (effectiveUrl != null) {
+      final lowerUrl = effectiveUrl.toLowerCase();
       if (lowerUrl.contains('redgifs.com') ||
           lowerUrl.endsWith('.mp4') ||
           lowerUrl.contains('v.redd.it')) {
@@ -837,24 +967,24 @@ class RedditApiService {
         if (mediaUrl == null ||
             (!SavedItem.isVideoUrl(mediaUrl) &&
                 !SavedItem.isGifUrl(mediaUrl))) {
-          mediaUrl = url;
+          mediaUrl = effectiveUrl;
         }
       } else if (lowerUrl.endsWith('.gif') ||
           lowerUrl.endsWith('.gifv') ||
           isGifFlag) {
         mediaType = MediaType.gif;
-        mediaUrl ??= url;
-        thumbnailUrl ??= url;
+        mediaUrl ??= effectiveUrl;
+        thumbnailUrl ??= effectiveUrl;
       } else if (lowerUrl.endsWith('.jpg') ||
           lowerUrl.endsWith('.jpeg') ||
           lowerUrl.endsWith('.png') ||
           lowerUrl.endsWith('.webp')) {
         mediaType = MediaType.image;
-        mediaUrl ??= url;
-        thumbnailUrl ??= url;
-      } else if (url.contains('reddit.com/gallery')) {
+        mediaUrl ??= effectiveUrl;
+        thumbnailUrl ??= effectiveUrl;
+      } else if (effectiveUrl.contains('reddit.com/gallery')) {
         mediaType = MediaType.gallery;
-      } else if (!url.contains('reddit.com/r/')) {
+      } else if (!effectiveUrl.contains('reddit.com/r/')) {
         mediaType = MediaType.link;
       }
     }
@@ -862,9 +992,11 @@ class RedditApiService {
     return EnrichedRedditData(
       id: id,
       title: title,
+      parentPostTitle: parentPostTitle,
+      parentPostId: parentPostId,
       author: author,
       body: selftext,
-      url: url,
+      url: effectiveUrl,
       thumbnailUrl: thumbnailUrl,
       mediaUrl: mediaUrl,
       mediaType: mediaType,

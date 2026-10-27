@@ -132,6 +132,16 @@ class CompactListItem extends ConsumerWidget {
                             ),
                           ),
                         ),
+                        if (item.isCrosspost) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.repeat_rounded,
+                            size: 12,
+                            color: colorScheme.onSurfaceVariant.withValues(
+                              alpha: 0.8,
+                            ),
+                          ),
+                        ],
                         if (item.postFlair != null &&
                             item.postFlair!.trim().isNotEmpty) ...[
                           const SizedBox(width: 5),
