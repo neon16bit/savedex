@@ -15,8 +15,17 @@ final relatedThreadProvider = StreamProvider.autoDispose
       ref,
       id,
     ) {
-      final itemAsync = ref.watch(itemDetailProvider(id));
-      final item = itemAsync.value;
+      final threadKey = ref.watch(
+        itemDetailProvider(id).select((a) {
+          final item = a.value;
+          if (item == null) return null;
+          return (itemType: item.itemType, parentPostId: item.parentPostId);
+        }),
+      );
+      if (threadKey == null) {
+        return Stream.value((parentPost: null, comments: <SavedItem>[]));
+      }
+      final item = ref.read(itemDetailProvider(id)).value;
       if (item == null) {
         return Stream.value((parentPost: null, comments: <SavedItem>[]));
       }
@@ -81,8 +90,6 @@ class ItemDetailActions {
     if (!_busyItemIds.add(item.id)) return;
     try {
       await _ref.read(savedFeedPaginationProvider.notifier).toggleStar(item);
-      _ref.invalidate(itemDetailProvider(item.id));
-      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(item.id);
     }
@@ -98,8 +105,6 @@ class ItemDetailActions {
           .read(savedFeedPaginationProvider.notifier)
           .updateItemNote(id, cleanNote);
       _ref.read(itemNotesProvider.notifier).setNote(id, cleanNote);
-      _ref.invalidate(itemDetailProvider(id));
-      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(id);
     }
@@ -109,8 +114,6 @@ class ItemDetailActions {
     final result = await _ref
         .read(enrichmentViewModelProvider.notifier)
         .enrichSingleItem(item);
-    _ref.invalidate(itemDetailProvider(item.id));
-    _ref.invalidate(relatedThreadProvider);
     if (result.success) {
       await _ref
           .read(savedFeedPaginationProvider.notifier)
@@ -125,8 +128,6 @@ class ItemDetailActions {
     final result = await _ref
         .read(enrichmentViewModelProvider.notifier)
         .recoverSingleItemFromArchive(item);
-    _ref.invalidate(itemDetailProvider(item.id));
-    _ref.invalidate(relatedThreadProvider);
     if (result.success) {
       await _ref
           .read(savedFeedPaginationProvider.notifier)
@@ -139,8 +140,6 @@ class ItemDetailActions {
     if (!_busyItemIds.add(id)) return;
     try {
       await _ref.read(savedFeedPaginationProvider.notifier).deleteItemById(id);
-      _ref.invalidate(itemDetailProvider(id));
-      _ref.invalidate(relatedThreadProvider);
     } finally {
       _busyItemIds.remove(id);
     }

@@ -451,6 +451,13 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       return;
     }
 
+    if (inList) {
+      final existingIndex = latest.items.indexWhere((i) => i.id == id);
+      if (existingIndex != -1 && latest.items[existingIndex] == freshItem) {
+        return;
+      }
+    }
+
     final matches = _itemMatchesFilter(freshItem, filter);
     if (inList) {
       if (matches) {

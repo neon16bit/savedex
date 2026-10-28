@@ -254,26 +254,33 @@ class SavedItemRepository {
         (t) => OrderingTerm(expression: t.createdAtUtc, mode: OrderingMode.asc),
       ]);
 
-    return commentQuery.watch().asyncMap((commentEntries) async {
-      SavedItem? parentPost;
-      if (!isComment) {
-        parentPost = item;
-      } else {
-        final postEntry =
-            await (db.select(db.savedItemsTable)..where(
-                  (t) =>
-                      t.id.isIn(candidatePostIds) &
-                      t.itemType.equals(ItemType.post.index),
-                ))
-                .getSingleOrNull();
-        if (postEntry != null) {
-          parentPost = postEntry.toDomain();
-        }
-      }
+    return commentQuery
+        .watch()
+        .asyncMap((commentEntries) async {
+          SavedItem? parentPost;
+          if (!isComment) {
+            parentPost = item;
+          } else {
+            final postEntry =
+                await (db.select(db.savedItemsTable)..where(
+                      (t) =>
+                          t.id.isIn(candidatePostIds) &
+                          t.itemType.equals(ItemType.post.index),
+                    ))
+                    .getSingleOrNull();
+            if (postEntry != null) {
+              parentPost = postEntry.toDomain();
+            }
+          }
 
-      final comments = commentEntries.map((e) => e.toDomain()).toList();
-      return (parentPost: parentPost, comments: comments);
-    });
+          final comments = commentEntries.map((e) => e.toDomain()).toList();
+          return (parentPost: parentPost, comments: comments);
+        })
+        .distinct(
+          (prev, next) =>
+              prev.parentPost == next.parentPost &&
+              listEquals(prev.comments, next.comments),
+        );
   }
 
   Future<({SavedItem? parentPost, List<SavedItem> comments})>

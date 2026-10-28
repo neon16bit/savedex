@@ -1,5 +1,3 @@
-import 'package:extended_image/extended_image.dart' hide MediaType;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
@@ -11,7 +9,7 @@ import 'package:savedex/features/library/scoped_feed_view.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
-class PostCard extends ConsumerWidget {
+class PostCard extends ConsumerStatefulWidget {
   final SavedItem item;
 
   static const bool debugShowMediaTypeBadge = false;
@@ -19,9 +17,25 @@ class PostCard extends ConsumerWidget {
   const PostCard({super.key, required this.item});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends ConsumerState<PostCard> {
+  int _galleryIndex = 0;
+
+  @override
+  void didUpdateWidget(covariant PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id) {
+      _galleryIndex = 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final item = widget.item;
 
     final hasThumbnail = item.hasDisplayImage;
 
@@ -29,11 +43,17 @@ class PostCard extends ConsumerWidget {
       color: colorScheme.surface,
       child: InkWell(
         onTap: () async {
-          await Navigator.of(context).push(
+          final returnIndex = await Navigator.of(context).push<int>(
             MaterialPageRoute(
-              builder: (ctx) => ItemDetailView(itemId: item.id),
+              builder: (ctx) => ItemDetailView(
+                itemId: item.id,
+                initialMediaIndex: _galleryIndex,
+              ),
             ),
           );
+          if (returnIndex != null && mounted && returnIndex != _galleryIndex) {
+            setState(() => _galleryIndex = returnIndex);
+          }
           if (context.mounted) {
             ref.read(savedFeedPaginationProvider.notifier).refreshItem(item.id);
           }
@@ -242,95 +262,14 @@ class PostCard extends ConsumerWidget {
               ),
             ),
 
-            if (hasThumbnail) ...[
+            if (hasThumbnail || item.isPlayableMedia) ...[
               const SizedBox(height: 12),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FullscreenMediaViewer(item: item),
-                    ),
-                  );
+              ItemMediaView(
+                item: item,
+                initialIndex: _galleryIndex,
+                onIndexChanged: (index) {
+                  _galleryIndex = index;
                 },
-                child: Container(
-                  width: double.infinity,
-                  color: colorScheme.surfaceContainerHigh,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      _SavedFeedMedia(item: item, colorScheme: colorScheme),
-                      if (item.isVideo || item.isGif)
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.65),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: item.isVideo
-                                ? const Padding(
-                                    padding: EdgeInsets.only(left: 2),
-                                    child: Icon(
-                                      Icons.play_arrow_rounded,
-                                      color: Colors.white,
-                                      size: 28,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.gif_rounded,
-                                    color: Colors.white,
-                                    size: 28,
-                                  ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ] else if (item.isPlayableMedia) ...[
-              const SizedBox(height: 12),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FullscreenMediaViewer(item: item),
-                    ),
-                  );
-                },
-                child: Container(
-                  height: 90,
-                  width: double.infinity,
-                  color: colorScheme.surfaceContainerHigh,
-                  child: Center(
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: item.isVideo
-                            ? Padding(
-                                padding: const EdgeInsets.only(left: 2),
-                                child: Icon(
-                                  Icons.play_arrow_rounded,
-                                  size: 30,
-                                  color: colorScheme.primary,
-                                ),
-                              )
-                            : Icon(
-                                Icons.gif_rounded,
-                                size: 30,
-                                color: colorScheme.primary,
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
               ),
             ],
 
@@ -375,7 +314,7 @@ class PostCard extends ConsumerWidget {
                               initialNote: item.userNote,
                             ),
 
-                            if (debugShowMediaTypeBadge &&
+                            if (PostCard.debugShowMediaTypeBadge &&
                                 item.mediaType != MediaType.text) ...[
                               const SizedBox(width: 6),
                               Container(
@@ -458,212 +397,4 @@ class PostCard extends ConsumerWidget {
         return Icons.gif_box_rounded;
     }
   }
-}
-
-class _SavedFeedMedia extends StatefulWidget {
-  final SavedItem item;
-  final ColorScheme colorScheme;
-
-  const _SavedFeedMedia({required this.item, required this.colorScheme});
-
-  @override
-  State<_SavedFeedMedia> createState() => _SavedFeedMediaState();
-}
-
-class _SavedFeedMediaState extends State<_SavedFeedMedia> {
-  late final PageController _controller;
-  int _index = 0;
-  double? _galleryAspectRatio;
-
-  bool get _desktop =>
-      defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = PageController();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SavedFeedMedia oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.id != widget.item.id) {
-      _index = 0;
-      _galleryAspectRatio = null;
-      if (_controller.hasClients) {
-        _controller.jumpToPage(0);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Widget _buildImage(String url, {BoxFit fit = BoxFit.fitWidth}) {
-    return ExtendedImage.network(
-      url,
-      width: double.infinity,
-      cacheWidth: 800,
-      fit: fit,
-      cache: true,
-      retries: 1,
-      printError: false,
-      loadStateChanged: (state) {
-        if (state.extendedImageLoadState == LoadState.loading) {
-          return Container(
-            height: 180,
-            color: widget.colorScheme.surfaceContainerHigh,
-            child: const Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2.2),
-              ),
-            ),
-          );
-        }
-        if (state.extendedImageLoadState == LoadState.completed &&
-            _galleryAspectRatio == null) {
-          final info = state.extendedImageInfo;
-          if (info != null && info.image.width > 0 && info.image.height > 0) {
-            final r = info.image.width / info.image.height;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _galleryAspectRatio == null) {
-                setState(() => _galleryAspectRatio = r.clamp(0.6, 1.8));
-              }
-            });
-          }
-        }
-        if (state.extendedImageLoadState == LoadState.failed) {
-          return Container(
-            height: 100,
-            color: widget.colorScheme.surfaceContainerHigh,
-            child: Center(
-              child: Icon(
-                widget.item.isVideo
-                    ? Icons.videocam_rounded
-                    : Icons.image_not_supported_outlined,
-                size: 28,
-                color: widget.colorScheme.outline,
-              ),
-            ),
-          );
-        }
-        return null;
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final item = widget.item;
-    final urls = item.galleryPreviewUrls;
-    final isGallery = item.mediaType == MediaType.gallery && urls.length > 1;
-
-    if (!isGallery) {
-      final singleUrl = urls.isNotEmpty ? urls.first : item.displayImageUrl;
-      if (singleUrl == null) return const SizedBox.shrink();
-      return _buildImage(singleUrl, fit: BoxFit.fitWidth);
-    }
-
-    return AspectRatio(
-      aspectRatio: _galleryAspectRatio ?? (16 / 9),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          PageView.builder(
-            controller: _controller,
-            itemCount: urls.length,
-            onPageChanged: (index) => setState(() => _index = index),
-            itemBuilder: (context, index) =>
-                _buildImage(urls[index], fit: BoxFit.cover),
-          ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: _GalleryCounter(current: _index + 1, total: urls.length),
-          ),
-          if (_desktop)
-            Positioned.fill(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _GalleryButton(
-                    icon: Icons.chevron_left_rounded,
-                    enabled: _index > 0,
-                    onPressed: () => _controller.previousPage(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOut,
-                    ),
-                  ),
-                  _GalleryButton(
-                    icon: Icons.chevron_right_rounded,
-                    enabled: _index < urls.length - 1,
-                    onPressed: () => _controller.nextPage(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOut,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GalleryCounter extends StatelessWidget {
-  final int current;
-  final int total;
-
-  const _GalleryCounter({required this.current, required this.total});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    decoration: BoxDecoration(
-      color: Colors.black.withValues(alpha: 0.7),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(
-      '$current/$total',
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
-}
-
-class _GalleryButton extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  const _GalleryButton({
-    required this.icon,
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 6),
-    child: IconButton(
-      onPressed: enabled ? onPressed : null,
-      style: IconButton.styleFrom(
-        backgroundColor: Colors.black.withValues(alpha: 0.65),
-        foregroundColor: Colors.white,
-        disabledForegroundColor: Colors.white38,
-      ),
-      icon: Icon(icon),
-    ),
-  );
 }

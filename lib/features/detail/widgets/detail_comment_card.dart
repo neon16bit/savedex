@@ -200,14 +200,15 @@ class DetailCommentsSection extends ConsumerWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: colorScheme.primary.withValues(alpha: 0.18),
-                            borderRadius: BorderRadius.circular(10),
+                            color: colorScheme.primary.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             '${relevantComments.length}',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
                               color: colorScheme.primary,
                             ),
                           ),
@@ -268,44 +269,32 @@ class DetailCommentCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: isHighlighted
-            ? colorScheme.primaryContainer.withValues(alpha: 0.22)
-            : colorScheme.surfaceContainerLow.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isHighlighted
-              ? colorScheme.primary.withValues(alpha: 0.7)
-              : colorScheme.outlineVariant.withValues(alpha: 0.35),
-          width: isHighlighted ? 1.5 : 1,
+            ? colorScheme.primaryContainer.withValues(alpha: 0.15)
+            : Colors.transparent,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+            width: 0.8,
+          ),
+          left: isHighlighted
+              ? BorderSide(color: colorScheme.primary, width: 3.5)
+              : BorderSide.none,
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      padding: EdgeInsets.fromLTRB(isHighlighted ? 12.5 : 16, 14, 16, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 3,
-                height: 13,
-                margin: const EdgeInsets.only(right: 7),
-                decoration: BoxDecoration(
-                  color: isHighlighted
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
               Text(
                 comment.author != null ? 'u/${comment.author}' : 'u/[deleted]',
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: isHighlighted
-                      ? colorScheme.primary
-                      : colorScheme.onSurface,
+                  color: colorScheme.primary,
                 ),
               ),
               if (comment.createdAtUtc != null) ...[
