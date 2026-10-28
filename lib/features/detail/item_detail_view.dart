@@ -564,63 +564,62 @@ class DetailCrosspostOriginCard extends StatelessWidget {
     final originSub = item.crosspostSubreddit;
     final origTitle = item.originalPostTitle;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-          width: 0.8,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.repeat_rounded, size: 15, color: colorScheme.primary),
-              const SizedBox(width: 6),
-              Text(
-                originSub != null
-                    ? 'Crossposted from $originSub'
-                    : 'Crossposted from',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.3,
-                  color: colorScheme.primary,
+              Icon(Icons.repeat_rounded, size: 14, color: colorScheme.primary),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  originSub != null
+                      ? 'Crossposted from $originSub'
+                      : 'Crossposted',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                    color: colorScheme.primary,
+                  ),
                 ),
               ),
-              const Spacer(),
               if (permalink != null) ...[
-                InkWell(
-                  onTap: () => openRedditUrl(context, permalink),
+                const SizedBox(width: 8),
+                Material(
+                  color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(6),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Original',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.primary,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => openRedditUrl(context, permalink),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Original',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onPrimaryContainer,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 3),
-                        Icon(
-                          Icons.open_in_new_rounded,
-                          size: 11,
-                          color: colorScheme.primary,
-                        ),
-                      ],
+                          const SizedBox(width: 3),
+                          Icon(
+                            Icons.open_in_new_rounded,
+                            size: 10.5,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -628,14 +627,27 @@ class DetailCrosspostOriginCard extends StatelessWidget {
             ],
           ),
           if (origTitle != null && origTitle.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              origTitle.trim(),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-                height: 1.3,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.reply_rounded,
+                  size: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    origTitle.trim(),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],

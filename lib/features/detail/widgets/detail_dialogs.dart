@@ -200,10 +200,12 @@ class _NoteDialogState extends State<_NoteDialog> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isEditing =
         widget.initialNote != null && widget.initialNote!.trim().isNotEmpty;
 
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
       contentPadding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
@@ -224,13 +226,13 @@ class _NoteDialogState extends State<_NoteDialog> {
           ),
           const SizedBox(width: 12),
           Text(
-            isEditing ? 'Edit Personal Note' : 'Add Personal Note',
+            isEditing ? 'Edit Note' : 'Add Note',
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
         ],
       ),
       content: SizedBox(
-        width: 440,
+        width: screenWidth * 0.8,
         child: TextField(
           controller: _controller,
           minLines: 3,
@@ -238,15 +240,13 @@ class _NoteDialogState extends State<_NoteDialog> {
           autofocus: true,
           style: const TextStyle(fontSize: 13.5, height: 1.45),
           decoration: InputDecoration(
-            hintText: 'Write personal thoughts, key takeaways, or reminders...',
+            hintText: 'Write thoughts, key takeaways, or reminders...',
             hintStyle: TextStyle(
               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
               fontSize: 13,
             ),
             filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.4,
-            ),
+            fillColor: colorScheme.surfaceContainerHighest,
             contentPadding: const EdgeInsets.all(14),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),

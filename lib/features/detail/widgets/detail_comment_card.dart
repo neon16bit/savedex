@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
+import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_viewmodel.dart';
@@ -20,55 +21,88 @@ class DetailDiscussionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final parentTitle = commentItem.parentPostTitle;
 
-    if (commentItem.parentPostTitle == null ||
-        commentItem.parentPostTitle!.trim().isEmpty) {
+    if (parentTitle == null || parentTitle.trim().isEmpty) {
       return const SizedBox.shrink();
     }
 
+    final parentId = commentItem.parentPostId;
+    final threadPermalink = parentId != null && parentId.trim().isNotEmpty
+        ? 'https://www.reddit.com/comments/${parentId.trim().replaceFirst('t3_', '')}'
+        : null;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            Icon(Icons.forum_outlined, size: 16, color: colorScheme.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'THREAD DISCUSSION',
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                      color: colorScheme.primary,
-                    ),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.forum_rounded, size: 14, color: colorScheme.primary),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  'Thread Discussion',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                    color: colorScheme.primary,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    commentItem.parentPostTitle!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.25,
-                    ),
-                  ),
-                ],
+                ),
               ),
+              if (threadPermalink != null) ...[
+                const SizedBox(width: 8),
+                Material(
+                  color: colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => openRedditUrl(context, threadPermalink),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Thread',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Icon(
+                            Icons.open_in_new_rounded,
+                            size: 10.5,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(
+            parentTitle.trim(),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 18,
+              height: 1.3,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -344,32 +378,61 @@ class DetailCommentCard extends StatelessWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              if (comment.score > 0)
-                Padding(
-                  padding: const EdgeInsets.only(left: 2),
-                  child: Row(
+              Consumer(
+                builder: (context, ref, _) {
+                  final colsAsync = ref.watch(
+                    itemCollectionsProvider(comment.id),
+                  );
+                  final cols = colsAsync.asData?.value ?? comment.collections;
+                  final hasCollections = cols.isNotEmpty;
+                  final hasScore = comment.score > 0;
+
+                  return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.arrow_upward_rounded,
-                        size: 14,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        DateFormatter.compactNumber(comment.score),
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.primary,
+                      if (hasScore)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.arrow_upward_rounded,
+                                size: 14,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                DateFormatter.compactNumber(comment.score),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      if (hasScore && hasCollections) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '•',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.outlineVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (hasCollections)
+                        CollectionBadgeRow(
+                          itemId: comment.id,
+                          initialCollections: comment.collections,
+                          leadingSpacing: false,
+                        ),
                     ],
-                  ),
-                ),
-              CollectionBadgeRow(
-                itemId: comment.id,
-                initialCollections: comment.collections,
+                  );
+                },
               ),
               const Spacer(),
               ItemNoteButton(
