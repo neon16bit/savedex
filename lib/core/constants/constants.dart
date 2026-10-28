@@ -10,7 +10,8 @@ class AppConstants {
   static const String redditAppScheme = 'reddit://';
 
   static const Duration anonymousRequestDelay = Duration(milliseconds: 1200);
-  static const Duration oauthRequestDelay = Duration(milliseconds: 250);
+  static const Duration oauthEnrichmentDelay = Duration(milliseconds: 50);
+  static const int oauthEnrichmentWorkers = 5;
 
   static const String crosspostDelimiter = '\u001F';
 }

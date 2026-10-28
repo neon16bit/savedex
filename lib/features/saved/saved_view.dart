@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
+import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
-import 'package:savedex/features/import_export/widgets/import_export_progress_card.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/features/saved/widgets/comment_card.dart';
 import 'package:savedex/features/saved/widgets/compact_list_item.dart';
@@ -18,6 +19,15 @@ import 'package:savedex/features/search/widgets/sort_sheet.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 typedef FeedView = SavedView;
+
+enum _SavedViewMenuAction {
+  syncReddit,
+  fetchMetadata,
+  pauseMetadata,
+  resumeMetadata,
+  stopMetadata,
+  importExport,
+}
 
 class SavedView extends ConsumerStatefulWidget {
   const SavedView({super.key});
@@ -52,19 +62,10 @@ class _SavedViewState extends ConsumerState<SavedView> {
     super.dispose();
   }
 
-  String _formatSyncMessage(ImportSummary summary) {
-    final totalInDb = summary.totalInDatabase;
-    final dbSuffix = totalInDb != null ? ' ($totalInDb in library)' : '';
-    if (summary.newItemsImported > 0 && summary.updatedItems > 0) {
-      return 'Reddit sync: ${summary.newItemsImported} new, ${summary.updatedItems} updated$dbSuffix';
-    } else if (summary.newItemsImported > 0) {
-      return 'Reddit sync: ${summary.newItemsImported} new items added$dbSuffix';
-    } else if (summary.updatedItems > 0) {
-      return 'Reddit sync: ${summary.updatedItems} items refreshed$dbSuffix';
-    } else {
-      return 'Library is up to date$dbSuffix';
-    }
-  }
+  String _formatNumber(int number) => number.toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   Future<ImportSummary?> _syncFromReddit({
     bool showErrorSnackbar = true,
@@ -75,16 +76,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
     if (!mounted) return summary;
 
     if (summary != null) {
-      final message = _formatSyncMessage(summary);
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(message),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      ref.invalidate(savedFeedPaginationProvider);
+      _showSyncSuccessSnackBar(summary);
     } else if (showErrorSnackbar) {
       final error =
           ref.read(importExportViewModelProvider).errorMessage ??
@@ -96,11 +89,75 @@ class _SavedViewState extends ConsumerState<SavedView> {
             content: Text(error),
             backgroundColor: Theme.of(context).colorScheme.error,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
     }
     return summary;
+  }
+
+  void _showSyncSuccessSnackBar(ImportSummary summary) {
+    if (!mounted) return;
+
+    final seconds = (summary.duration.inMilliseconds / 1000).toStringAsFixed(1);
+    final String message;
+    if (summary.newItemsImported > 0 && summary.updatedItems > 0) {
+      message =
+          'Reddit sync: ${_formatNumber(summary.totalFound)} items (${_formatNumber(summary.newItemsImported)} new, ${_formatNumber(summary.updatedItems)} updated) in ${seconds}s';
+    } else if (summary.newItemsImported > 0) {
+      message =
+          'Reddit sync: ${_formatNumber(summary.totalFound)} items (${_formatNumber(summary.newItemsImported)} new added) in ${seconds}s';
+    } else if (summary.updatedItems > 0) {
+      message =
+          'Reddit sync: ${_formatNumber(summary.updatedItems)} items refreshed in ${seconds}s';
+    } else {
+      message =
+          'Library is up to date (${_formatNumber(summary.totalFound)} verified)';
+    }
+
+    final settings = ref.read(settingsViewModelProvider);
+    final enrichState = ref.read(enrichmentViewModelProvider);
+    final isEnriching = enrichState.isRunning || enrichState.isPaused;
+    final bool canOfferFetch =
+        !settings.autoEnrichOnImport &&
+        !isEnriching &&
+        (summary.newItemsImported > 0 || summary.updatedItems > 0);
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.greenAccent,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          action: canOfferFetch
+              ? SnackBarAction(
+                  label: 'Fetch Metadata',
+                  textColor: Theme.of(context).colorScheme.primary,
+                  onPressed: () {
+                    ref
+                        .read(enrichmentViewModelProvider.notifier)
+                        .startEnrichment();
+                  },
+                )
+              : null,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: canOfferFetch ? 7 : 4),
+        ),
+      );
   }
 
   @override
@@ -154,12 +211,20 @@ class _SavedViewState extends ConsumerState<SavedView> {
     );
     final settingsVm = ref.read(settingsViewModelProvider.notifier);
 
+    final enrichState = ref.watch(enrichmentViewModelProvider);
+    final enrichVm = ref.read(enrichmentViewModelProvider.notifier);
+    final pendingCount =
+        ref.watch(pendingEnrichmentCountProvider).asData?.value ?? 0;
+    final importState = ref.watch(importExportViewModelProvider);
+    final isEnriching = enrichState.isRunning || enrichState.isPaused;
+    final isSyncingReddit = importState.isSyncingReddit;
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 16,
+        titleSpacing: 12,
         title: _isSearchExpanded
             ? TextField(
                 controller: _searchController,
@@ -211,19 +276,23 @@ class _SavedViewState extends ConsumerState<SavedView> {
                 },
               )
             : Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Savedex',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
+                  Flexible(
+                    child: Text(
+                      'Savedex',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   const SizedBox(width: 8),
                   feedStateAsync.when(
                     data: (feedState) => Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: 7,
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
@@ -249,6 +318,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
             IconButton(
               icon: const Icon(Icons.search_rounded),
               tooltip: 'Search',
+              visualDensity: VisualDensity.compact,
               onPressed: () {
                 setState(() {
                   _isSearchExpanded = true;
@@ -259,6 +329,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
           PopupMenuButton<FeedLayoutMode>(
             icon: Icon(feedLayoutMode.icon),
             tooltip: 'Layout Mode',
+            style: IconButton.styleFrom(visualDensity: VisualDensity.compact),
             onSelected: (mode) => settingsVm.setFeedLayoutMode(mode),
             itemBuilder: (ctx) => FeedLayoutMode.values.map((mode) {
               final isSelected = feedLayoutMode == mode;
@@ -290,6 +361,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
           IconButton(
             icon: const Icon(Icons.sort_rounded),
             tooltip: 'Sort: ${filter.sortOption.label}',
+            visualDensity: VisualDensity.compact,
             onPressed: () => _openSortSheet(context),
           ),
 
@@ -299,12 +371,13 @@ class _SavedViewState extends ConsumerState<SavedView> {
               IconButton(
                 icon: const Icon(Icons.tune_rounded),
                 tooltip: 'All Filters',
+                visualDensity: VisualDensity.compact,
                 onPressed: () => _openFilterSheet(context),
               ),
               if (filter.hasActiveFilters)
                 Positioned(
-                  top: 9,
-                  right: 9,
+                  top: 8,
+                  right: 6,
                   child: Container(
                     width: 8,
                     height: 8,
@@ -317,40 +390,192 @@ class _SavedViewState extends ConsumerState<SavedView> {
             ],
           ),
 
-          if (isAuthenticatedWithOAuth)
-            Consumer(
-              builder: (context, ref, _) {
-                final importState = ref.watch(importExportViewModelProvider);
-                if (importState.isImporting) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              PopupMenuButton<_SavedViewMenuAction>(
+                icon: const Icon(Icons.more_vert_rounded),
+                tooltip: 'More options',
+                style: IconButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onSelected: (action) {
+                  switch (action) {
+                    case _SavedViewMenuAction.syncReddit:
+                      _syncFromReddit(showErrorSnackbar: true);
+                      break;
+                    case _SavedViewMenuAction.fetchMetadata:
+                      enrichVm.startEnrichment();
+                      break;
+                    case _SavedViewMenuAction.pauseMetadata:
+                      enrichVm.pauseEnrichment();
+                      break;
+                    case _SavedViewMenuAction.resumeMetadata:
+                      enrichVm.resumeEnrichment();
+                      break;
+                    case _SavedViewMenuAction.stopMetadata:
+                      enrichVm.stopEnrichment();
+                      break;
+                    case _SavedViewMenuAction.importExport:
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (ctx) => const ImportView()),
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  if (isAuthenticatedWithOAuth)
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.syncReddit,
+                      enabled: !isSyncingReddit,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.sync_rounded,
+                            size: 20,
+                            color: isSyncingReddit
+                                ? colorScheme.outline
+                                : colorScheme.onSurface,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            isSyncingReddit
+                                ? 'Syncing from Reddit...'
+                                : 'Sync from Reddit',
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                }
-                return IconButton(
-                  icon: const Icon(Icons.sync_rounded),
-                  tooltip: 'Pull Saved from Reddit',
-                  onPressed: _syncFromReddit,
-                );
-              },
-            ),
+                  if (enrichState.isRunning) ...[
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.pauseMetadata,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.pause_circle_outline_rounded,
+                            size: 20,
+                            color: colorScheme.onSurface,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Pause Metadata Fetch'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.stopMetadata,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.stop_circle_outlined,
+                            size: 20,
+                            color: colorScheme.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Stop Metadata Fetch',
+                            style: TextStyle(color: colorScheme.error),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else if (enrichState.isPaused) ...[
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.resumeMetadata,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.play_circle_outline_rounded,
+                            size: 20,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Resume Metadata Fetch'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.stopMetadata,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.stop_circle_outlined,
+                            size: 20,
+                            color: colorScheme.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Stop Metadata Fetch',
+                            style: TextStyle(color: colorScheme.error),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.fetchMetadata,
+                      enabled: pendingCount > 0,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 20,
+                            color: pendingCount > 0
+                                ? colorScheme.primary
+                                : colorScheme.outline,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            pendingCount > 0
+                                ? 'Fetch Metadata (${_formatNumber(pendingCount)})'
+                                : 'All Metadata Downloaded',
+                            style: TextStyle(
+                              color: pendingCount > 0
+                                  ? null
+                                  : colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const PopupMenuDivider(),
+                  const PopupMenuItem<_SavedViewMenuAction>(
+                    value: _SavedViewMenuAction.importExport,
+                    child: Row(
+                      children: [
+                        Icon(Icons.import_export_rounded, size: 20),
+                        SizedBox(width: 12),
+                        Text('Import & Export'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (isEnriching)
+                Positioned(
+                  top: 10,
+                  right: 8,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: enrichState.isPaused
+                          ? colorScheme.outline
+                          : colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(width: 4),
         ],
       ),
       body: Column(
         children: [
           _buildQuickFilterBar(context, filter, filterVm, colorScheme),
-          const ImportExportProgressCard(
-            margin: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            isDense: true,
-          ),
-          if (feedStateAsync.isLoading && feedStateAsync.hasValue)
+          if ((feedStateAsync.isLoading && feedStateAsync.hasValue) ||
+              isSyncingReddit)
             const LinearProgressIndicator(minHeight: 2),
 
           Expanded(

@@ -271,7 +271,7 @@ class FilterSheet extends ConsumerWidget {
                       data: (flairs) {
                         if (flairs.isEmpty) {
                           return Text(
-                            'No flairs available yet. Enrich posts to extract flairs.',
+                            'No flairs available yet. Download post metadata to extract flairs.',
                             style: TextStyle(
                               fontSize: 13,
                               color: colorScheme.onSurfaceVariant,

@@ -8,7 +8,7 @@ class PendingMetadataBadge extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Tooltip(
-      message: 'Pending metadata enrichment',
+      message: 'Pending metadata download',
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(
@@ -39,4 +39,3 @@ class PendingMetadataBadge extends StatelessWidget {
     );
   }
 }
-

@@ -30,8 +30,6 @@ class ImportExportState {
   final ImportExportType activeType;
   final ImportExportCardStatus cardStatus;
   final String? lastSavedFilePath;
-  final bool isEnrichmentSuggestionDismissed;
-  final bool enrichQueued;
 
   const ImportExportState({
     this.statusMessage,
@@ -41,8 +39,6 @@ class ImportExportState {
     this.activeType = ImportExportType.none,
     this.cardStatus = ImportExportCardStatus.idle,
     this.lastSavedFilePath,
-    this.isEnrichmentSuggestionDismissed = false,
-    this.enrichQueued = false,
   });
 
   bool get isImporting =>
@@ -68,8 +64,6 @@ class ImportExportState {
 
   bool get isBusy => cardStatus == ImportExportCardStatus.running;
 
-  bool get showCard => cardStatus != ImportExportCardStatus.idle;
-
   ImportExportState copyWith({
     String? statusMessage,
     double? progress,
@@ -78,8 +72,6 @@ class ImportExportState {
     ImportExportType? activeType,
     ImportExportCardStatus? cardStatus,
     String? lastSavedFilePath,
-    bool? isEnrichmentSuggestionDismissed,
-    bool? enrichQueued,
     bool clearStatus = false,
     bool clearProgress = false,
     bool clearError = false,
@@ -98,10 +90,6 @@ class ImportExportState {
       lastSavedFilePath: clearSavedFilePath
           ? null
           : (lastSavedFilePath ?? this.lastSavedFilePath),
-      isEnrichmentSuggestionDismissed:
-          isEnrichmentSuggestionDismissed ??
-          this.isEnrichmentSuggestionDismissed,
-      enrichQueued: enrichQueued ?? this.enrichQueued,
     );
   }
 }
@@ -132,28 +120,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
 
   void _releaseLock() {
     _isOperationBusy = false;
-  }
-
-  void queueEnrichmentAfterImport() {
-    state = state.copyWith(enrichQueued: true);
-  }
-
-  void dismissEnrichmentSuggestion() {
-    state = state.copyWith(isEnrichmentSuggestionDismissed: true);
-  }
-
-  void dismissCard() {
-    state = state.copyWith(
-      cardStatus: ImportExportCardStatus.idle,
-      activeType: ImportExportType.none,
-      isEnrichmentSuggestionDismissed: true,
-      enrichQueued: false,
-      clearStatus: true,
-      clearProgress: true,
-      clearError: true,
-      clearSummary: true,
-      clearSavedFilePath: true,
-    );
   }
 
   Future<String?> _saveFilePickerResult({
@@ -288,7 +254,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         cardStatus: ImportExportCardStatus.running,
         activeType: ImportExportType.restore,
         statusMessage: 'Reading backup file...',
-        isEnrichmentSuggestionDismissed: false,
         clearProgress: true,
         clearError: true,
         clearSummary: true,
@@ -380,10 +345,8 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
 
       final settings = ref.read(settingsViewModelProvider);
       final shouldEnrich =
-          (settings.autoEnrichOnImport && summary.newItemsImported > 0) ||
-          state.enrichQueued;
+          settings.autoEnrichOnImport && summary.newItemsImported > 0;
       if (shouldEnrich) {
-        state = state.copyWith(enrichQueued: false);
         ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
       }
 
@@ -420,7 +383,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         cardStatus: ImportExportCardStatus.running,
         activeType: ImportExportType.takeoutImport,
         statusMessage: 'Reading selected files...',
-        isEnrichmentSuggestionDismissed: false,
         clearProgress: true,
         clearError: true,
         clearSummary: true,
@@ -491,11 +453,8 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       ref.invalidate(availableFlairsProvider);
 
       final settings = ref.read(settingsViewModelProvider);
-      final shouldEnrich =
-          (settings.autoEnrichOnImport && newImported > 0) ||
-          state.enrichQueued;
+      final shouldEnrich = settings.autoEnrichOnImport && newImported > 0;
       if (shouldEnrich) {
-        state = state.copyWith(enrichQueued: false);
         ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
       }
 
@@ -556,6 +515,13 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       ref.invalidate(availableAuthorsProvider);
       ref.invalidate(availableAuthorsWithCountsProvider);
       ref.invalidate(availableFlairsProvider);
+
+      final settings = ref.read(settingsViewModelProvider);
+      final shouldEnrich =
+          settings.autoEnrichOnImport && summary.newItemsImported > 0;
+      if (shouldEnrich) {
+        ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
+      }
 
       return summary;
     } catch (e) {

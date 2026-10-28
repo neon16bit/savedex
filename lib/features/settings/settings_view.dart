@@ -276,7 +276,7 @@ class SettingsView extends ConsumerWidget {
               children: [
                 ListTile(
                   leading: const Icon(Icons.sync_outlined),
-                  title: const Text('Auto-Enrich on Import'),
+                  title: const Text('Auto-Fetch Metadata on Import'),
                   subtitle: const Text(
                     'Download post metadata & flairs right after CSV import',
                   ),
@@ -320,13 +320,13 @@ class SettingsView extends ConsumerWidget {
                                 .clamp(0, 100)
                           : 0;
                       subtitle = enrichState.isPaused
-                          ? 'Enrichment paused (${enrichState.processedCount}/$total · $percent%)'
+                          ? 'Metadata download paused (${enrichState.processedCount}/$total · $percent%)'
                           : 'Downloading metadata (${enrichState.processedCount}/$total · $percent%)';
                     } else if (pendingCount > 0) {
                       subtitle =
                           '$formattedCount ${pendingCount == 1 ? "item needs" : "items need"} metadata & images';
                     } else {
-                      subtitle = 'All items in library are fully enriched';
+                      subtitle = 'All items in library have complete metadata';
                     }
 
                     return Column(
@@ -349,7 +349,7 @@ class SettingsView extends ConsumerWidget {
                             ),
                           ),
                           title: const Text(
-                            'Enrich Library Metadata',
+                            'Download Library Metadata',
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(subtitle),
@@ -365,7 +365,7 @@ class SettingsView extends ConsumerWidget {
                                   ? (enrichState.isPaused
                                         ? 'Paused'
                                         : 'Running...')
-                                  : 'Enrich Now',
+                                  : 'Fetch Metadata',
                             ),
                           ),
                         ),
@@ -419,7 +419,7 @@ class SettingsView extends ConsumerWidget {
                                                   ? enrichState
                                                         .currentItemTitle!
                                                   : (enrichState.isPaused
-                                                        ? 'Enrichment paused'
+                                                        ? 'Download paused'
                                                         : 'Downloading metadata...'),
                                               style: TextStyle(
                                                 fontSize: 11,
@@ -467,7 +467,7 @@ class SettingsView extends ConsumerWidget {
                                               minWidth: 32,
                                               minHeight: 32,
                                             ),
-                                            tooltip: 'Stop Enrichment',
+                                            tooltip: 'Stop Download',
                                             icon: Icon(
                                               Icons.close_rounded,
                                               color:

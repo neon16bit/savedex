@@ -119,7 +119,7 @@ class ItemDetailActions {
           .read(savedFeedPaginationProvider.notifier)
           .refreshItem(item.id);
     }
-    return result;
+    return (success: result.success, error: result.error);
   }
 
   Future<({bool success, String? error})> recoverFromArchive(

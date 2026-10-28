@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/services/foreground_enrichment_service.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 class EnrichmentState {
@@ -230,15 +231,27 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
   bool _isDisposed = false;
   Completer<void>? _resumeCompleter;
   Future<void>? _runFuture;
+  Timer? _pauseTimeoutTimer;
 
   @override
   EnrichmentState build() {
     _isDisposed = false;
     _stopRequested = false;
     _runFuture = null;
+    _pauseTimeoutTimer?.cancel();
+    _pauseTimeoutTimer = null;
+    ForegroundEnrichmentService.addTaskDataCallback(
+      _handleForegroundTaskAction,
+    );
     ref.onDispose(() {
       _isDisposed = true;
       _stopRequested = true;
+      _pauseTimeoutTimer?.cancel();
+      _pauseTimeoutTimer = null;
+      ForegroundEnrichmentService.removeTaskDataCallback(
+        _handleForegroundTaskAction,
+      );
+      ForegroundEnrichmentService.stop();
       if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
         _resumeCompleter!.complete();
         _resumeCompleter = null;
@@ -246,6 +259,18 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       _runFuture = null;
     });
     return const EnrichmentState();
+  }
+
+  void _handleForegroundTaskAction(Object data) {
+    if (_isDisposed) return;
+    if (data == ForegroundEnrichmentService.actionPause ||
+        data == ForegroundEnrichmentService.eventTimeout) {
+      pauseEnrichment();
+    } else if (data == ForegroundEnrichmentService.actionResume) {
+      resumeEnrichment();
+    } else if (data == ForegroundEnrichmentService.actionStop) {
+      stopEnrichment();
+    }
   }
 
   bool get _isMounted => !_isDisposed && !_stopRequested;
@@ -299,9 +324,11 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
     final repo = ref.read(savedItemRepositoryProvider);
     final settings = ref.read(settingsViewModelProvider);
 
-    final delay = settings.isAuthenticatedWithOAuth
-        ? AppConstants.oauthRequestDelay
+    final isOAuth = settings.isAuthenticatedWithOAuth;
+    final delay = isOAuth
+        ? AppConstants.oauthEnrichmentDelay
         : AppConstants.anonymousRequestDelay;
+    final workerCount = isOAuth ? AppConstants.oauthEnrichmentWorkers : 1;
 
     final pendingCount = await repo.getPendingEnrichmentCount();
     if (!_isMounted) return;
@@ -331,6 +358,15 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       failedInSession: state.isPaused ? state.failedInSession : 0,
     );
 
+    await ForegroundEnrichmentService.start(
+      processed: state.processedCount,
+      total: state.totalToEnrich,
+      isPaused: false,
+      failed: state.failedInSession,
+    );
+
+    var consecutive429Batches = 0;
+
     while (_isMounted) {
       if (state.isPaused && _resumeCompleter != null) {
         await _resumeCompleter!.future;
@@ -359,7 +395,9 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
         state = state.copyWith(totalPending: currentPending);
       }
 
-      final pendingItems = await repo.getPendingEnrichmentItems(limit: 20);
+      final pendingItems = await repo.getPendingEnrichmentItems(
+        limit: workerCount * 10,
+      );
       if (!_isMounted) break;
       if (pendingItems.isEmpty) {
         state = state.copyWith(
@@ -371,34 +409,87 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
         break;
       }
 
-      for (final item in pendingItems) {
-        if (!_isMounted || state.isPaused) break;
+      // OAuth users run several workers in parallel
+      // anonymous users keep a single sequential worker
+      var nextIndex = 0;
+      var batchSuccessCount = 0;
+      var batchRateLimitedCount = 0;
 
-        state = state.copyWith(currentItemTitle: item.title);
+      Future<void> worker() async {
+        while (_isMounted && !state.isPaused) {
+          if (nextIndex >= pendingItems.length) break;
+          final item = pendingItems[nextIndex++];
 
-        final result = await repo.enrichItem(item);
-        if (!_isMounted) break;
+          state = state.copyWith(currentItemTitle: item.title);
 
-        if (result.success) {
-          state = state.copyWith(
-            completedInSession: state.completedInSession + 1,
-            totalPending: (state.totalPending - 1).clamp(0, 999999),
-          );
-        } else {
-          state = state.copyWith(
-            failedInSession: state.failedInSession + 1,
-            totalPending: (state.totalPending - 1).clamp(0, 999999),
-          );
+          final result = await repo.enrichItem(item);
+          if (!_isMounted) break;
+
+          if (result.success) {
+            batchSuccessCount++;
+            state = state.copyWith(
+              completedInSession: state.completedInSession + 1,
+              totalPending: (state.totalPending - 1).clamp(0, 999999),
+            );
+            ForegroundEnrichmentService.update(
+              processed: state.processedCount,
+              total: state.totalToEnrich,
+              isPaused: state.isPaused,
+              failed: state.failedInSession,
+            );
+          } else if (result.willRetry) {
+            batchRateLimitedCount++;
+            ForegroundEnrichmentService.update(
+              processed: state.processedCount,
+              total: state.totalToEnrich,
+              isPaused: state.isPaused,
+              failed: state.failedInSession,
+              customSubtitle: 'Reddit rate limit reached · cooling down...',
+              force: true,
+            );
+            await Future.delayed(const Duration(seconds: 5));
+          } else {
+            state = state.copyWith(
+              failedInSession: state.failedInSession + 1,
+              totalPending: (state.totalPending - 1).clamp(0, 999999),
+            );
+            ForegroundEnrichmentService.update(
+              processed: state.processedCount,
+              total: state.totalToEnrich,
+              isPaused: state.isPaused,
+              failed: state.failedInSession,
+            );
+          }
+
+          if (!_isMounted || state.isPaused) break;
+          await Future.delayed(delay);
         }
+      }
 
-        if (!_isMounted || state.isPaused) break;
-        await Future.delayed(delay);
-        if (!_isMounted) break;
+      await Future.wait(List.generate(workerCount, (_) => worker()));
+      if (!_isMounted) break;
+
+      if (batchSuccessCount == 0 && batchRateLimitedCount > 0) {
+        consecutive429Batches++;
+        if (consecutive429Batches >= 2) {
+          debugPrint(
+            '[EnrichmentViewModel] Rate limit active for consecutive batches. Auto-pausing.',
+          );
+          pauseEnrichment();
+          break;
+        } else {
+          await Future.delayed(const Duration(seconds: 10));
+        }
+      } else {
+        consecutive429Batches = 0;
       }
     }
 
+    _pauseTimeoutTimer?.cancel();
+    _pauseTimeoutTimer = null;
     if (!_isDisposed && !state.isPaused) {
       state = state.copyWith(isRunning: false, clearTitle: true);
+      await ForegroundEnrichmentService.stop();
     }
   }
 
@@ -411,12 +502,37 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
     }
     _resumeCompleter = Completer<void>();
     state = state.copyWith(isPaused: true);
+    ForegroundEnrichmentService.update(
+      processed: state.processedCount,
+      total: state.totalToEnrich,
+      isPaused: true,
+      failed: state.failedInSession,
+      force: true,
+    );
+
+    // Auto-release wake lock after 15 minutes of inactivity while paused
+    _pauseTimeoutTimer?.cancel();
+    _pauseTimeoutTimer = Timer(const Duration(minutes: 15), () async {
+      if (_isDisposed || !state.isPaused) return;
+      debugPrint(
+        '[EnrichmentViewModel] Paused for 15 minutes. Releasing wake lock and stopping foreground service.',
+      );
+      await ForegroundEnrichmentService.stop();
+    });
   }
 
   void resumeEnrichment() {
     if (_isDisposed) return;
+    _pauseTimeoutTimer?.cancel();
+    _pauseTimeoutTimer = null;
     if (state.isPaused) {
       state = state.copyWith(isPaused: false);
+      ForegroundEnrichmentService.start(
+        processed: state.processedCount,
+        total: state.totalToEnrich,
+        isPaused: false,
+        failed: state.failedInSession,
+      );
       if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
         _resumeCompleter!.complete();
         _resumeCompleter = null;
@@ -429,10 +545,13 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
 
   void stopEnrichment() {
     _stopRequested = true;
+    _pauseTimeoutTimer?.cancel();
+    _pauseTimeoutTimer = null;
     if (_resumeCompleter != null && !_resumeCompleter!.isCompleted) {
       _resumeCompleter!.complete();
       _resumeCompleter = null;
     }
+    ForegroundEnrichmentService.stop();
 
     // _runFuture is retained until _executeEnrichmentLoop() finishes
     if (!_isDisposed) {
@@ -440,7 +559,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
     }
   }
 
-  Future<({bool success, String? error})> enrichSingleItem(
+  Future<({bool success, String? error, bool willRetry})> enrichSingleItem(
     SavedItem item,
   ) async {
     final repo = ref.read(savedItemRepositoryProvider);

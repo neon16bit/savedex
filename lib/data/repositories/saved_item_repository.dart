@@ -23,7 +23,9 @@ class SavedItemRepository {
   final PullPushApiService _pullPushApi;
   final SettingsRepository _settingsRepository;
   final BackupExportService _backupExport;
-  final Map<String, Future<({bool success, String? error})>>
+  static const int maxRateLimitRetries = 3;
+  final Map<String, int> _rateLimitRetries = {};
+  final Map<String, Future<({bool success, String? error, bool willRetry})>>
   _inFlightEnrichments = {};
 
   SavedItemRepository({
@@ -1234,7 +1236,7 @@ class SavedItemRepository {
     return summary;
   }
 
-  Future<({bool success, String? error})> enrichItem(
+  Future<({bool success, String? error, bool willRetry})> enrichItem(
     SavedItem item, {
     String? clientId,
     String? clientSecret,
@@ -1432,7 +1434,7 @@ class SavedItemRepository {
     );
   }
 
-  Future<({bool success, String? error})> _executeEnrichItem(
+  Future<({bool success, String? error, bool willRetry})> _executeEnrichItem(
     SavedItem item, {
     String? clientId,
     String? clientSecret,
@@ -1445,20 +1447,38 @@ class SavedItemRepository {
       );
 
       if (!meta.isSuccess) {
-        await (db.update(
-          db.savedItemsTable,
-        )..where((t) => t.id.equals(item.id))).write(
-          SavedItemsTableCompanion(
-            enrichmentStatus: Value(EnrichmentStatus.failed),
-            isArchiveRecovered: Value(
-              _isDeletedOrInaccessibleError(meta.errorMessage)
-                  ? false
-                  : item.isArchiveRecovered,
+        final isRateLimited = meta.errorMessage?.contains('429') ?? false;
+        final retries =
+            isRateLimited ? ((_rateLimitRetries[item.id] ?? 0) + 1) : 0;
+        if (isRateLimited) {
+          _rateLimitRetries[item.id] = retries;
+        }
+
+        final shouldRetry = isRateLimited && retries < maxRateLimitRetries;
+
+        if (!shouldRetry) {
+          _rateLimitRetries.remove(item.id);
+          await (db.update(
+            db.savedItemsTable,
+          )..where((t) => t.id.equals(item.id))).write(
+            SavedItemsTableCompanion(
+              enrichmentStatus: const Value(EnrichmentStatus.failed),
+              isArchiveRecovered: Value(
+                _isDeletedOrInaccessibleError(meta.errorMessage)
+                    ? false
+                    : item.isArchiveRecovered,
+              ),
             ),
-          ),
+          );
+        }
+        return (
+          success: false,
+          error: meta.errorMessage,
+          willRetry: shouldRetry,
         );
-        return (success: false, error: meta.errorMessage);
       }
+
+      _rateLimitRetries.remove(item.id);
 
       final refreshedHasRemovedContent = _hasRemovedContent(
         meta.author,
@@ -1500,8 +1520,9 @@ class SavedItemRepository {
           ),
         ),
       );
-      return (success: true, error: null);
+      return (success: true, error: null, willRetry: false);
     } catch (e) {
+      _rateLimitRetries.remove(item.id);
       await (db.update(
         db.savedItemsTable,
       )..where((t) => t.id.equals(item.id))).write(
@@ -1510,7 +1531,7 @@ class SavedItemRepository {
           isArchiveRecovered: Value(item.isArchiveRecovered),
         ),
       );
-      return (success: false, error: e.toString());
+      return (success: false, error: e.toString(), willRetry: false);
     }
   }
 

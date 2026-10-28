@@ -195,7 +195,7 @@ class CommentCard extends ConsumerWidget {
                     )
                   else if (item.enrichmentStatus == EnrichmentStatus.slugOnly)
                     Text(
-                      'Comment body will be downloaded during metadata enrichment.',
+                      'Comment body will be downloaded during metadata sync.',
                       style: TextStyle(
                         fontSize: 12,
                         fontStyle: FontStyle.italic,

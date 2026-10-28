@@ -484,7 +484,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     }
   }
 
-  Future<({bool success, String? error})> enrichItem(SavedItem item) async {
+  Future<({bool success, String? error, bool willRetry})> enrichItem(SavedItem item) async {
     _localMutationsInProgress++;
     try {
       final result = await ref
@@ -538,7 +538,7 @@ class SavedViewModel extends Notifier<void> {
   Future<void> updateItemNote(String id, String? note) =>
       _feedNotifier.updateItemNote(id, note);
 
-  Future<({bool success, String? error})> enrichItem(SavedItem item) =>
+  Future<({bool success, String? error, bool willRetry})> enrichItem(SavedItem item) =>
       _feedNotifier.enrichItem(item);
 
   void clearFeed() => _feedNotifier.clearFeed();

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/data/services/foreground_enrichment_service.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/shell/app_shell.dart';
 import 'package:savedex/theme/app_theme.dart';
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  ForegroundEnrichmentService.initCommunicationPort();
   final prefs = await SharedPreferences.getInstance();
   runApp(
     ProviderScope(
