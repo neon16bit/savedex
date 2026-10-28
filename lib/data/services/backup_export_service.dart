@@ -26,12 +26,14 @@ class SavedexBackupPayload {
   final DateTime? exportedAt;
   final List<SavedItemsTableCompanion> items;
   final Map<String, List<SavedexCollectionBackup>> itemCollections;
+  final List<SubredditsTableCompanion> subreddits;
 
   const SavedexBackupPayload({
     required this.version,
     this.exportedAt,
     required this.items,
     required this.itemCollections,
+    this.subreddits = const [],
   });
 }
 
@@ -105,8 +107,11 @@ class BackupExportService {
   }
 
   // create compressed .savedex backup
-  Uint8List createBackup(List<SavedItem> items) {
-    final payload = _buildJsonPayload(items);
+  Uint8List createBackup(
+    List<SavedItem> items, {
+    List<SubredditEntry>? subreddits,
+  }) {
+    final payload = _buildJsonPayload(items, subreddits: subreddits);
     final utf8Bytes = json.fuse(utf8).encode(payload);
     final compressedBytes = gzip.encode(utf8Bytes);
     return compressedBytes is Uint8List
@@ -115,12 +120,19 @@ class BackupExportService {
   }
 
   // exports saved items in json // still no jdaughter :(
-  String exportToJson(List<SavedItem> items) {
-    return _buildJsonString(items, pretty: true);
+  String exportToJson(
+    List<SavedItem> items, {
+    List<SubredditEntry>? subreddits,
+  }) {
+    return _buildJsonString(items, subreddits: subreddits, pretty: true);
   }
 
-  Uint8List exportToJsonBytes(List<SavedItem> items, {bool pretty = true}) {
-    final payload = _buildJsonPayload(items);
+  Uint8List exportToJsonBytes(
+    List<SavedItem> items, {
+    List<SubredditEntry>? subreddits,
+    bool pretty = true,
+  }) {
+    final payload = _buildJsonPayload(items, subreddits: subreddits);
     if (pretty) {
       const encoder = JsonEncoder.withIndent('  ');
       final jsonString = encoder.convert(payload);
@@ -278,11 +290,34 @@ class BackupExportService {
       }
     }
 
+    final rawSubreddits = decoded['subreddits'] as List<dynamic>? ?? [];
+    final List<SubredditsTableCompanion> subreddits = [];
+    for (final raw in rawSubreddits) {
+      if (raw is! Map<String, dynamic>) continue;
+      final name = (raw['name'] as String?)?.trim().toLowerCase();
+      if (name == null || name.isEmpty) continue;
+      final isNsfw = raw['isNsfw'] as bool?;
+      final iconUrl = raw['iconUrl'] as String?;
+      final lastCheckedStr = raw['lastChecked'] as String?;
+      final lastChecked = lastCheckedStr != null
+          ? DateTime.tryParse(lastCheckedStr)
+          : null;
+      subreddits.add(
+        SubredditsTableCompanion(
+          name: Value(name),
+          isNsfw: Value(isNsfw),
+          iconUrl: Value(iconUrl),
+          lastChecked: Value(lastChecked),
+        ),
+      );
+    }
+
     return SavedexBackupPayload(
       version: version,
       exportedAt: exportedAt,
       items: companions,
       itemCollections: itemCollections,
+      subreddits: subreddits,
     );
   }
 
@@ -574,7 +609,10 @@ class BackupExportService {
     );
   }
 
-  Map<String, dynamic> _buildJsonPayload(List<SavedItem> items) {
+  Map<String, dynamic> _buildJsonPayload(
+    List<SavedItem> items, {
+    List<SubredditEntry>? subreddits,
+  }) {
     final list = items.map((item) {
       return {
         'id': item.id,
@@ -619,7 +657,7 @@ class BackupExportService {
       };
     }).toList();
 
-    return {
+    final payload = <String, dynamic>{
       'app': 'savedex',
       'version': 1,
       'type': 'backup',
@@ -627,10 +665,29 @@ class BackupExportService {
       'itemCount': items.length,
       'items': list,
     };
+
+    if (subreddits != null && subreddits.isNotEmpty) {
+      payload['subreddits'] = subreddits
+          .map(
+            (s) => {
+              'name': s.name,
+              'isNsfw': s.isNsfw,
+              'iconUrl': s.iconUrl,
+              'lastChecked': s.lastChecked?.toUtc().toIso8601String(),
+            },
+          )
+          .toList();
+    }
+
+    return payload;
   }
 
-  String _buildJsonString(List<SavedItem> items, {required bool pretty}) {
-    final payload = _buildJsonPayload(items);
+  String _buildJsonString(
+    List<SavedItem> items, {
+    List<SubredditEntry>? subreddits,
+    required bool pretty,
+  }) {
+    final payload = _buildJsonPayload(items, subreddits: subreddits);
     if (pretty) {
       const encoder = JsonEncoder.withIndent('  ');
       return encoder.convert(payload);

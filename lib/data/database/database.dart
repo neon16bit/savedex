@@ -8,13 +8,20 @@ import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/tables/collections_table.dart';
 import 'package:savedex/data/database/tables/saved_items_table.dart';
+import 'package:savedex/data/database/tables/subreddits_table.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 part 'database.g.dart';
 
 @DriftDatabase(
-  tables: [SavedItemsTable, CollectionsTable, ItemCollectionsTable],
+  tables: [
+    SavedItemsTable,
+    CollectionsTable,
+    ItemCollectionsTable,
+    SubredditsTable,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase._([QueryExecutor? e]) : super(e ?? _openConnection());
@@ -41,7 +48,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -83,6 +90,9 @@ class AppDatabase extends _$AppDatabase {
           savedItemsTable,
           savedItemsTable.galleryPreviewImages,
         );
+      }
+      if (from < 10) {
+        await m.createTable(subredditsTable);
       }
     },
     beforeOpen: (details) async {
@@ -784,29 +794,140 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  Future<List<(String, int)>> getSubredditsWithCounts() async {
+  Future<Map<String, SubredditEntry>> getAllSubredditsMap() async {
+    final entries = await select(subredditsTable).get();
+    return {for (final e in entries) e.name.toLowerCase(): e};
+  }
+
+  Future<List<SubredditEntry>> getAllSubreddits() async {
+    return select(subredditsTable).get();
+  }
+
+  Future<void> upsertSubreddit(SubredditsTableCompanion entry) async {
+    await into(subredditsTable).insertOnConflictUpdate(entry);
+  }
+
+  Future<void> upsertSubredditsBatch(
+    List<SubredditsTableCompanion> entries,
+  ) async {
+    if (entries.isEmpty) return;
+    const chunkSize = 100;
+    for (var i = 0; i < entries.length; i += chunkSize) {
+      final chunk = entries.sublist(
+        i,
+        i + chunkSize > entries.length ? entries.length : i + chunkSize,
+      );
+      await batch((batch) {
+        batch.insertAllOnConflictUpdate(subredditsTable, chunk);
+      });
+    }
+  }
+
+  Future<List<SubredditInfo>> getSubredditsWithCounts() async {
     final countExp = savedItemsTable.id.count();
+    final nsfwCountExp = const CustomExpression<int>(
+      'SUM(CASE WHEN saved_items_table.is_nsfw = 1 THEN 1 ELSE 0 END)',
+    );
+    final cleanSubExp = const CustomExpression<String>(
+      "LOWER(CASE WHEN saved_items_table.subreddit LIKE 'r/%' OR saved_items_table.subreddit LIKE 'u/%' THEN SUBSTR(saved_items_table.subreddit, 3) ELSE saved_items_table.subreddit END)",
+    );
+
     final query = selectOnly(savedItemsTable)
-      ..addColumns([savedItemsTable.subreddit, countExp])
+      ..join([
+        leftOuterJoin(
+          subredditsTable,
+          subredditsTable.name.equalsExp(cleanSubExp),
+        ),
+      ])
+      ..addColumns([
+        savedItemsTable.subreddit,
+        countExp,
+        nsfwCountExp,
+        subredditsTable.isNsfw,
+        subredditsTable.iconUrl,
+      ])
       ..groupBy([savedItemsTable.subreddit])
       ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
 
     final rows = await query.get();
     return rows.map((row) {
-      return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
+      final name = row.read(savedItemsTable.subreddit)!;
+      final count = row.read(countExp) ?? 0;
+      final nsfwCount = row.read(nsfwCountExp) ?? 0;
+      final verifiedNsfw = row.read(subredditsTable.isNsfw);
+      final iconUrl = row.read(subredditsTable.iconUrl);
+
+      final bool isNsfw;
+      final bool isVerified;
+      if (verifiedNsfw != null) {
+        isNsfw = verifiedNsfw;
+        isVerified = true;
+      } else {
+        isNsfw = count > 0 && nsfwCount == count;
+        isVerified = false;
+      }
+
+      return SubredditInfo(
+        name: name,
+        count: count,
+        isNsfw: isNsfw,
+        iconUrl: iconUrl,
+        isVerified: isVerified,
+      );
     }).toList();
   }
 
-  Stream<List<(String, int)>> watchSubredditsWithCounts() {
+  Stream<List<SubredditInfo>> watchSubredditsWithCounts() {
     final countExp = savedItemsTable.id.count();
+    final nsfwCountExp = const CustomExpression<int>(
+      'SUM(CASE WHEN saved_items_table.is_nsfw = 1 THEN 1 ELSE 0 END)',
+    );
+    final cleanSubExp = const CustomExpression<String>(
+      "LOWER(CASE WHEN saved_items_table.subreddit LIKE 'r/%' OR saved_items_table.subreddit LIKE 'u/%' THEN SUBSTR(saved_items_table.subreddit, 3) ELSE saved_items_table.subreddit END)",
+    );
+
     final query = selectOnly(savedItemsTable)
-      ..addColumns([savedItemsTable.subreddit, countExp])
+      ..join([
+        leftOuterJoin(
+          subredditsTable,
+          subredditsTable.name.equalsExp(cleanSubExp),
+        ),
+      ])
+      ..addColumns([
+        savedItemsTable.subreddit,
+        countExp,
+        nsfwCountExp,
+        subredditsTable.isNsfw,
+        subredditsTable.iconUrl,
+      ])
       ..groupBy([savedItemsTable.subreddit])
       ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
 
     return query.watch().map((rows) {
       return rows.map((row) {
-        return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
+        final name = row.read(savedItemsTable.subreddit)!;
+        final count = row.read(countExp) ?? 0;
+        final nsfwCount = row.read(nsfwCountExp) ?? 0;
+        final verifiedNsfw = row.read(subredditsTable.isNsfw);
+        final iconUrl = row.read(subredditsTable.iconUrl);
+
+        final bool isNsfw;
+        final bool isVerified;
+        if (verifiedNsfw != null) {
+          isNsfw = verifiedNsfw;
+          isVerified = true;
+        } else {
+          isNsfw = count > 0 && nsfwCount == count;
+          isVerified = false;
+        }
+
+        return SubredditInfo(
+          name: name,
+          count: count,
+          isNsfw: isNsfw,
+          iconUrl: iconUrl,
+          isVerified: isVerified,
+        );
       }).toList();
     });
   }

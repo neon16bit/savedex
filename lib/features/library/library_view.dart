@@ -1,7 +1,9 @@
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:savedex/features/library/library_viewmodel.dart';
 import 'package:savedex/features/library/scoped_feed_view.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
@@ -348,9 +350,40 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
   }
 
+  String _getSubredditInitial(String name) {
+    final clean = name.replaceFirst(RegExp(r'^[ru][/_-]'), '').trim();
+    if (clean.isEmpty) return 'R';
+    return clean[0].toUpperCase();
+  }
+
+  Widget _buildSubredditPlaceholder(
+    ColorScheme colorScheme,
+    bool isUser,
+    String subName,
+  ) {
+    if (isUser) {
+      return Icon(
+        Icons.person_rounded,
+        color: colorScheme.onSecondaryContainer,
+        size: 20,
+      );
+    }
+    return Center(
+      child: Text(
+        _getSubredditInitial(subName),
+        style: TextStyle(
+          fontSize: 16.5,
+          fontWeight: FontWeight.w800,
+          color: colorScheme.primary,
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+  }
+
   Widget _buildSubredditsTab(
     BuildContext context,
-    AsyncValue<List<(String, int)>> subredditsAsync,
+    AsyncValue<List<SubredditInfo>> subredditsAsync,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -482,24 +515,73 @@ class _LibraryViewState extends ConsumerState<LibraryView>
                         color: isUser
                             ? colorScheme.secondaryContainer
                             : colorScheme.primaryContainer.withValues(
-                                alpha: 0.45,
+                                alpha: 0.5,
                               ),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(
-                        isUser ? Icons.person_rounded : Icons.tag_rounded,
-                        color: isUser
-                            ? colorScheme.onSecondaryContainer
-                            : colorScheme.primary,
-                        size: 20,
-                      ),
+                      child: item.iconUrl != null && item.iconUrl!.isNotEmpty
+                          ? ExtendedImage.network(
+                              item.iconUrl!,
+                              width: 40,
+                              height: 40,
+                              fit: BoxFit.cover,
+                              shape: BoxShape.circle,
+                              cache: true,
+                              loadStateChanged: (state) {
+                                if (state.extendedImageLoadState ==
+                                    LoadState.completed) {
+                                  return null;
+                                }
+                                return _buildSubredditPlaceholder(
+                                  colorScheme,
+                                  isUser,
+                                  subName,
+                                );
+                              },
+                            )
+                          : _buildSubredditPlaceholder(
+                              colorScheme,
+                              isUser,
+                              subName,
+                            ),
                     ),
-                    title: Text(
-                      SavedItem.formatSubreddit(subName),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
+                    title: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            SavedItem.formatSubreddit(subName),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        if (item.isNsfw) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade700,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'NSFW',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.3,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,

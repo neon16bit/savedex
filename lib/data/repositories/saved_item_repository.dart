@@ -7,6 +7,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/models/enriched_reddit_data.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/arctic_shift_api_service.dart';
@@ -756,6 +757,35 @@ class SavedItemRepository {
               );
             });
           }
+        }
+      }
+
+      if (payload.subreddits.isNotEmpty) {
+        final existingMap = await db.getAllSubredditsMap();
+        final toUpsert = <SubredditsTableCompanion>[];
+
+        for (final companion in payload.subreddits) {
+          final name = companion.name.present
+              ? companion.name.value.toLowerCase()
+              : '';
+          if (name.isEmpty) continue;
+          final existing = existingMap[name];
+          if (existing == null) {
+            toUpsert.add(companion);
+          } else {
+            final backupHasInfo =
+                (companion.isNsfw.present && companion.isNsfw.value != null) ||
+                (companion.iconUrl.present && companion.iconUrl.value != null);
+            final localHasInfo =
+                existing.isNsfw != null || existing.iconUrl != null;
+            if (backupHasInfo || !localHasInfo) {
+              toUpsert.add(companion);
+            }
+          }
+        }
+
+        if (toUpsert.isNotEmpty) {
+          await db.upsertSubredditsBatch(toUpsert);
         }
       }
     });
@@ -1529,11 +1559,80 @@ class SavedItemRepository {
 
   Stream<int> watchPendingEnrichmentCount() => db.watchPendingEnrichmentCount();
 
-  Future<List<(String, int)>> getSubredditsWithCounts() =>
+  Future<List<SubredditInfo>> getSubredditsWithCounts() =>
       db.getSubredditsWithCounts();
 
-  Stream<List<(String, int)>> watchSubredditsWithCounts() =>
+  Stream<List<SubredditInfo>> watchSubredditsWithCounts() =>
       db.watchSubredditsWithCounts();
+
+  final Set<String> _inFlightSubredditEnrichments = {};
+
+  Future<void> saveSubredditMetadata(
+    String name, {
+    required bool isNsfw,
+    String? iconUrl,
+  }) async {
+    final clean = name.trim().toLowerCase().replaceFirst(RegExp(r'^[ru]/'), '');
+    if (clean.isEmpty) return;
+
+    await db.upsertSubreddit(
+      SubredditsTableCompanion(
+        name: Value(clean),
+        isNsfw: Value(isNsfw),
+        iconUrl: Value(iconUrl),
+        lastChecked: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> enrichSubreddits(List<String> names) async {
+    final cleanNames = names
+        .map((n) => n.trim().toLowerCase().replaceFirst(RegExp(r'^[ru]/'), ''))
+        .where(
+          (n) => n.isNotEmpty && !_inFlightSubredditEnrichments.contains(n),
+        )
+        .toSet();
+
+    if (cleanNames.isEmpty) return;
+
+    final cached = await db.getAllSubredditsMap();
+    final toFetch = cleanNames.where((n) {
+      final entry = cached[n];
+      return entry == null || entry.isNsfw == null;
+    }).toList();
+
+    if (toFetch.isEmpty) return;
+
+    _inFlightSubredditEnrichments.addAll(toFetch);
+
+    try {
+      for (final name in toFetch) {
+        try {
+          final about = await _redditApi.fetchSubredditAbout(name);
+          if (about != null) {
+            await saveSubredditMetadata(
+              name,
+              isNsfw: about.isNsfw,
+              iconUrl: about.iconUrl,
+            );
+          } else {
+            await db.upsertSubreddit(
+              SubredditsTableCompanion(
+                name: Value(name),
+                lastChecked: Value(DateTime.now()),
+              ),
+            );
+          }
+        } catch (_) {}
+        // Pacing: 250ms between requests
+        await Future.delayed(const Duration(milliseconds: 250));
+      }
+    } finally {
+      _inFlightSubredditEnrichments.removeAll(toFetch);
+    }
+  }
+
+  Future<List<SubredditEntry>> getAllSubreddits() => db.getAllSubreddits();
 
   Future<List<(String, int)>> getAuthorsWithCounts() =>
       db.getAuthorsWithCounts();

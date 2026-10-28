@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/models/subreddit_info.dart';
 
 enum SubredditSortOption {
   mostSaved('Most Saved'),
@@ -17,7 +18,7 @@ final collectionsWithCountsProvider = StreamProvider<List<Collection>>((ref) {
   return repo.watchCollectionsWithCounts();
 });
 
-final rawSubredditsWithCountsProvider = StreamProvider<List<(String, int)>>((
+final rawSubredditsWithCountsProvider = StreamProvider<List<SubredditInfo>>((
   ref,
 ) {
   final repo = ref.watch(savedItemRepositoryProvider);
@@ -49,7 +50,7 @@ final subredditSortOptionProvider =
       SubredditSortNotifier.new,
     );
 
-final filteredSubredditsProvider = Provider<AsyncValue<List<(String, int)>>>((
+final filteredSubredditsProvider = Provider<AsyncValue<List<SubredditInfo>>>((
   ref,
 ) {
   final rawAsync = ref.watch(rawSubredditsWithCountsProvider);
@@ -57,6 +58,16 @@ final filteredSubredditsProvider = Provider<AsyncValue<List<(String, int)>>>((
   final sort = ref.watch(subredditSortOptionProvider);
 
   return rawAsync.whenData((subreddits) {
+    final unverified = subreddits
+        .where((s) => !s.isVerified)
+        .map((s) => s.name)
+        .toList();
+    if (unverified.isNotEmpty) {
+      Future.microtask(() {
+        ref.read(savedItemRepositoryProvider).enrichSubreddits(unverified);
+      });
+    }
+
     var filtered = subreddits;
     if (query.isNotEmpty) {
       filtered = filtered.where((sub) {

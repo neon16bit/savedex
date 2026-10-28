@@ -218,8 +218,9 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         return null;
       }
 
+      final subreddits = await repo.getAllSubreddits();
       final service = ref.read(backupExportServiceProvider);
-      final bytes = service.createBackup(allItems);
+      final bytes = service.createBackup(allItems, subreddits: subreddits);
 
       final now = DateTime.now();
       final dateStr =
@@ -600,9 +601,10 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         return null;
       }
 
+      final subreddits = asJson ? await repo.getAllSubreddits() : null;
       final service = ref.read(backupExportServiceProvider);
       final Uint8List bytes = asJson
-          ? service.exportToJsonBytes(allItems)
+          ? service.exportToJsonBytes(allItems, subreddits: subreddits)
           : service.exportToCsvBytes(allItems);
 
       final now = DateTime.now();

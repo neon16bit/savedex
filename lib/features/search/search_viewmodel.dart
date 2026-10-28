@@ -2,13 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/data/models/subreddit_info.dart';
 
 final searchFilterViewModelProvider =
     NotifierProvider<SearchFilterViewModel, FilterCriteria>(() {
       return SearchFilterViewModel();
     });
 
-final availableSubredditsProvider = FutureProvider<List<(String, int)>>((
+final availableSubredditsProvider = FutureProvider<List<SubredditInfo>>((
   ref,
 ) async {
   final repo = ref.watch(savedItemRepositoryProvider);

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:savedex/core/constants/constants.dart';
+import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 
@@ -309,6 +310,45 @@ void main() {
         () => service.parseBackup(utf8.encode(randomJson)),
         throwsA(isA<FormatException>()),
       );
+    });
+
+    test('createBackup and parseBackup preserves subreddit metadata roundtrip', () {
+      final subreddits = [
+        SubredditEntry(
+          name: 'flutterdev',
+          isNsfw: false,
+          iconUrl: 'https://styles.redditmedia.com/t5_2s3q3/styles/communityIcon_1.png',
+          lastChecked: DateTime.utc(2026, 1, 1),
+        ),
+        SubredditEntry(
+          name: 'nsfw_sub',
+          isNsfw: true,
+          iconUrl: null,
+          lastChecked: DateTime.utc(2026, 2, 2),
+        ),
+      ];
+
+      final bytes = service.createBackup(sampleItems, subreddits: subreddits);
+      final payload = service.parseBackup(bytes);
+
+      expect(payload.subreddits, hasLength(2));
+      final flutterDev = payload.subreddits.firstWhere(
+        (s) => s.name.value == 'flutterdev',
+      );
+      expect(flutterDev.isNsfw.value, isFalse);
+      expect(
+        flutterDev.iconUrl.value,
+        equals(
+          'https://styles.redditmedia.com/t5_2s3q3/styles/communityIcon_1.png',
+        ),
+      );
+      expect(flutterDev.lastChecked.value, equals(DateTime.utc(2026, 1, 1)));
+
+      final nsfwSub = payload.subreddits.firstWhere(
+        (s) => s.name.value == 'nsfw_sub',
+      );
+      expect(nsfwSub.isNsfw.value, isTrue);
+      expect(nsfwSub.iconUrl.value, isNull);
     });
   });
 }

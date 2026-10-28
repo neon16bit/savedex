@@ -1062,4 +1062,71 @@ class RedditApiService {
       isSuccess: true,
     );
   }
+
+  Future<({bool isNsfw, String? iconUrl})?> fetchSubredditAbout(
+    String subredditName,
+  ) async {
+    final clean = subredditName.trim().toLowerCase().replaceFirst(
+      RegExp(r'^[ru]/'),
+      '',
+    );
+    if (clean.isEmpty) return null;
+
+    final isUser = clean.startsWith('u_');
+    final String path = isUser
+        ? 'user/${clean.substring(2)}/about'
+        : 'r/$clean/about';
+
+    http.Response? response;
+
+    if (hasUserOAuth || hasOAuthCredentials) {
+      final authResult = await _getWithAuth(
+        Uri.parse('https://oauth.reddit.com/$path?raw_json=1'),
+      );
+      response = authResult.response;
+    }
+
+    if (response == null || response.statusCode != 200) {
+      try {
+        final publicUri = Uri.parse(
+          'https://www.reddit.com/$path.json?raw_json=1',
+        );
+        response = await _client
+            .get(
+              publicUri,
+              headers: {
+                if (_effectiveUserAgent.isNotEmpty)
+                  'User-Agent': _effectiveUserAgent,
+              },
+            )
+            .timeout(const Duration(seconds: 12));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    if (response.statusCode == 200) {
+      try {
+        final json = jsonDecode(response.body);
+        if (json is Map && json['data'] is Map) {
+          final data = json['data'] as Map;
+          final bool isNsfw = (data['over18'] as bool?) ?? false;
+          String? icon =
+              (data['community_icon'] as String?) ??
+              (data['icon_img'] as String?);
+          if (icon != null) {
+            icon = icon.replaceAll('&amp;', '&').trim();
+            if (icon.isEmpty) icon = null;
+          }
+          return (isNsfw: isNsfw, iconUrl: icon);
+        }
+      } catch (_) {}
+    } else if (response.statusCode == 403) {
+      if (response.body.contains('quarantined')) {
+        return (isNsfw: true, iconUrl: null);
+      }
+    }
+
+    return null;
+  }
 }

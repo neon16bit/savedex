@@ -2200,6 +2200,336 @@ class ItemCollectionsTableCompanion
   }
 }
 
+class $SubredditsTableTable extends SubredditsTable
+    with TableInfo<$SubredditsTableTable, SubredditEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SubredditsTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isNsfwMeta = const VerificationMeta('isNsfw');
+  @override
+  late final GeneratedColumn<bool> isNsfw = GeneratedColumn<bool>(
+    'is_nsfw',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_nsfw" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _iconUrlMeta = const VerificationMeta(
+    'iconUrl',
+  );
+  @override
+  late final GeneratedColumn<String> iconUrl = GeneratedColumn<String>(
+    'icon_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastCheckedMeta = const VerificationMeta(
+    'lastChecked',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastChecked = GeneratedColumn<DateTime>(
+    'last_checked',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [name, isNsfw, iconUrl, lastChecked];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'subreddits_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SubredditEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('is_nsfw')) {
+      context.handle(
+        _isNsfwMeta,
+        isNsfw.isAcceptableOrUnknown(data['is_nsfw']!, _isNsfwMeta),
+      );
+    }
+    if (data.containsKey('icon_url')) {
+      context.handle(
+        _iconUrlMeta,
+        iconUrl.isAcceptableOrUnknown(data['icon_url']!, _iconUrlMeta),
+      );
+    }
+    if (data.containsKey('last_checked')) {
+      context.handle(
+        _lastCheckedMeta,
+        lastChecked.isAcceptableOrUnknown(
+          data['last_checked']!,
+          _lastCheckedMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {name};
+  @override
+  SubredditEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SubredditEntry(
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      isNsfw: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_nsfw'],
+      ),
+      iconUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}icon_url'],
+      ),
+      lastChecked: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_checked'],
+      ),
+    );
+  }
+
+  @override
+  $SubredditsTableTable createAlias(String alias) {
+    return $SubredditsTableTable(attachedDatabase, alias);
+  }
+}
+
+class SubredditEntry extends DataClass implements Insertable<SubredditEntry> {
+  /// Normalized lowercase subreddit name without 'r/' prefix (e.g. "askreddit").
+  final String name;
+
+  /// Whether the subreddit is marked 18+ (over18) on Reddit.
+  /// null = unverified, true/false = verified.
+  final bool? isNsfw;
+
+  /// Community icon / avatar URL from Reddit.
+  final String? iconUrl;
+
+  /// When this subreddit was last checked against the Reddit API.
+  final DateTime? lastChecked;
+  const SubredditEntry({
+    required this.name,
+    this.isNsfw,
+    this.iconUrl,
+    this.lastChecked,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['name'] = Variable<String>(name);
+    if (!nullToAbsent || isNsfw != null) {
+      map['is_nsfw'] = Variable<bool>(isNsfw);
+    }
+    if (!nullToAbsent || iconUrl != null) {
+      map['icon_url'] = Variable<String>(iconUrl);
+    }
+    if (!nullToAbsent || lastChecked != null) {
+      map['last_checked'] = Variable<DateTime>(lastChecked);
+    }
+    return map;
+  }
+
+  SubredditsTableCompanion toCompanion(bool nullToAbsent) {
+    return SubredditsTableCompanion(
+      name: Value(name),
+      isNsfw: isNsfw == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isNsfw),
+      iconUrl: iconUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(iconUrl),
+      lastChecked: lastChecked == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastChecked),
+    );
+  }
+
+  factory SubredditEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SubredditEntry(
+      name: serializer.fromJson<String>(json['name']),
+      isNsfw: serializer.fromJson<bool?>(json['isNsfw']),
+      iconUrl: serializer.fromJson<String?>(json['iconUrl']),
+      lastChecked: serializer.fromJson<DateTime?>(json['lastChecked']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'name': serializer.toJson<String>(name),
+      'isNsfw': serializer.toJson<bool?>(isNsfw),
+      'iconUrl': serializer.toJson<String?>(iconUrl),
+      'lastChecked': serializer.toJson<DateTime?>(lastChecked),
+    };
+  }
+
+  SubredditEntry copyWith({
+    String? name,
+    Value<bool?> isNsfw = const Value.absent(),
+    Value<String?> iconUrl = const Value.absent(),
+    Value<DateTime?> lastChecked = const Value.absent(),
+  }) => SubredditEntry(
+    name: name ?? this.name,
+    isNsfw: isNsfw.present ? isNsfw.value : this.isNsfw,
+    iconUrl: iconUrl.present ? iconUrl.value : this.iconUrl,
+    lastChecked: lastChecked.present ? lastChecked.value : this.lastChecked,
+  );
+  SubredditEntry copyWithCompanion(SubredditsTableCompanion data) {
+    return SubredditEntry(
+      name: data.name.present ? data.name.value : this.name,
+      isNsfw: data.isNsfw.present ? data.isNsfw.value : this.isNsfw,
+      iconUrl: data.iconUrl.present ? data.iconUrl.value : this.iconUrl,
+      lastChecked: data.lastChecked.present
+          ? data.lastChecked.value
+          : this.lastChecked,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SubredditEntry(')
+          ..write('name: $name, ')
+          ..write('isNsfw: $isNsfw, ')
+          ..write('iconUrl: $iconUrl, ')
+          ..write('lastChecked: $lastChecked')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(name, isNsfw, iconUrl, lastChecked);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SubredditEntry &&
+          other.name == this.name &&
+          other.isNsfw == this.isNsfw &&
+          other.iconUrl == this.iconUrl &&
+          other.lastChecked == this.lastChecked);
+}
+
+class SubredditsTableCompanion extends UpdateCompanion<SubredditEntry> {
+  final Value<String> name;
+  final Value<bool?> isNsfw;
+  final Value<String?> iconUrl;
+  final Value<DateTime?> lastChecked;
+  final Value<int> rowid;
+  const SubredditsTableCompanion({
+    this.name = const Value.absent(),
+    this.isNsfw = const Value.absent(),
+    this.iconUrl = const Value.absent(),
+    this.lastChecked = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SubredditsTableCompanion.insert({
+    required String name,
+    this.isNsfw = const Value.absent(),
+    this.iconUrl = const Value.absent(),
+    this.lastChecked = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : name = Value(name);
+  static Insertable<SubredditEntry> custom({
+    Expression<String>? name,
+    Expression<bool>? isNsfw,
+    Expression<String>? iconUrl,
+    Expression<DateTime>? lastChecked,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (name != null) 'name': name,
+      if (isNsfw != null) 'is_nsfw': isNsfw,
+      if (iconUrl != null) 'icon_url': iconUrl,
+      if (lastChecked != null) 'last_checked': lastChecked,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SubredditsTableCompanion copyWith({
+    Value<String>? name,
+    Value<bool?>? isNsfw,
+    Value<String?>? iconUrl,
+    Value<DateTime?>? lastChecked,
+    Value<int>? rowid,
+  }) {
+    return SubredditsTableCompanion(
+      name: name ?? this.name,
+      isNsfw: isNsfw ?? this.isNsfw,
+      iconUrl: iconUrl ?? this.iconUrl,
+      lastChecked: lastChecked ?? this.lastChecked,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (isNsfw.present) {
+      map['is_nsfw'] = Variable<bool>(isNsfw.value);
+    }
+    if (iconUrl.present) {
+      map['icon_url'] = Variable<String>(iconUrl.value);
+    }
+    if (lastChecked.present) {
+      map['last_checked'] = Variable<DateTime>(lastChecked.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SubredditsTableCompanion(')
+          ..write('name: $name, ')
+          ..write('isNsfw: $isNsfw, ')
+          ..write('iconUrl: $iconUrl, ')
+          ..write('lastChecked: $lastChecked, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2211,6 +2541,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $ItemCollectionsTableTable itemCollectionsTable =
       $ItemCollectionsTableTable(this);
+  late final $SubredditsTableTable subredditsTable = $SubredditsTableTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2219,6 +2552,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     savedItemsTable,
     collectionsTable,
     itemCollectionsTable,
+    subredditsTable,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3728,6 +4062,204 @@ typedef $$ItemCollectionsTableTableProcessedTableManager =
       ItemCollectionEntry,
       PrefetchHooks Function({bool itemId, bool collectionId})
     >;
+typedef $$SubredditsTableTableCreateCompanionBuilder =
+    SubredditsTableCompanion Function({
+      required String name,
+      Value<bool?> isNsfw,
+      Value<String?> iconUrl,
+      Value<DateTime?> lastChecked,
+      Value<int> rowid,
+    });
+typedef $$SubredditsTableTableUpdateCompanionBuilder =
+    SubredditsTableCompanion Function({
+      Value<String> name,
+      Value<bool?> isNsfw,
+      Value<String?> iconUrl,
+      Value<DateTime?> lastChecked,
+      Value<int> rowid,
+    });
+
+class $$SubredditsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SubredditsTableTable> {
+  $$SubredditsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isNsfw => $composableBuilder(
+    column: $table.isNsfw,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get iconUrl => $composableBuilder(
+    column: $table.iconUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastChecked => $composableBuilder(
+    column: $table.lastChecked,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SubredditsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SubredditsTableTable> {
+  $$SubredditsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isNsfw => $composableBuilder(
+    column: $table.isNsfw,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get iconUrl => $composableBuilder(
+    column: $table.iconUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastChecked => $composableBuilder(
+    column: $table.lastChecked,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SubredditsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SubredditsTableTable> {
+  $$SubredditsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isNsfw =>
+      $composableBuilder(column: $table.isNsfw, builder: (column) => column);
+
+  GeneratedColumn<String> get iconUrl =>
+      $composableBuilder(column: $table.iconUrl, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastChecked => $composableBuilder(
+    column: $table.lastChecked,
+    builder: (column) => column,
+  );
+}
+
+class $$SubredditsTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SubredditsTableTable,
+          SubredditEntry,
+          $$SubredditsTableTableFilterComposer,
+          $$SubredditsTableTableOrderingComposer,
+          $$SubredditsTableTableAnnotationComposer,
+          $$SubredditsTableTableCreateCompanionBuilder,
+          $$SubredditsTableTableUpdateCompanionBuilder,
+          (
+            SubredditEntry,
+            BaseReferences<
+              _$AppDatabase,
+              $SubredditsTableTable,
+              SubredditEntry
+            >,
+          ),
+          SubredditEntry,
+          PrefetchHooks Function()
+        > {
+  $$SubredditsTableTableTableManager(
+    _$AppDatabase db,
+    $SubredditsTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SubredditsTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SubredditsTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SubredditsTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> name = const Value.absent(),
+                Value<bool?> isNsfw = const Value.absent(),
+                Value<String?> iconUrl = const Value.absent(),
+                Value<DateTime?> lastChecked = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SubredditsTableCompanion(
+                name: name,
+                isNsfw: isNsfw,
+                iconUrl: iconUrl,
+                lastChecked: lastChecked,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String name,
+                Value<bool?> isNsfw = const Value.absent(),
+                Value<String?> iconUrl = const Value.absent(),
+                Value<DateTime?> lastChecked = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SubredditsTableCompanion.insert(
+                name: name,
+                isNsfw: isNsfw,
+                iconUrl: iconUrl,
+                lastChecked: lastChecked,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SubredditsTableTable, SubredditEntry>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $SubredditsTableTable,
+                    SubredditEntry
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SubredditsTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SubredditsTableTable,
+      SubredditEntry,
+      $$SubredditsTableTableFilterComposer,
+      $$SubredditsTableTableOrderingComposer,
+      $$SubredditsTableTableAnnotationComposer,
+      $$SubredditsTableTableCreateCompanionBuilder,
+      $$SubredditsTableTableUpdateCompanionBuilder,
+      (
+        SubredditEntry,
+        BaseReferences<_$AppDatabase, $SubredditsTableTable, SubredditEntry>,
+      ),
+      SubredditEntry,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3738,4 +4270,6 @@ class $AppDatabaseManager {
       $$CollectionsTableTableTableManager(_db, _db.collectionsTable);
   $$ItemCollectionsTableTableTableManager get itemCollectionsTable =>
       $$ItemCollectionsTableTableTableManager(_db, _db.itemCollectionsTable);
+  $$SubredditsTableTableTableManager get subredditsTable =>
+      $$SubredditsTableTableTableManager(_db, _db.subredditsTable);
 }
