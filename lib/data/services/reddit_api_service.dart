@@ -1110,10 +1110,19 @@ class RedditApiService {
         final json = jsonDecode(response.body);
         if (json is Map && json['data'] is Map) {
           final data = json['data'] as Map;
-          final bool isNsfw = (data['over18'] as bool?) ?? false;
+          final userSub = data['subreddit'] is Map
+              ? data['subreddit'] as Map
+              : null;
+          final bool isNsfw =
+              (data['over18'] as bool?) ??
+              (userSub?['over_18'] as bool?) ??
+              (userSub?['over18'] as bool?) ??
+              false;
           String? icon =
               (data['community_icon'] as String?) ??
-              (data['icon_img'] as String?);
+              (data['icon_img'] as String?) ??
+              (userSub?['community_icon'] as String?) ??
+              (userSub?['icon_img'] as String?);
           if (icon != null) {
             icon = icon.replaceAll('&amp;', '&').trim();
             if (icon.isEmpty) icon = null;

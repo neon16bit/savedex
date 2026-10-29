@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/shared/widgets/collection_picker_sheet.dart';
 
 Future<int?> showCollectionFormDialog(
@@ -86,6 +87,7 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
           _selectedColor,
           description: descVal,
         );
+        ref.read(itemCollectionsOverrideProvider.notifier).clear();
 
         if (mounted) {
           Navigator.of(context).pop(widget.initialCollection!.id);
@@ -115,7 +117,13 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
         }
 
         if (widget.assignItemId != null) {
-          await repo.addToCollection(widget.assignItemId!, id);
+          await ref
+              .read(savedFeedPaginationProvider.notifier)
+              .setItemCollectionMembership(
+                itemId: widget.assignItemId!,
+                collectionId: id,
+                assign: true,
+              );
         }
 
         if (mounted) {

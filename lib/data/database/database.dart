@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -97,6 +98,7 @@ class AppDatabase extends _$AppDatabase {
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
+      await _createIndexes(this);
       await _createFts5(this);
       _ftsInitFuture = Future.value();
     },
@@ -123,16 +125,12 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_order_asc ON saved_items_table (import_order ASC, id ASC);
       ''');
-
-      await db.customStatement('DROP INDEX IF EXISTS idx_saved_date_desc;');
-      await db.customStatement('DROP INDEX IF EXISTS idx_saved_date_asc;');
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_date_desc ON saved_items_table (COALESCE(created_at_utc, 0) DESC, id DESC);
       ''');
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_date_asc ON saved_items_table (COALESCE(created_at_utc, 0) ASC, id ASC);
       ''');
-
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_score_desc ON saved_items_table (score DESC, id DESC);
       ''');
@@ -142,17 +140,20 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_sub_nocase ON saved_items_table (subreddit COLLATE NOCASE, id);
       ''');
-
-      await db.customStatement('DROP INDEX IF EXISTS idx_saved_author_nocase;');
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_author_nocase ON saved_items_table (COALESCE(author, '') COLLATE NOCASE, id);
       ''');
-
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_title_nocase ON saved_items_table (title COLLATE NOCASE, id);
       ''');
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_comments_desc ON saved_items_table (num_comments DESC, id DESC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_enrichment_status ON saved_items_table (enrichment_status, import_order ASC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_flair_nocase ON saved_items_table (post_flair COLLATE NOCASE);
       ''');
     } catch (e, stack) {
       debugPrint('[Database] Create indexes note: $e\n$stack');
@@ -845,6 +846,7 @@ class AppDatabase extends _$AppDatabase {
         nsfwCountExp,
         subredditsTable.isNsfw,
         subredditsTable.iconUrl,
+        subredditsTable.lastChecked,
       ])
       ..groupBy([savedItemsTable.subreddit])
       ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
@@ -856,6 +858,7 @@ class AppDatabase extends _$AppDatabase {
       final nsfwCount = row.read(nsfwCountExp) ?? 0;
       final verifiedNsfw = row.read(subredditsTable.isNsfw);
       final iconUrl = row.read(subredditsTable.iconUrl);
+      final lastChecked = row.read(subredditsTable.lastChecked);
 
       final bool isNsfw;
       final bool isVerified;
@@ -864,7 +867,7 @@ class AppDatabase extends _$AppDatabase {
         isVerified = true;
       } else {
         isNsfw = count > 0 && nsfwCount == count;
-        isVerified = false;
+        isVerified = lastChecked != null;
       }
 
       return SubredditInfo(
@@ -878,58 +881,161 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<SubredditInfo>> watchSubredditsWithCounts() {
-    final countExp = savedItemsTable.id.count();
-    final nsfwCountExp = const CustomExpression<int>(
-      'SUM(CASE WHEN saved_items_table.is_nsfw = 1 THEN 1 ELSE 0 END)',
-    );
-    final cleanSubExp = const CustomExpression<String>(
-      "LOWER(CASE WHEN saved_items_table.subreddit LIKE 'r/%' OR saved_items_table.subreddit LIKE 'u/%' THEN SUBSTR(saved_items_table.subreddit, 3) ELSE saved_items_table.subreddit END)",
-    );
+    late final StreamController<List<SubredditInfo>> controller;
+    StreamSubscription<Set<TableUpdate>>? sub;
+    Timer? debounceTimer;
+    var isFetching = false;
+    var needsRefetch = false;
 
-    final query = selectOnly(savedItemsTable)
-      ..join([
-        leftOuterJoin(
-          subredditsTable,
-          subredditsTable.name.equalsExp(cleanSubExp),
-        ),
-      ])
-      ..addColumns([
-        savedItemsTable.subreddit,
-        countExp,
-        nsfwCountExp,
-        subredditsTable.isNsfw,
-        subredditsTable.iconUrl,
-      ])
-      ..groupBy([savedItemsTable.subreddit])
-      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
-
-    return query.watch().map((rows) {
-      return rows.map((row) {
-        final name = row.read(savedItemsTable.subreddit)!;
-        final count = row.read(countExp) ?? 0;
-        final nsfwCount = row.read(nsfwCountExp) ?? 0;
-        final verifiedNsfw = row.read(subredditsTable.isNsfw);
-        final iconUrl = row.read(subredditsTable.iconUrl);
-
-        final bool isNsfw;
-        final bool isVerified;
-        if (verifiedNsfw != null) {
-          isNsfw = verifiedNsfw;
-          isVerified = true;
-        } else {
-          isNsfw = count > 0 && nsfwCount == count;
-          isVerified = false;
+    Future<void> fetchAndEmit() async {
+      if (isFetching) {
+        needsRefetch = true;
+        return;
+      }
+      isFetching = true;
+      try {
+        do {
+          needsRefetch = false;
+          final data = await getSubredditsWithCounts();
+          if (!controller.isClosed) {
+            controller.add(data);
+          }
+        } while (needsRefetch && !controller.isClosed);
+      } catch (e, st) {
+        if (!controller.isClosed) {
+          controller.addError(e, st);
         }
+      } finally {
+        isFetching = false;
+      }
+    }
 
-        return SubredditInfo(
-          name: name,
-          count: count,
-          isNsfw: isNsfw,
-          iconUrl: iconUrl,
-          isVerified: isVerified,
-        );
-      }).toList();
-    });
+    controller = StreamController<List<SubredditInfo>>(
+      onListen: () {
+        fetchAndEmit();
+        sub =
+            tableUpdates(
+              TableUpdateQuery.onAllTables([savedItemsTable, subredditsTable]),
+            ).listen((updates) {
+              // starring, archiving, note edits, or post metadata updates
+              // emit UpdateKind.update on saved_items_table without changing subreddit counts.
+              // Only re-query when rows are inserted/deleted in saved_items_table
+              // or when subreddits_table is updated
+              final affectsSubredditList = updates.any(
+                (u) =>
+                    u.table == subredditsTable.actualTableName ||
+                    u.kind == UpdateKind.insert ||
+                    u.kind == UpdateKind.delete ||
+                    u.kind == null,
+              );
+              if (!affectsSubredditList) return;
+
+              if (debounceTimer?.isActive ?? false) return;
+              debounceTimer = Timer(
+                const Duration(milliseconds: 800),
+                fetchAndEmit,
+              );
+            });
+      },
+      onCancel: () async {
+        debounceTimer?.cancel();
+        await sub?.cancel();
+      },
+    );
+
+    return controller.stream;
+  }
+
+  Future<List<(String, int)>> searchSubredditsWithCounts({
+    String query = '',
+    int limit = 15,
+  }) async {
+    final countExp = savedItemsTable.id.count();
+    final cleanedQuery = query.trim().toLowerCase().replaceFirst(
+      RegExp(r'^[ru]/'),
+      '',
+    );
+
+    final selectQuery = selectOnly(savedItemsTable)
+      ..addColumns([savedItemsTable.subreddit, countExp]);
+
+    if (cleanedQuery.isNotEmpty) {
+      selectQuery.where(
+        savedItemsTable.subreddit.lower().like('%$cleanedQuery%'),
+      );
+    }
+
+    selectQuery
+      ..groupBy([savedItemsTable.subreddit])
+      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)])
+      ..limit(limit);
+
+    final rows = await selectQuery.get();
+    return rows.map((row) {
+      return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
+    }).toList();
+  }
+
+  Future<List<(String, int)>> searchAuthorsWithCounts({
+    String query = '',
+    int limit = 15,
+  }) async {
+    final countExp = savedItemsTable.id.count();
+    final cleanedQuery = query.trim().toLowerCase().replaceFirst(
+      RegExp(r'^u/'),
+      '',
+    );
+
+    Expression<bool> predicate =
+        savedItemsTable.author.isNotNull() &
+        savedItemsTable.author.isBiggerThanValue('') &
+        savedItemsTable.author.isNotValue('[deleted]');
+
+    if (cleanedQuery.isNotEmpty) {
+      predicate =
+          predicate & savedItemsTable.author.lower().like('%$cleanedQuery%');
+    }
+
+    final selectQuery = selectOnly(savedItemsTable)
+      ..addColumns([savedItemsTable.author, countExp])
+      ..where(predicate)
+      ..groupBy([savedItemsTable.author])
+      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)])
+      ..limit(limit);
+
+    final rows = await selectQuery.get();
+    return rows.map((row) {
+      return (row.read(savedItemsTable.author)!, row.read(countExp) ?? 0);
+    }).toList();
+  }
+
+  Future<List<(String, int)>> searchFlairsWithCounts({
+    String query = '',
+    int limit = 15,
+  }) async {
+    final countExp = savedItemsTable.id.count();
+    final cleanedQuery = query.trim().toLowerCase();
+
+    Expression<bool> predicate =
+        savedItemsTable.postFlair.isNotNull() &
+        savedItemsTable.postFlair.isBiggerThanValue('');
+
+    if (cleanedQuery.isNotEmpty) {
+      predicate =
+          predicate & savedItemsTable.postFlair.lower().like('%$cleanedQuery%');
+    }
+
+    final selectQuery = selectOnly(savedItemsTable)
+      ..addColumns([savedItemsTable.postFlair, countExp])
+      ..where(predicate)
+      ..groupBy([savedItemsTable.postFlair])
+      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)])
+      ..limit(limit);
+
+    final rows = await selectQuery.get();
+    return rows.map((row) {
+      return (row.read(savedItemsTable.postFlair)!, row.read(countExp) ?? 0);
+    }).toList();
   }
 
   Future<List<(String, int)>> getAuthorsWithCounts() async {

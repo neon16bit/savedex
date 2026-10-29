@@ -6,6 +6,7 @@ import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:savedex/features/library/library_viewmodel.dart';
 import 'package:savedex/features/library/scoped_feed_view.dart';
+import 'package:savedex/features/shell/app_shell.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
 class LibraryView extends ConsumerStatefulWidget {
@@ -20,13 +21,19 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   late final TabController _tabController;
   final TextEditingController _subredditSearchController =
       TextEditingController();
+  final FocusNode _subredditSearchFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        ref
+            .read(librarySubTabProvider.notifier)
+            .setSubTab(_tabController.index);
+      }
     });
   }
 
@@ -34,6 +41,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   void dispose() {
     _tabController.dispose();
     _subredditSearchController.dispose();
+    _subredditSearchFocusNode.dispose();
     super.dispose();
   }
 
@@ -64,6 +72,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
     if (confirmed == true && context.mounted) {
       await ref.read(collectionRepositoryProvider).deleteCollection(col.id);
+      ref.read(itemCollectionsOverrideProvider.notifier).clear();
       if (context.mounted) {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
@@ -80,7 +89,18 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   @override
   Widget build(BuildContext context) {
-    final collectionsAsync = ref.watch(collectionsWithCountsProvider);
+    ref.listen<int>(subredditSearchFocusTriggerProvider, (prev, next) {
+      if (_tabController.index != 1) {
+        _tabController.animateTo(1);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _subredditSearchFocusNode.requestFocus();
+        }
+      });
+    });
+
+    final collectionsAsync = ref.watch(sortedCollectionsProvider);
     final subredditsAsync = ref.watch(filteredSubredditsProvider);
 
     final collectionCount = collectionsAsync.asData?.value.length ?? 0;
@@ -120,13 +140,6 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           ],
         ),
       ),
-      floatingActionButton: _tabController.index == 0
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('New Collection'),
-              onPressed: () => showCollectionFormDialog(context),
-            )
-          : null,
       body: TabBarView(
         controller: _tabController,
         children: [
@@ -197,7 +210,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         }
 
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 88),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 104),
           itemCount: collections.length,
           separatorBuilder: (context, _) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
@@ -396,6 +409,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
           child: TextField(
             controller: _subredditSearchController,
+            focusNode: _subredditSearchFocusNode,
             onChanged: (val) {
               ref.read(subredditSearchQueryProvider.notifier).setQuery(val);
             },
@@ -489,7 +503,7 @@ class _LibraryViewState extends ConsumerState<LibraryView>
               }
 
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 104),
                 itemCount: subreddits.length,
                 separatorBuilder: (context, _) => Divider(
                   height: 1,

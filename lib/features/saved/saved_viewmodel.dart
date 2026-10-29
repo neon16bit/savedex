@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 class SavedFeedState {
   final List<SavedItem> items;
@@ -55,11 +57,46 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   static const int _pageSize = 100;
   int _generation = 0;
   int _localMutationsInProgress = 0;
+  DateTime? _ignoreTableUpdatesUntil;
   final Set<String> _busyItemIds = <String>{};
   StreamSubscription? _dbUpdatesSub;
   Timer? _debounceTimer;
+  final StreamController<({String itemId, SavedItem? item, bool deleted})>
+  _itemMutationController =
+      StreamController<
+        ({String itemId, SavedItem? item, bool deleted})
+      >.broadcast();
+
+  Stream<({String itemId, SavedItem? item, bool deleted})> get itemMutations =>
+      _itemMutationController.stream;
+
+  void _suppressTableUpdates([
+    Duration duration = const Duration(milliseconds: 600),
+  ]) {
+    _ignoreTableUpdatesUntil = DateTime.now().add(duration);
+    _debounceTimer?.cancel();
+  }
+
+  bool get _shouldIgnoreTableUpdate {
+    if (_localMutationsInProgress > 0) return true;
+    final until = _ignoreTableUpdatesUntil;
+    if (until != null && DateTime.now().isBefore(until)) return true;
+    return false;
+  }
 
   bool isItemBusy(String id) => _busyItemIds.contains(id);
+
+  FilterCriteria _getEffectiveFilter() {
+    final filter = ref.read(searchFilterViewModelProvider);
+    final hideNsfw = ref.read(settingsViewModelProvider).hideNsfwInFeed;
+    if (filter.isNsfw != null) {
+      return filter;
+    }
+    if (hideNsfw) {
+      return filter.copyWith(isNsfw: false);
+    }
+    return filter;
+  }
 
   @override
   Future<SavedFeedState> build() async {
@@ -67,13 +104,28 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     final currentGen = _generation;
 
     final filter = ref.watch(searchFilterViewModelProvider);
+    final hideNsfw = ref.watch(
+      settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
+    );
     final repo = ref.watch(savedItemRepositoryProvider);
     final db = ref.watch(databaseProvider);
+
+    final effectiveFilter = filter.isNsfw != null
+        ? filter
+        : (hideNsfw ? filter.copyWith(isNsfw: false) : filter);
 
     _dbUpdatesSub?.cancel();
     _debounceTimer?.cancel();
 
-    _dbUpdatesSub = db.tableUpdates().listen((_) => _onTableUpdate());
+    _dbUpdatesSub = db
+        .tableUpdates(
+          TableUpdateQuery.onAllTables([
+            db.savedItemsTable,
+            db.collectionsTable,
+            db.itemCollectionsTable,
+          ]),
+        )
+        .listen((_) => _onTableUpdate());
 
     ref.onDispose(() {
       _dbUpdatesSub?.cancel();
@@ -82,8 +134,12 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     });
 
     final results = await Future.wait([
-      repo.getSavedItemsPage(filter: filter, cursor: null, limit: _pageSize),
-      db.countFilteredSavedItems(filter),
+      repo.getSavedItemsPage(
+        filter: effectiveFilter,
+        cursor: null,
+        limit: _pageSize,
+      ),
+      db.countFilteredSavedItems(effectiveFilter),
     ]);
 
     if (currentGen != _generation) {
@@ -128,15 +184,26 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
         !f.selectedMediaTypes.contains(item.mediaType)) {
       return false;
     }
-    if (f.dateRangeStart != null &&
-        item.createdAtUtc != null &&
-        item.createdAtUtc!.isBefore(f.dateRangeStart!)) {
-      return false;
-    }
-    if (f.dateRangeEnd != null &&
-        item.createdAtUtc != null &&
-        item.createdAtUtc!.isAfter(f.dateRangeEnd!)) {
-      return false;
+    if (f.dateRangeStart != null || f.dateRangeEnd != null) {
+      final createdAt = item.createdAtUtc?.toUtc();
+      if (createdAt == null) return false;
+      if (f.dateRangeStart != null &&
+          createdAt.isBefore(f.dateRangeStart!.toUtc())) {
+        return false;
+      }
+      if (f.dateRangeEnd != null) {
+        final end = f.dateRangeEnd!;
+        final inclusiveEnd =
+            (end.hour == 0 &&
+                end.minute == 0 &&
+                end.second == 0 &&
+                end.millisecond == 0)
+            ? DateTime(end.year, end.month, end.day, 23, 59, 59, 999).toUtc()
+            : end.toUtc();
+        if (createdAt.isAfter(inclusiveEnd)) {
+          return false;
+        }
+      }
     }
     if (f.selectedCollectionIds.isNotEmpty) {
       final itemCollectionIds = item.collections.map((c) => c.id).toSet();
@@ -161,16 +228,31 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 
   void _onTableUpdate() {
-    if (_localMutationsInProgress > 0) return;
+    if (_shouldIgnoreTableUpdate) return;
+
+    final isBackgroundEnriching =
+        ref.read(enrichmentViewModelProvider).isRunning ||
+        ref.read(archiveRecoveryStateProvider).isRunning;
+
+    // during background enrichment, throttle feed refreshes to
+    // at most once every 3 seconds instead of requerying thousands of rows after
+    // every single HTTP request (~300-500ms)
+    if (isBackgroundEnriching && (_debounceTimer?.isActive ?? false)) {
+      return;
+    }
 
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
-      if (_localMutationsInProgress > 0) return;
+    final delay = isBackgroundEnriching
+        ? const Duration(milliseconds: 3000)
+        : const Duration(milliseconds: 300);
+
+    _debounceTimer = Timer(delay, () async {
+      if (_shouldIgnoreTableUpdate) return;
       final current = state.value;
       if (current == null) return;
 
       final repo = ref.read(savedItemRepositoryProvider);
-      final filter = ref.read(searchFilterViewModelProvider);
+      final filter = _getEffectiveFilter();
       final db = ref.read(databaseProvider);
       final gen = _generation;
 
@@ -194,7 +276,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
 
       final targetFetchCount = current.items.length <= _pageSize
           ? _pageSize
-          : (current.items.length > 200 ? 200 : current.items.length);
+          : current.items.length;
 
       final page = await repo.getSavedItemsPage(
         filter: filter,
@@ -229,7 +311,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       return;
     }
 
-    final filter = ref.read(searchFilterViewModelProvider);
+    final filter = _getEffectiveFilter();
     final repo = ref.read(savedItemRepositoryProvider);
     final gen = _generation;
 
@@ -285,8 +367,10 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       state = AsyncData(optimisticUpdate(prev));
     }
     _localMutationsInProgress++;
+    _suppressTableUpdates();
     try {
       await persist();
+      _suppressTableUpdates();
     } catch (e) {
       final current = state.value;
       if (rollback != null && current != null) {
@@ -297,6 +381,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       rethrow;
     } finally {
       _localMutationsInProgress--;
+      _suppressTableUpdates();
       if (itemId != null) {
         _busyItemIds.remove(itemId);
       }
@@ -304,8 +389,9 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 
   Future<void> toggleStar(SavedItem item) async {
-    final filter = ref.read(searchFilterViewModelProvider);
+    final filter = _getEffectiveFilter();
     final newStarred = !item.isStarred;
+    final updated = item.copyWith(isStarred: newStarred);
 
     await _runOptimisticMutation(
       itemId: item.id,
@@ -318,10 +404,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
         } else {
           return prev.copyWith(
             items: prev.items
-                .map(
-                  (i) =>
-                      i.id == item.id ? i.copyWith(isStarred: newStarred) : i,
-                )
+                .map((i) => i.id == item.id ? updated : i)
                 .toList(),
           );
         }
@@ -329,11 +412,17 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       persist: () =>
           ref.read(savedItemRepositoryProvider).toggleStar(item.id, newStarred),
     );
+    _itemMutationController.add((
+      itemId: item.id,
+      item: updated,
+      deleted: false,
+    ));
   }
 
   Future<void> toggleArchive(SavedItem item) async {
-    final filter = ref.read(searchFilterViewModelProvider);
+    final filter = _getEffectiveFilter();
     final newArchived = !item.isArchived;
+    final updated = item.copyWith(isArchived: newArchived);
 
     await _runOptimisticMutation(
       itemId: item.id,
@@ -346,10 +435,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
         } else {
           return prev.copyWith(
             items: prev.items
-                .map(
-                  (i) =>
-                      i.id == item.id ? i.copyWith(isArchived: newArchived) : i,
-                )
+                .map((i) => i.id == item.id ? updated : i)
                 .toList(),
           );
         }
@@ -358,6 +444,11 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
           .read(savedItemRepositoryProvider)
           .toggleArchive(item.id, newArchived),
     );
+    _itemMutationController.add((
+      itemId: item.id,
+      item: updated,
+      deleted: false,
+    ));
   }
 
   Future<void> deleteItemById(String id) async {
@@ -373,6 +464,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       },
       persist: () => ref.read(savedItemRepositoryProvider).deleteItem(id),
     );
+    _itemMutationController.add((itemId: id, item: null, deleted: true));
   }
 
   Future<void> deleteItem(SavedItem item) => deleteItemById(item.id);
@@ -381,22 +473,66 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     final cleanNote = (note == null || note.trim().isEmpty)
         ? null
         : note.trim();
+    SavedItem? mutatedItem;
     await _runOptimisticMutation(
       itemId: id,
       optimisticUpdate: (prev) => prev.copyWith(
-        items: prev.items
-            .map((i) => i.id == id ? i.copyWith(userNote: cleanNote) : i)
-            .toList(),
+        items: prev.items.map((i) {
+          if (i.id == id) {
+            mutatedItem = cleanNote == null
+                ? i.copyWith(clearUserNote: true)
+                : i.copyWith(userNote: cleanNote);
+            return mutatedItem!;
+          }
+          return i;
+        }).toList(),
       ),
       persist: () =>
           ref.read(savedItemRepositoryProvider).updateUserNote(id, cleanNote),
     );
+    if (mutatedItem != null) {
+      _itemMutationController.add((
+        itemId: id,
+        item: mutatedItem,
+        deleted: false,
+      ));
+    } else {
+      await refreshItem(id);
+    }
+  }
+
+  Future<void> setItemCollectionMembership({
+    required String itemId,
+    required int collectionId,
+    required bool assign,
+  }) async {
+    _localMutationsInProgress++;
+    _suppressTableUpdates();
+    try {
+      final collectionRepo = ref.read(collectionRepositoryProvider);
+      if (assign) {
+        await collectionRepo.addToCollection(itemId, collectionId);
+      } else {
+        await collectionRepo.removeFromCollection(itemId, collectionId);
+      }
+      _suppressTableUpdates();
+      final updatedCollections = await collectionRepo.getCollectionsForItem(
+        itemId,
+      );
+      ref
+          .read(itemCollectionsOverrideProvider.notifier)
+          .setCollections(itemId, updatedCollections);
+      await refreshItem(itemId);
+    } finally {
+      _localMutationsInProgress--;
+      _suppressTableUpdates();
+    }
   }
 
   void updateItem(SavedItem updatedItem) {
     final prev = state.value;
     if (prev == null) return;
-    final filter = ref.read(searchFilterViewModelProvider);
+    final filter = _getEffectiveFilter();
     final inList = prev.items.any((i) => i.id == updatedItem.id);
     final matches = _itemMatchesFilter(updatedItem, filter);
 
@@ -428,14 +564,24 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 
   Future<void> refreshItem(String id) async {
-    final current = state.value;
-    if (current == null) return;
-
+    _suppressTableUpdates();
     final repo = ref.read(savedItemRepositoryProvider);
     final freshItem = await repo.getItemById(id);
-    final filter = ref.read(searchFilterViewModelProvider);
+    _suppressTableUpdates();
+
+    if (freshItem == null) {
+      _itemMutationController.add((itemId: id, item: null, deleted: true));
+    } else {
+      _itemMutationController.add((
+        itemId: id,
+        item: freshItem,
+        deleted: false,
+      ));
+    }
+
     final latest = state.value;
     if (latest == null) return;
+    final filter = _getEffectiveFilter();
 
     final inList = latest.items.any((i) => i.id == id);
 
@@ -484,8 +630,11 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     }
   }
 
-  Future<({bool success, String? error, bool willRetry})> enrichItem(SavedItem item) async {
+  Future<({bool success, String? error, bool willRetry})> enrichItem(
+    SavedItem item,
+  ) async {
     _localMutationsInProgress++;
+    _suppressTableUpdates();
     try {
       final result = await ref
           .read(enrichmentViewModelProvider.notifier)
@@ -496,6 +645,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       return result;
     } finally {
       _localMutationsInProgress--;
+      _suppressTableUpdates();
     }
   }
 
@@ -538,8 +688,9 @@ class SavedViewModel extends Notifier<void> {
   Future<void> updateItemNote(String id, String? note) =>
       _feedNotifier.updateItemNote(id, note);
 
-  Future<({bool success, String? error, bool willRetry})> enrichItem(SavedItem item) =>
-      _feedNotifier.enrichItem(item);
+  Future<({bool success, String? error, bool willRetry})> enrichItem(
+    SavedItem item,
+  ) => _feedNotifier.enrichItem(item);
 
   void clearFeed() => _feedNotifier.clearFeed();
 }

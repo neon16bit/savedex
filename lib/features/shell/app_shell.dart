@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/features/library/library_view.dart';
 import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
+import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
+export 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
 
 class ShellTabViewModel extends Notifier<int> {
   @override
@@ -12,56 +14,87 @@ class ShellTabViewModel extends Notifier<int> {
 }
 
 final selectedShellTabProvider = NotifierProvider<ShellTabViewModel, int>(
-  () => ShellTabViewModel(),
+  ShellTabViewModel.new,
 );
 
-class AppShell extends ConsumerWidget {
+class SavedSearchExpandedNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setExpanded(bool value) => state = value;
+  void toggle() => state = !state;
+}
+
+final isSavedSearchExpandedProvider =
+    NotifierProvider<SavedSearchExpandedNotifier, bool>(
+      SavedSearchExpandedNotifier.new,
+    );
+
+class TriggerCounterNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void trigger() => state++;
+}
+
+final savedScrollToTopTriggerProvider =
+    NotifierProvider<TriggerCounterNotifier, int>(TriggerCounterNotifier.new);
+
+final subredditSearchFocusTriggerProvider =
+    NotifierProvider<TriggerCounterNotifier, int>(TriggerCounterNotifier.new);
+
+class LibrarySubTabNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void setSubTab(int index) {
+    if (state != index) {
+      state = index;
+    }
+  }
+}
+
+final librarySubTabProvider = NotifierProvider<LibrarySubTabNotifier, int>(
+  LibrarySubTabNotifier.new,
+);
+
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selectedIndex = ref.watch(selectedShellTabProvider);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  ConsumerState<AppShell> createState() => _AppShellState();
+}
 
-    final screens = const [SavedView(), LibraryView(), SettingsView()];
+class _AppShellState extends ConsumerState<AppShell> {
+  final Set<int> _visitedTabs = {0};
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedIndex = ref.watch(selectedShellTabProvider).clamp(0, 2);
+    _visitedTabs.add(selectedIndex);
 
     return Scaffold(
-      body: IndexedStack(
-        index: selectedIndex.clamp(0, screens.length - 1),
-        children: screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.35),
-            ),
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: selectedIndex,
+            children: [
+              const SavedView(),
+              _visitedTabs.contains(1)
+                  ? const LibraryView()
+                  : const SizedBox.shrink(),
+              _visitedTabs.contains(2)
+                  ? const SettingsView()
+                  : const SizedBox.shrink(),
+            ],
           ),
-        ),
-        child: NavigationBar(
-          selectedIndex: selectedIndex.clamp(0, screens.length - 1),
-          onDestinationSelected: (index) {
-            ref.read(selectedShellTabProvider.notifier).setTab(index);
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.bookmarks_outlined),
-              selectedIcon: Icon(Icons.bookmarks_rounded),
-              label: 'Saved',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.folder_copy_outlined),
-              selectedIcon: Icon(Icons.folder_copy_rounded),
-              label: 'Library',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings_rounded),
-              label: 'Settings',
-            ),
-          ],
-        ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: RepaintBoundary(child: FloatingNavBar()),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,11 @@
+import 'dart:io';
+import 'dart:isolate';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
 import 'package:savedex/theme/app_theme.dart';
@@ -32,7 +37,7 @@ class SettingsView extends ConsumerWidget {
       ),
       body: ListView(
         primary: false,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
         children: [
           _buildSectionHeader('Data & Takeout', colorScheme),
           Card(
@@ -1656,9 +1661,27 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
     _loadCacheSize();
   }
 
+  static int _computeDirectorySizeSync(String dirPath) {
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) return 0;
+    var size = 0;
+    try {
+      for (final entity in dir.listSync(followLinks: false)) {
+        if (entity is File) {
+          size += entity.lengthSync();
+        }
+      }
+    } catch (_) {}
+    return size;
+  }
+
   Future<void> _loadCacheSize() async {
     try {
-      final size = await getCachedSizeBytes();
+      final tempDir = await getTemporaryDirectory();
+      final cacheDirPath = p.join(tempDir.path, cacheImageFolderName);
+      final size = await Isolate.run(
+        () => _computeDirectorySizeSync(cacheDirPath),
+      );
       if (mounted) {
         setState(() {
           _cacheSizeBytes = size;

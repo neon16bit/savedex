@@ -109,7 +109,7 @@ class ImportView extends ConsumerWidget {
                               context,
                               ref,
                               summary,
-                              prefix: 'Reddit sync complete',
+                              prefix: 'Reddit sync',
                             );
                           } else if (ref
                                   .read(importExportViewModelProvider)
@@ -574,17 +574,7 @@ class ImportView extends ConsumerWidget {
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.greenAccent,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: Text('Backup created: $fileName')),
-              ],
-            ),
+            content: Text('Backup created: $fileName'),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -598,17 +588,7 @@ class ImportView extends ConsumerWidget {
           ..clearSnackBars()
           ..showSnackBar(
             const SnackBar(
-              content: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 18,
-                    color: Colors.white70,
-                  ),
-                  SizedBox(width: 10),
-                  Text('Backup cancelled: no save location selected'),
-                ],
-              ),
+              content: Text('Backup cancelled: no save location selected'),
               behavior: SnackBarBehavior.floating,
               duration: Duration(seconds: 2),
             ),
@@ -639,17 +619,7 @@ class ImportView extends ConsumerWidget {
           ..clearSnackBars()
           ..showSnackBar(
             const SnackBar(
-              content: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 18,
-                    color: Colors.white70,
-                  ),
-                  SizedBox(width: 10),
-                  Text('Restore cancelled: no file selected'),
-                ],
-              ),
+              content: Text('Restore cancelled: no file selected'),
               behavior: SnackBarBehavior.floating,
               duration: Duration(seconds: 2),
             ),
@@ -674,17 +644,7 @@ class ImportView extends ConsumerWidget {
         ..clearSnackBars()
         ..showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.greenAccent,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: Text('Export saved: $fileName')),
-              ],
-            ),
+            content: Text('Export saved: $fileName'),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 3),
           ),
@@ -698,17 +658,7 @@ class ImportView extends ConsumerWidget {
           ..clearSnackBars()
           ..showSnackBar(
             const SnackBar(
-              content: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 18,
-                    color: Colors.white70,
-                  ),
-                  SizedBox(width: 10),
-                  Text('Export cancelled: no save location selected'),
-                ],
-              ),
+              content: Text('Export cancelled: no save location selected'),
               behavior: SnackBarBehavior.floating,
               duration: Duration(seconds: 2),
             ),
@@ -724,7 +674,12 @@ class ImportView extends ConsumerWidget {
     if (!context.mounted) return;
 
     if (summary != null) {
-      _showImportSuccessSnackBar(context, ref, summary);
+      _showImportSuccessSnackBar(
+        context,
+        ref,
+        summary,
+        offerFetchMetadata: true,
+      );
     } else {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error != null) {
@@ -734,17 +689,7 @@ class ImportView extends ConsumerWidget {
           ..clearSnackBars()
           ..showSnackBar(
             const SnackBar(
-              content: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 18,
-                    color: Colors.white70,
-                  ),
-                  SizedBox(width: 10),
-                  Text('Import cancelled: no file selected'),
-                ],
-              ),
+              content: Text('Import cancelled: no file selected'),
               behavior: SnackBarBehavior.floating,
               duration: Duration(seconds: 2),
             ),
@@ -763,54 +708,43 @@ class ImportView extends ConsumerWidget {
     WidgetRef ref,
     ImportSummary summary, {
     String prefix = 'Import complete',
+    bool offerFetchMetadata = false,
   }) {
     if (!context.mounted) return;
 
-    final seconds = (summary.duration.inMilliseconds / 1000).toStringAsFixed(1);
+    final totalInDb = summary.totalInDatabase;
+    final dbSuffix = totalInDb != null
+        ? ' (${_formatNumber(totalInDb)} in library)'
+        : '';
+
     final String message;
     if (summary.newItemsImported > 0 && summary.updatedItems > 0) {
       message =
-          '$prefix: ${_formatNumber(summary.totalFound)} items (${_formatNumber(summary.newItemsImported)} new, ${_formatNumber(summary.updatedItems)} updated) in ${seconds}s';
+          '$prefix: ${_formatNumber(summary.newItemsImported)} new, ${_formatNumber(summary.updatedItems)} updated$dbSuffix';
     } else if (summary.newItemsImported > 0) {
       message =
-          '$prefix: ${_formatNumber(summary.totalFound)} items (${_formatNumber(summary.newItemsImported)} new added) in ${seconds}s';
+          '$prefix: ${_formatNumber(summary.newItemsImported)} new items added$dbSuffix';
     } else if (summary.updatedItems > 0) {
       message =
-          '$prefix: ${_formatNumber(summary.updatedItems)} items refreshed in ${seconds}s';
+          '$prefix: ${_formatNumber(summary.updatedItems)} items refreshed$dbSuffix';
     } else {
-      message =
-          '✓ Library is up to date (${_formatNumber(summary.totalFound)} verified)';
+      message = 'Library is up to date$dbSuffix';
     }
 
     final settings = ref.read(settingsViewModelProvider);
     final bool canOfferFetch =
+        offerFetchMetadata &&
         !settings.autoEnrichOnImport &&
-        (summary.newItemsImported > 0 || summary.updatedItems > 0);
+        summary.newItemsImported > 0;
 
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: Row(
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: Colors.greenAccent,
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
-          ),
+          content: Text(message),
           action: canOfferFetch
               ? SnackBarAction(
                   label: 'Fetch Metadata',
-                  textColor: Theme.of(context).colorScheme.primary,
                   onPressed: () {
                     ref
                         .read(enrichmentViewModelProvider.notifier)
@@ -819,29 +753,20 @@ class ImportView extends ConsumerWidget {
                 )
               : null,
           behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: canOfferFetch ? 7 : 4),
+          duration: Duration(seconds: canOfferFetch ? 6 : 3),
         ),
       );
   }
 
   void _showErrorSnackBar(BuildContext context, String message) {
     if (!context.mounted) return;
+    final colorScheme = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: Row(
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text(message)),
-            ],
-          ),
-          backgroundColor: Theme.of(context).colorScheme.error,
+          content: Text(message, style: TextStyle(color: colorScheme.onError)),
+          backgroundColor: colorScheme.error,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
         ),

@@ -88,8 +88,10 @@ class CollectionBadgeRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final collectionsAsync = ref.watch(itemCollectionsProvider(itemId));
-    final collections = collectionsAsync.asData?.value ?? initialCollections;
+    final overrideCollections = ref.watch(
+      itemCollectionsOverrideProvider.select((m) => m[itemId]),
+    );
+    final collections = overrideCollections ?? initialCollections;
 
     if (collections.isEmpty) return const SizedBox.shrink();
 

@@ -8,6 +8,7 @@ import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
@@ -338,6 +339,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         lastImportSummary: summary,
       );
 
+      ref.invalidate(savedFeedPaginationProvider);
       ref.invalidate(availableSubredditsProvider);
       ref.invalidate(availableAuthorsProvider);
       ref.invalidate(availableAuthorsWithCountsProvider);
@@ -394,6 +396,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       int newImported = 0;
       int updated = 0;
       int skipped = 0;
+      int orderOffset = 0;
       final stopwatch = Stopwatch()..start();
 
       for (var idx = 0; idx < files.length; idx++) {
@@ -417,13 +420,18 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
           summary = await repo.importFromZip(bytes);
         } else {
           final content = utf8.decode(bytes, allowMalformed: true);
-          summary = await repo.importFromCsvContent(content, pickedFile.name);
+          summary = await repo.importFromCsvContent(
+            content,
+            pickedFile.name,
+            startOrderIndex: orderOffset,
+          );
         }
 
         totalFound += summary.totalFound;
         newImported += summary.newItemsImported;
         updated += summary.updatedItems;
         skipped += summary.skippedItems;
+        orderOffset += summary.totalFound;
 
         final stepProgress = files.length > 1
             ? (idx + 1.0) / files.length
@@ -431,6 +439,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         state = state.copyWith(progress: stepProgress);
       }
 
+      final totalInDb = await repo.getTotalCount();
       stopwatch.stop();
       final totalSummary = ImportSummary(
         totalFound: totalFound,
@@ -438,6 +447,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         updatedItems: updated,
         skippedItems: skipped,
         duration: stopwatch.elapsed,
+        totalInDatabase: totalInDb,
       );
 
       state = state.copyWith(
@@ -447,6 +457,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         lastImportSummary: totalSummary,
       );
 
+      ref.invalidate(savedFeedPaginationProvider);
       ref.invalidate(availableSubredditsProvider);
       ref.invalidate(availableAuthorsProvider);
       ref.invalidate(availableAuthorsWithCountsProvider);
@@ -511,17 +522,11 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         }
       } catch (_) {}
 
+      ref.invalidate(savedFeedPaginationProvider);
       ref.invalidate(availableSubredditsProvider);
       ref.invalidate(availableAuthorsProvider);
       ref.invalidate(availableAuthorsWithCountsProvider);
       ref.invalidate(availableFlairsProvider);
-
-      final settings = ref.read(settingsViewModelProvider);
-      final shouldEnrich =
-          settings.autoEnrichOnImport && summary.newItemsImported > 0;
-      if (shouldEnrich) {
-        ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
-      }
 
       return summary;
     } catch (e) {

@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/features/saved/widgets/comment_card.dart';
 import 'package:savedex/features/saved/widgets/post_card.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -40,6 +42,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   Timer? _searchDebounceTimer;
   Timer? _dbDebounceTimer;
   StreamSubscription? _dbUpdatesSub;
+  StreamSubscription? _itemMutationsSub;
+  DateTime? _ignoreDbUpdatesUntil;
   int _generation = 0;
 
   List<SavedItem> _items = [];
@@ -64,8 +68,21 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     _loadInitial();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final db = ref.read(databaseProvider);
-      _dbUpdatesSub = db.tableUpdates().listen((_) => _onDbUpdate());
+      _dbUpdatesSub = db
+          .tableUpdates(
+            TableUpdateQuery.onAllTables([
+              db.savedItemsTable,
+              db.collectionsTable,
+              db.itemCollectionsTable,
+            ]),
+          )
+          .listen((_) => _onDbUpdate());
+      _itemMutationsSub = ref
+          .read(savedFeedPaginationProvider.notifier)
+          .itemMutations
+          .listen(_onSingleItemMutated);
     });
   }
 
@@ -96,7 +113,52 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     _searchDebounceTimer?.cancel();
     _dbDebounceTimer?.cancel();
     _dbUpdatesSub?.cancel();
+    _itemMutationsSub?.cancel();
     super.dispose();
+  }
+
+  void _onSingleItemMutated(
+    ({String itemId, SavedItem? item, bool deleted}) event,
+  ) {
+    if (!mounted) return;
+    _ignoreDbUpdatesUntil = DateTime.now().add(
+      const Duration(milliseconds: 600),
+    );
+    _dbDebounceTimer?.cancel();
+
+    final index = _items.indexWhere((i) => i.id == event.itemId);
+    if (event.deleted || event.item == null) {
+      if (index != -1) {
+        setState(() {
+          _items = List.of(_items)..removeAt(index);
+          if (_totalCount > 0) _totalCount--;
+        });
+      }
+      return;
+    }
+
+    final updated = event.item!;
+    final shouldRemove =
+        (_isStarredOnly == true && !updated.isStarred) ||
+        (widget.args.isCollection &&
+            !updated.collections.any(
+              (c) => c.id == widget.args.collection!.id,
+            ));
+
+    if (index != -1) {
+      if (shouldRemove) {
+        setState(() {
+          _items = List.of(_items)..removeAt(index);
+          if (_totalCount > 0) _totalCount--;
+        });
+      } else if (_items[index] != updated) {
+        setState(() {
+          final next = List.of(_items);
+          next[index] = updated;
+          _items = next;
+        });
+      }
+    }
   }
 
   FilterCriteria _buildFilter() {
@@ -165,7 +227,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
       final targetLimit = _items.length <= _pageSize
           ? _pageSize
-          : (_items.length > 200 ? 200 : _items.length);
+          : _items.length;
 
       final results = await Future.wait([
         repo.getSavedItemsPage(
@@ -233,8 +295,12 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   }
 
   void _onDbUpdate() {
+    final until = _ignoreDbUpdatesUntil;
+    if (until != null && DateTime.now().isBefore(until)) return;
     _dbDebounceTimer?.cancel();
     _dbDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      final checkUntil = _ignoreDbUpdatesUntil;
+      if (checkUntil != null && DateTime.now().isBefore(checkUntil)) return;
       _reloadInBackground();
     });
   }
@@ -940,6 +1006,13 @@ class _CollectionSubredditFilterSheetState
                       );
                     }
 
+                    final displayItems = <(String, int)>[
+                      ...filtered.where((t) => _selected.contains(t.$1)),
+                      ...filtered
+                          .where((t) => !_selected.contains(t.$1))
+                          .take(15),
+                    ];
+
                     return ListView(
                       controller: scrollController,
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -947,7 +1020,7 @@ class _CollectionSubredditFilterSheetState
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
-                          children: filtered.map((tuple) {
+                          children: displayItems.map((tuple) {
                             final name = tuple.$1;
                             final count = tuple.$2;
                             final isSelected = _selected.contains(name);
@@ -976,6 +1049,19 @@ class _CollectionSubredditFilterSheetState
                             );
                           }).toList(),
                         ),
+                        if (filtered.length > displayItems.length)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              'Showing top 15 matches, type above to search more',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: colorScheme.onSurfaceVariant.withValues(
+                                  alpha: 0.75,
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     );
                   },

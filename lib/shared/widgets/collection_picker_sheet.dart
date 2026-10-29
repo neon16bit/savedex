@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/shared/widgets/collection_form_dialog.dart';
 
 const List<int> kCollectionPresetColors = [
@@ -40,7 +41,7 @@ class CollectionPickerSheet extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final allCollectionsAsync = ref.watch(allCollectionsProvider);
     final itemCollectionsAsync = ref.watch(itemCollectionsProvider(itemId));
-    final collectionRepo = ref.read(collectionRepositoryProvider);
+    final feedNotifier = ref.read(savedFeedPaginationProvider.notifier);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.55,
@@ -141,17 +142,11 @@ class CollectionPickerSheet extends ConsumerWidget {
                       return InkWell(
                         onTap: () async {
                           HapticFeedback.lightImpact();
-                          if (isAssigned) {
-                            await collectionRepo.removeFromCollection(
-                              itemId,
-                              col.id,
-                            );
-                          } else {
-                            await collectionRepo.addToCollection(
-                              itemId,
-                              col.id,
-                            );
-                          }
+                          await feedNotifier.setItemCollectionMembership(
+                            itemId: itemId,
+                            collectionId: col.id,
+                            assign: !isAssigned,
+                          );
                         },
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
@@ -217,17 +212,12 @@ class CollectionPickerSheet extends ConsumerWidget {
                                 ),
                                 onChanged: (val) async {
                                   HapticFeedback.lightImpact();
-                                  if (isAssigned) {
-                                    await collectionRepo.removeFromCollection(
-                                      itemId,
-                                      col.id,
-                                    );
-                                  } else {
-                                    await collectionRepo.addToCollection(
-                                      itemId,
-                                      col.id,
-                                    );
-                                  }
+                                  await feedNotifier
+                                      .setItemCollectionMembership(
+                                        itemId: itemId,
+                                        collectionId: col.id,
+                                        assign: !isAssigned,
+                                      );
                                 },
                               ),
                             ],

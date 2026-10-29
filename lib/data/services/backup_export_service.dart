@@ -180,6 +180,8 @@ class BackupExportService {
         'saved_at',
         'created_at',
         'is_archive_recovered',
+        'csv_source',
+        'import_order',
       ],
     ];
 
@@ -216,6 +218,8 @@ class BackupExportService {
         item.savedAtUtc.toIso8601String(),
         item.createdAtUtc?.toIso8601String() ?? '',
         item.isArchiveRecovered ? 'true' : 'false',
+        item.csvSource,
+        item.importOrder,
       ]);
     }
 
@@ -364,10 +368,11 @@ class BackupExportService {
     final savedAtIndex = headerRow.indexOf('saved_at');
     final createdAtIndex = headerRow.indexOf('created_at');
     final isArchiveRecoveredIndex = headerRow.indexOf('is_archive_recovered');
+    final csvSourceIndex = headerRow.indexOf('csv_source');
+    final importOrderIndex = headerRow.indexOf('import_order');
 
     final List<SavedItemsTableCompanion> companions = [];
     final Map<String, List<SavedexCollectionBackup>> itemCollections = {};
-    int orderCounter = 0;
 
     for (int i = 1; i < rows.length; i++) {
       final row = rows[i];
@@ -505,6 +510,17 @@ class BackupExportService {
           : '';
       final createdAtUtc = DateTime.tryParse(createdAtStr)?.toUtc();
 
+      final csvSourceStr =
+          csvSourceIndex != -1 && csvSourceIndex < row.length
+          ? row[csvSourceIndex].trim()
+          : '';
+      final importOrderStr =
+          importOrderIndex != -1 && importOrderIndex < row.length
+          ? row[importOrderIndex].trim()
+          : '';
+      final parsedImportOrder =
+          int.tryParse(importOrderStr) ?? (rows.length - i);
+
       companions.add(
         SavedItemsTableCompanion(
           id: Value(id),
@@ -553,8 +569,10 @@ class BackupExportService {
           userNote: Value(
             userNote != null && userNote.isNotEmpty ? userNote : null,
           ),
-          csvSource: const Value('savedex_backup.csv'),
-          importOrder: Value(orderCounter++),
+          csvSource: Value(
+            csvSourceStr.isNotEmpty ? csvSourceStr : 'savedex_backup.csv',
+          ),
+          importOrder: Value(parsedImportOrder),
           savedAtUtc: Value(savedAtUtc),
           createdAtUtc: Value(createdAtUtc),
           postFlair: Value(

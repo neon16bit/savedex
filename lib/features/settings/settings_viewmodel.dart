@@ -60,6 +60,12 @@ class SettingsViewModel extends Notifier<UserSettings> {
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
+  void toggleHideNsfwInFeed([bool? value]) {
+    final nextValue = value ?? !state.hideNsfwInFeed;
+    state = state.copyWith(hideNsfwInFeed: nextValue);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
   void updateRedditCredentials({
     required String? clientId,
     String? clientSecret,

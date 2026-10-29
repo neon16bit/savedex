@@ -115,9 +115,30 @@ final allCollectionsProvider = StreamProvider<List<Collection>>((ref) {
   return repo.watchAllCollections();
 });
 
-final itemCollectionsProvider = StreamProvider.family<List<Collection>, String>(
-  (ref, itemId) {
-    final repo = ref.watch(collectionRepositoryProvider);
-    return repo.watchCollectionsForItem(itemId);
-  },
-);
+final itemCollectionsProvider = StreamProvider.autoDispose
+    .family<List<Collection>, String>((ref, itemId) {
+      final repo = ref.watch(collectionRepositoryProvider);
+      return repo.watchCollectionsForItem(itemId);
+    });
+
+class ItemCollectionsOverrideNotifier
+    extends Notifier<Map<String, List<Collection>>> {
+  @override
+  Map<String, List<Collection>> build() => const {};
+
+  void setCollections(String itemId, List<Collection> collections) {
+    state = {...state, itemId: collections};
+  }
+
+  void clear() {
+    if (state.isNotEmpty) {
+      state = const {};
+    }
+  }
+}
+
+final itemCollectionsOverrideProvider =
+    NotifierProvider<
+      ItemCollectionsOverrideNotifier,
+      Map<String, List<Collection>>
+    >(ItemCollectionsOverrideNotifier.new);

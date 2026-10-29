@@ -29,6 +29,7 @@ class UserSettings {
   final bool autoEnrichOnImport;
   final ArchiveBackend archiveBackend;
   final bool startVideosMuted;
+  final bool hideNsfwInFeed;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -47,6 +48,7 @@ class UserSettings {
     this.autoEnrichOnImport = true,
     this.archiveBackend = ArchiveBackend.automatic,
     this.startVideosMuted = false,
+    this.hideNsfwInFeed = false,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -76,6 +78,7 @@ class UserSettings {
     bool? autoEnrichOnImport,
     ArchiveBackend? archiveBackend,
     bool? startVideosMuted,
+    bool? hideNsfwInFeed,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -103,6 +106,7 @@ class UserSettings {
       autoEnrichOnImport: autoEnrichOnImport ?? this.autoEnrichOnImport,
       archiveBackend: archiveBackend ?? this.archiveBackend,
       startVideosMuted: startVideosMuted ?? this.startVideosMuted,
+      hideNsfwInFeed: hideNsfwInFeed ?? this.hideNsfwInFeed,
     );
   }
 }
@@ -154,6 +158,7 @@ class SettingsRepository {
         ArchiveBackend.values.elementAtOrNull(archiveBackendIndex) ??
         ArchiveBackend.automatic;
     final startVideosMuted = _prefs.getBool('start_videos_muted') ?? false;
+    final hideNsfwInFeed = _prefs.getBool('hide_nsfw_in_feed') ?? false;
 
     return UserSettings(
       themeMode: themeMode,
@@ -172,6 +177,7 @@ class SettingsRepository {
       autoEnrichOnImport: autoEnrich,
       archiveBackend: archiveBackend,
       startVideosMuted: startVideosMuted,
+      hideNsfwInFeed: hideNsfwInFeed,
     );
   }
 
@@ -271,6 +277,7 @@ class SettingsRepository {
     );
     await prefs.setInt('archive_backend', newSettings.archiveBackend.index);
     await prefs.setBool('start_videos_muted', newSettings.startVideosMuted);
+    await prefs.setBool('hide_nsfw_in_feed', newSettings.hideNsfwInFeed);
   }
 
   Future<void> updateOAuthTokens({

@@ -110,19 +110,18 @@ class SavedItemRepository {
 
   Future<List<SavedItem>> getItemsByIds(List<String> ids) async {
     if (ids.isEmpty) return const [];
-    const chunkSize = 200;
-    final chunkFutures = <Future<List<SavedItemEntry>>>[];
+    const chunkSize = 900;
+    final allEntries = <SavedItemEntry>[];
     for (var i = 0; i < ids.length; i += chunkSize) {
       final chunk = ids.sublist(
         i,
         i + chunkSize > ids.length ? ids.length : i + chunkSize,
       );
-      chunkFutures.add(
-        (db.select(db.savedItemsTable)..where((t) => t.id.isIn(chunk))).get(),
-      );
+      final rows = await (db.select(
+        db.savedItemsTable,
+      )..where((t) => t.id.isIn(chunk))).get();
+      allEntries.addAll(rows);
     }
-    final chunkResults = await Future.wait(chunkFutures);
-    final allEntries = [for (final list in chunkResults) ...list];
     return _attachCollectionsToEntries(allEntries);
   }
 
@@ -130,29 +129,36 @@ class SavedItemRepository {
     List<SavedItemEntry> entries,
   ) async {
     if (entries.isEmpty) return const [];
-    final itemIds = entries.map((i) => i.id).toList();
-    const chunkSize = 200;
-    final chunkFutures = <Future<List<TypedResult>>>[];
+    const maxInClauseSize = 900;
 
-    for (var i = 0; i < itemIds.length; i += chunkSize) {
-      final chunk = itemIds.sublist(
-        i,
-        i + chunkSize > itemIds.length ? itemIds.length : i + chunkSize,
-      );
-      chunkFutures.add(
-        (db.select(db.collectionsTable).join([
-          innerJoin(
-            db.itemCollectionsTable,
-            db.itemCollectionsTable.collectionId.equalsExp(
-              db.collectionsTable.id,
-            ),
+    final List<TypedResult> collectionRows;
+    if (entries.length <= maxInClauseSize) {
+      final itemIds = entries.map((i) => i.id).toList(growable: false);
+      collectionRows = await (db.select(db.collectionsTable).join([
+        innerJoin(
+          db.itemCollectionsTable,
+          db.itemCollectionsTable.collectionId.equalsExp(
+            db.collectionsTable.id,
           ),
-        ])..where(db.itemCollectionsTable.itemId.isIn(chunk))).get(),
-      );
+        ),
+      ])..where(db.itemCollectionsTable.itemId.isIn(itemIds))).get();
+    } else {
+      // For large batches (10k-20k full export) fetch all collection
+      // assignments in a single join query instead of queueing 50-100
+      // concurrent IN(...) queries via Future.wait
+      collectionRows = await db.select(db.collectionsTable).join([
+        innerJoin(
+          db.itemCollectionsTable,
+          db.itemCollectionsTable.collectionId.equalsExp(
+            db.collectionsTable.id,
+          ),
+        ),
+      ]).get();
     }
 
-    final chunkResults = await Future.wait(chunkFutures);
-    final collectionRows = [for (final list in chunkResults) ...list];
+    if (collectionRows.isEmpty) {
+      return entries.map((e) => e.toDomain()).toList();
+    }
 
     final collectionsMap = <String, List<Collection>>{};
     for (final row in collectionRows) {
@@ -535,6 +541,13 @@ class SavedItemRepository {
                 ? companion.subredditType.value
                 : null;
 
+            final companionCsvSource = companion.csvSource.present
+                ? companion.csvSource.value
+                : null;
+            final companionImportOrder = companion.importOrder.present
+                ? companion.importOrder.value
+                : null;
+
             final starNeedsUpdate = !existing.isStarred && companionStarred;
             final archiveNeedsUpdate =
                 !existing.isArchived && companionArchived;
@@ -597,6 +610,13 @@ class SavedItemRepository {
                 companionSubredditType != null &&
                 companionSubredditType.isNotEmpty &&
                 companionSubredditType != 'public';
+            final orderNeedsUpdate =
+                companionImportOrder != null &&
+                companionImportOrder > 0 &&
+                (existing.importOrder <= 0 ||
+                    (companionCsvSource == 'reddit_api' &&
+                        (existing.csvSource != 'reddit_api' ||
+                            existing.importOrder != companionImportOrder)));
 
             if (starNeedsUpdate ||
                 archiveNeedsUpdate ||
@@ -612,7 +632,8 @@ class SavedItemRepository {
                 thumbnailNeedsUpdate ||
                 mediaTypeNeedsUpdate ||
                 flairNeedsUpdate ||
-                subTypeNeedsUpdate) {
+                subTypeNeedsUpdate ||
+                orderNeedsUpdate) {
               updatedCount++;
               toUpsert.add(
                 companion.copyWith(
@@ -665,11 +686,16 @@ class SavedItemRepository {
                             ? companion.createdAtUtc
                             : const Value.absent()),
                   savedAtUtc: Value(existing.savedAtUtc),
-                  importOrder: existing.importOrder > 0
-                      ? Value(existing.importOrder)
-                      : (companion.importOrder.present
-                            ? companion.importOrder
-                            : const Value.absent()),
+                  csvSource: orderNeedsUpdate && companionCsvSource != null
+                      ? Value(companionCsvSource)
+                      : Value(existing.csvSource),
+                  importOrder: orderNeedsUpdate
+                      ? Value(companionImportOrder)
+                      : (existing.importOrder > 0
+                            ? Value(existing.importOrder)
+                            : (companion.importOrder.present
+                                  ? companion.importOrder
+                                  : const Value.absent())),
                 ),
               );
             } else {
@@ -792,6 +818,8 @@ class SavedItemRepository {
       }
     });
 
+    await _ensureRedditItemsAboveCsv();
+
     onProgress?.call(1.0, 'Restore complete!');
     final totalInDb = await getTotalCount();
     stopwatch.stop();
@@ -804,6 +832,33 @@ class SavedItemRepository {
       duration: stopwatch.elapsed,
       sourceFile: sourceName,
       totalInDatabase: totalInDb,
+    );
+  }
+
+  Future<void> _ensureRedditItemsAboveCsv() async {
+    final minRedditQuery = db.selectOnly(db.savedItemsTable)
+      ..addColumns([db.savedItemsTable.importOrder.min()])
+      ..where(db.savedItemsTable.csvSource.equals('reddit_api'));
+    final minRedditRow = await minRedditQuery.getSingleOrNull();
+    final minRedditOrder = minRedditRow?.read(
+      db.savedItemsTable.importOrder.min(),
+    );
+    if (minRedditOrder == null) return;
+
+    final maxOtherQuery = db.selectOnly(db.savedItemsTable)
+      ..addColumns([db.savedItemsTable.importOrder.max()])
+      ..where(db.savedItemsTable.csvSource.isNotValue('reddit_api'));
+    final maxOtherRow = await maxOtherQuery.getSingleOrNull();
+    final maxOtherOrder = maxOtherRow?.read(
+      db.savedItemsTable.importOrder.max(),
+    );
+    if (maxOtherOrder == null || maxOtherOrder < minRedditOrder) return;
+
+    final shift = (maxOtherOrder - minRedditOrder) + 1;
+    await db.customUpdate(
+      'UPDATE saved_items_table SET import_order = import_order + ? WHERE csv_source = ?',
+      variables: [Variable.withInt(shift), Variable.withString('reddit_api')],
+      updates: {db.savedItemsTable},
     );
   }
 
@@ -862,7 +917,16 @@ class SavedItemRepository {
       );
     }
 
-    final ids = companions.map((c) => c.id.value).toList();
+    final seenIds = <String>{};
+    final uniqueCompanions = <SavedItemsTableCompanion>[];
+    for (final c in companions) {
+      final id = c.id.present ? c.id.value : '';
+      if (id.isNotEmpty && seenIds.add(id)) {
+        uniqueCompanions.add(c);
+      }
+    }
+
+    final ids = uniqueCompanions.map((c) => c.id.value).toList();
     final existingMap = <String, SavedItemEntry>{};
     const chunkSize = 200;
     for (var i = 0; i < ids.length; i += chunkSize) {
@@ -878,24 +942,97 @@ class SavedItemRepository {
       }
     }
 
-    final bool batchHasUnreconciledCsv =
-        reconcileOrder &&
-        companions.any((c) {
-          final id = c.id.present ? c.id.value : '';
-          final existing = existingMap[id];
-          return existing != null && existing.csvSource != 'reddit_api';
-        });
+    bool needsBatchOrderReconciliation = false;
+    int currentMaxOrder = 0;
+    int firstExistingIdx = uniqueCompanions.length;
+
+    if (reconcileOrder) {
+      final maxOrderQuery = db.selectOnly(db.savedItemsTable)
+        ..addColumns([db.savedItemsTable.importOrder.max()]);
+      final maxOrderResult = await maxOrderQuery.getSingleOrNull();
+      currentMaxOrder =
+          (maxOrderResult?.read(db.savedItemsTable.importOrder.max()) ?? 0);
+
+      for (int i = 0; i < uniqueCompanions.length; i++) {
+        final id = uniqueCompanions[i].id.value;
+        if (existingMap.containsKey(id)) {
+          firstExistingIdx = i;
+          break;
+        }
+      }
+
+      bool alreadyOrderedAtTop = true;
+      int? prevOrder;
+      for (int i = firstExistingIdx; i < uniqueCompanions.length; i++) {
+        final id = uniqueCompanions[i].id.value;
+        final existing = existingMap[id];
+        if (existing == null ||
+            existing.csvSource != 'reddit_api' ||
+            existing.importOrder <= 0) {
+          alreadyOrderedAtTop = false;
+          break;
+        }
+        if (prevOrder != null && existing.importOrder >= prevOrder) {
+          alreadyOrderedAtTop = false;
+          break;
+        }
+        prevOrder = existing.importOrder;
+      }
+
+      if (alreadyOrderedAtTop && firstExistingIdx < uniqueCompanions.length) {
+        final topExisting =
+            existingMap[uniqueCompanions[firstExistingIdx].id.value]!;
+        final bottomExisting = existingMap[uniqueCompanions.last.id.value]!;
+        if (topExisting.importOrder != currentMaxOrder) {
+          alreadyOrderedAtTop = false;
+        } else {
+          final countAboveMinQuery = db.selectOnly(db.savedItemsTable)
+            ..addColumns([db.savedItemsTable.id.count()])
+            ..where(
+              db.savedItemsTable.importOrder.isBiggerOrEqualValue(
+                bottomExisting.importOrder,
+              ),
+            );
+          final countResult = await countAboveMinQuery.getSingleOrNull();
+          final countAboveMin =
+              countResult?.read(db.savedItemsTable.id.count()) ?? 0;
+          final expectedExistingCount =
+              uniqueCompanions.length - firstExistingIdx;
+          if (countAboveMin != expectedExistingCount) {
+            alreadyOrderedAtTop = false;
+          }
+        }
+      }
+
+      needsBatchOrderReconciliation = !alreadyOrderedAtTop;
+    }
 
     int newCount = 0;
     int updatedCount = 0;
     int skippedCount = 0;
 
     final List<SavedItemsTableCompanion> toUpsert = [];
+    final int batchLen = uniqueCompanions.length;
+    final int baseOrder = currentMaxOrder + 1;
 
-    for (final companion in companions) {
-      final id = companion.id.present ? companion.id.value : '';
-      if (id.isEmpty) continue;
+    for (int i = 0; i < batchLen; i++) {
+      var companion = uniqueCompanions[i];
+      final id = companion.id.value;
       final existing = existingMap[id];
+
+      final int? targetOrder = reconcileOrder
+          ? (needsBatchOrderReconciliation
+                ? baseOrder + (batchLen - 1 - i)
+                : (i < firstExistingIdx
+                      ? currentMaxOrder + (firstExistingIdx - i)
+                      : existing?.importOrder))
+          : (companion.importOrder.present
+                ? companion.importOrder.value
+                : null);
+
+      if (targetOrder != null) {
+        companion = companion.copyWith(importOrder: Value(targetOrder));
+      }
 
       if (existing == null) {
         // new item not in database > insert
@@ -949,7 +1086,10 @@ class SavedItemRepository {
             companionSubredditType.isNotEmpty &&
             companionSubredditType != 'public';
         final needsOrderReconciliation =
-            batchHasUnreconciledCsv && companion.importOrder.present;
+            needsBatchOrderReconciliation &&
+            targetOrder != null &&
+            (existing.importOrder != targetOrder ||
+                existing.csvSource != 'reddit_api');
 
         if (needsEnrichment ||
             needsTitleFix ||
@@ -970,7 +1110,7 @@ class SavedItemRepository {
                   ? const Value('reddit_api')
                   : Value(existing.csvSource),
               importOrder: needsOrderReconciliation
-                  ? companion.importOrder
+                  ? Value(targetOrder)
                   : Value(existing.importOrder),
               savedAtUtc: Value(existing.savedAtUtc),
 
@@ -1062,6 +1202,10 @@ class SavedItemRepository {
       await db.upsertBatch(toUpsert);
     }
 
+    if (!reconcileOrder) {
+      await _ensureRedditItemsAboveCsv();
+    }
+
     final totalInDb = await getTotalCount();
     stopwatch.stop();
 
@@ -1102,12 +1246,6 @@ class SavedItemRepository {
     }
     final username = userResult.username!;
     onProgress?.call(0, 'Logged in as u/$username. Fetching saved items...');
-
-    final maxOrderQuery = db.selectOnly(db.savedItemsTable)
-      ..addColumns([db.savedItemsTable.importOrder.max()]);
-    final maxOrderResult = await maxOrderQuery.getSingleOrNull();
-    final currentMaxOrder =
-        (maxOrderResult?.read(db.savedItemsTable.importOrder.max()) ?? 0);
 
     final List<SavedItemsTableCompanion> allCompanions = [];
     String? after;
@@ -1215,19 +1353,9 @@ class SavedItemRepository {
       'Saving ${finalCompanions.length} items to database...',
     );
 
-    final total = finalCompanions.length;
-    final baseOrder = currentMaxOrder + 1;
-    final orderedCompanions = <SavedItemsTableCompanion>[];
-    for (int i = 0; i < total; i++) {
-      final assignedOrder = baseOrder + (total - 1 - i);
-      orderedCompanions.add(
-        finalCompanions[i].copyWith(importOrder: Value(assignedOrder)),
-      );
-    }
-
     final summary = await _processAndUpsertParsedItems(
-      orderedCompanions,
-      totalFound: total,
+      finalCompanions,
+      totalFound: finalCompanions.length,
       sourceName: 'Reddit OAuth Sync (u/$username)',
       reconcileOrder: true,
     );
@@ -1448,8 +1576,9 @@ class SavedItemRepository {
 
       if (!meta.isSuccess) {
         final isRateLimited = meta.errorMessage?.contains('429') ?? false;
-        final retries =
-            isRateLimited ? ((_rateLimitRetries[item.id] ?? 0) + 1) : 0;
+        final retries = isRateLimited
+            ? ((_rateLimitRetries[item.id] ?? 0) + 1)
+            : 0;
         if (isRateLimited) {
           _rateLimitRetries[item.id] = retries;
         }
@@ -1587,6 +1716,7 @@ class SavedItemRepository {
       db.watchSubredditsWithCounts();
 
   final Set<String> _inFlightSubredditEnrichments = {};
+  final Set<String> _attemptedSubredditEnrichments = {};
 
   Future<void> saveSubredditMetadata(
     String name, {
@@ -1608,9 +1738,13 @@ class SavedItemRepository {
 
   Future<void> enrichSubreddits(List<String> names) async {
     final cleanNames = names
+        .where((n) => !SavedItem.isUserSubreddit(n))
         .map((n) => n.trim().toLowerCase().replaceFirst(RegExp(r'^[ru]/'), ''))
         .where(
-          (n) => n.isNotEmpty && !_inFlightSubredditEnrichments.contains(n),
+          (n) =>
+              n.isNotEmpty &&
+              !_inFlightSubredditEnrichments.contains(n) &&
+              !_attemptedSubredditEnrichments.contains(n),
         )
         .toSet();
 
@@ -1619,34 +1753,49 @@ class SavedItemRepository {
     final cached = await db.getAllSubredditsMap();
     final toFetch = cleanNames.where((n) {
       final entry = cached[n];
-      return entry == null || entry.isNsfw == null;
+      return entry == null ||
+          (entry.isNsfw == null && entry.lastChecked == null);
     }).toList();
 
     if (toFetch.isEmpty) return;
 
     _inFlightSubredditEnrichments.addAll(toFetch);
+    _attemptedSubredditEnrichments.addAll(toFetch);
+
+    final pendingBatch = <SubredditsTableCompanion>[];
+    const int flushBatchSize = 40;
 
     try {
       for (final name in toFetch) {
         try {
           final about = await _redditApi.fetchSubredditAbout(name);
           if (about != null) {
-            await saveSubredditMetadata(
-              name,
-              isNsfw: about.isNsfw,
-              iconUrl: about.iconUrl,
+            pendingBatch.add(
+              SubredditsTableCompanion(
+                name: Value(name),
+                isNsfw: Value(about.isNsfw),
+                iconUrl: Value(about.iconUrl),
+                lastChecked: Value(DateTime.now()),
+              ),
             );
           } else {
-            await db.upsertSubreddit(
+            pendingBatch.add(
               SubredditsTableCompanion(
                 name: Value(name),
                 lastChecked: Value(DateTime.now()),
               ),
             );
           }
+          if (pendingBatch.length >= flushBatchSize) {
+            await db.upsertSubredditsBatch(List.of(pendingBatch));
+            pendingBatch.clear();
+          }
         } catch (_) {}
         // Pacing: 250ms between requests
         await Future.delayed(const Duration(milliseconds: 250));
+      }
+      if (pendingBatch.isNotEmpty) {
+        await db.upsertSubredditsBatch(pendingBatch);
       }
     } finally {
       _inFlightSubredditEnrichments.removeAll(toFetch);
@@ -1654,6 +1803,21 @@ class SavedItemRepository {
   }
 
   Future<List<SubredditEntry>> getAllSubreddits() => db.getAllSubreddits();
+
+  Future<List<(String, int)>> searchSubredditsWithCounts({
+    String query = '',
+    int limit = 15,
+  }) => db.searchSubredditsWithCounts(query: query, limit: limit);
+
+  Future<List<(String, int)>> searchAuthorsWithCounts({
+    String query = '',
+    int limit = 15,
+  }) => db.searchAuthorsWithCounts(query: query, limit: limit);
+
+  Future<List<(String, int)>> searchFlairsWithCounts({
+    String query = '',
+    int limit = 15,
+  }) => db.searchFlairsWithCounts(query: query, limit: limit);
 
   Future<List<(String, int)>> getAuthorsWithCounts() =>
       db.getAuthorsWithCounts();
