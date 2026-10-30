@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show TableUpdateQuery;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
@@ -54,7 +55,7 @@ final savedFeedPaginationProvider =
     );
 
 class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
-  static const int _pageSize = 100;
+  static const int _pageSize = 50;
   int _generation = 0;
   int _localMutationsInProgress = 0;
   DateTime? _ignoreTableUpdatesUntil;
@@ -133,29 +134,45 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       _busyItemIds.clear();
     });
 
-    final results = await Future.wait([
-      repo.getSavedItemsPage(
-        filter: effectiveFilter,
-        cursor: null,
-        limit: _pageSize,
-      ),
-      db.countFilteredSavedItems(effectiveFilter),
-    ]);
+    final page = await repo.getSavedItemsPage(
+      filter: effectiveFilter,
+      cursor: null,
+      limit: _pageSize,
+    );
 
     if (currentGen != _generation) {
       return state.value ?? const SavedFeedState();
     }
 
-    final page = results[0] as PagedRows<SavedItem>;
-    final totalCount = results[1] as int;
+    _loadTotalCountInBackground(effectiveFilter, currentGen);
 
     return SavedFeedState(
       items: page.items,
       nextCursor: page.nextCursor,
-      totalCount: totalCount,
+      totalCount: 0,
       hasMore: page.hasMore,
       isLoadingMore: false,
     );
+  }
+
+  void _loadTotalCountInBackground(FilterCriteria filter, int targetGen) {
+    unawaited(() async {
+      try {
+        final db = ref.read(databaseProvider);
+        final count = await db.countFilteredSavedItems(filter);
+        if (targetGen != _generation) return;
+        final current = state.value;
+        if (current == null) return;
+        state = AsyncData(
+          current.copyWith(
+            totalCount: count,
+            hasMore: current.items.length < count,
+          ),
+        );
+      } catch (e, st) {
+        debugPrint('[SavedFeed] Background count note: $e\n$st');
+      }
+    }());
   }
 
   static bool _itemMatchesFilter(SavedItem item, FilterCriteria f) {

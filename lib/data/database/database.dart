@@ -44,12 +44,24 @@ class AppDatabase extends _$AppDatabase {
       final cachebase = (await getTemporaryDirectory()).path;
       sqlite3.tempDirectory = cachebase;
 
-      return NativeDatabase.createInBackground(file);
+      return NativeDatabase.createInBackground(
+        file,
+        readPool: 2,
+        setup: (rawDb) {
+          rawDb.execute('PRAGMA journal_mode = WAL;');
+          rawDb.execute('PRAGMA synchronous = NORMAL;');
+          rawDb.execute('PRAGMA cache_size = -12000;');
+          rawDb.execute('PRAGMA mmap_size = 67108864;');
+          rawDb.execute('PRAGMA temp_store = MEMORY;');
+          rawDb.execute('PRAGMA foreign_keys = ON;');
+          rawDb.execute('PRAGMA busy_timeout = 5000;');
+        },
+      );
     });
   }
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -95,12 +107,26 @@ class AppDatabase extends _$AppDatabase {
       if (from < 10) {
         await m.createTable(subredditsTable);
       }
-    },
-    beforeOpen: (details) async {
-      await customStatement('PRAGMA foreign_keys = ON');
-      await _createIndexes(this);
-      await _createFts5(this);
-      _ftsInitFuture = Future.value();
+      if (from < 11) {
+        await _createIndexes(this);
+        await _createFts5(this);
+        _ftsInitFuture = Future.value();
+      }
+      if (from < 12) {
+        await customStatement('DROP INDEX IF EXISTS idx_saved_order_asc;');
+        await customStatement(
+          'DROP INDEX IF EXISTS idx_saved_archived_order_asc;',
+        );
+        await customStatement(
+          'DROP INDEX IF EXISTS idx_saved_archived_date_asc;',
+        );
+        await customStatement('DROP INDEX IF EXISTS idx_saved_date_asc;');
+        await customStatement('DROP INDEX IF EXISTS idx_saved_score_asc;');
+        await customStatement('DROP INDEX IF EXISTS idx_saved_starred_asc;');
+        await _rebuildFts(this);
+        await _createIndexes(this);
+        _ftsInitFuture = Future.value();
+      }
     },
   );
 
@@ -123,19 +149,19 @@ class AppDatabase extends _$AppDatabase {
         CREATE INDEX IF NOT EXISTS idx_saved_order_desc ON saved_items_table (import_order DESC, id DESC);
       ''');
       await db.customStatement('''
-        CREATE INDEX IF NOT EXISTS idx_saved_order_asc ON saved_items_table (import_order ASC, id ASC);
+        CREATE INDEX IF NOT EXISTS idx_saved_archived_order_desc ON saved_items_table (is_archived, import_order DESC, id DESC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_archived_date_desc ON saved_items_table (is_archived, COALESCE(created_at_utc, 0) DESC, id DESC);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_starred_desc ON saved_items_table (import_order DESC, id DESC) WHERE is_starred = 1;
       ''');
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_date_desc ON saved_items_table (COALESCE(created_at_utc, 0) DESC, id DESC);
       ''');
       await db.customStatement('''
-        CREATE INDEX IF NOT EXISTS idx_saved_date_asc ON saved_items_table (COALESCE(created_at_utc, 0) ASC, id ASC);
-      ''');
-      await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_score_desc ON saved_items_table (score DESC, id DESC);
-      ''');
-      await db.customStatement('''
-        CREATE INDEX IF NOT EXISTS idx_saved_score_asc ON saved_items_table (score ASC, id ASC);
       ''');
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_sub_nocase ON saved_items_table (subreddit COLLATE NOCASE, id);
@@ -155,6 +181,21 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_flair_nocase ON saved_items_table (post_flair COLLATE NOCASE);
       ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_item_collections_col_item
+        ON item_collections_table (collection_id, item_id);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_archive_recovery
+        ON saved_items_table (import_order ASC)
+        WHERE is_archive_recovered = 0
+          AND (
+            enrichment_status = 3
+            OR author IN ('[deleted]', '[removed]')
+            OR body IN ('[deleted]', '[removed]')
+            OR title IN ('[deleted]', '[removed]')
+          );
+      ''');
     } catch (e, stack) {
       debugPrint('[Database] Create indexes note: $e\n$stack');
     }
@@ -164,9 +205,17 @@ class AppDatabase extends _$AppDatabase {
     try {
       bool needsRebuild = false;
       try {
-        await db.customStatement(
-          'SELECT parent_post_title FROM saved_items_fts LIMIT 0;',
-        );
+        final rows = await db
+            .customSelect(
+              "SELECT sql FROM sqlite_master WHERE name = 'saved_items_fts' AND type = 'table';",
+            )
+            .get();
+        if (rows.isEmpty ||
+            !rows.first
+                .read<String>('sql')
+                .contains("content='saved_items_table'")) {
+          needsRebuild = true;
+        }
       } catch (_) {
         needsRebuild = true;
       }
@@ -180,21 +229,21 @@ class AppDatabase extends _$AppDatabase {
 
       await db.customStatement('''
         CREATE VIRTUAL TABLE IF NOT EXISTS saved_items_fts USING fts5(
-          id UNINDEXED,
           title,
           body,
           parent_post_title,
           user_note,
+          content='saved_items_table',
+          content_rowid='rowid',
           tokenize = 'unicode61'
         );
       ''');
 
       await db.customStatement('''
         CREATE TRIGGER IF NOT EXISTS saved_items_ai AFTER INSERT ON saved_items_table BEGIN
-          INSERT INTO saved_items_fts(rowid, id, title, body, parent_post_title, user_note)
+          INSERT INTO saved_items_fts(rowid, title, body, parent_post_title, user_note)
           VALUES (
             new.rowid,
-            new.id,
             new.title,
             coalesce(new.body, ''),
             coalesce(new.parent_post_title, ''),
@@ -205,17 +254,39 @@ class AppDatabase extends _$AppDatabase {
 
       await db.customStatement('''
         CREATE TRIGGER IF NOT EXISTS saved_items_ad AFTER DELETE ON saved_items_table BEGIN
-          DELETE FROM saved_items_fts WHERE rowid = old.rowid;
+          INSERT INTO saved_items_fts(saved_items_fts, rowid, title, body, parent_post_title, user_note)
+          VALUES (
+            'delete',
+            old.rowid,
+            old.title,
+            coalesce(old.body, ''),
+            coalesce(old.parent_post_title, ''),
+            coalesce(old.user_note, '')
+          );
         END;
       ''');
 
+      await db.customStatement('DROP TRIGGER IF EXISTS saved_items_au;');
       await db.customStatement('''
-        CREATE TRIGGER IF NOT EXISTS saved_items_au AFTER UPDATE ON saved_items_table BEGIN
-          DELETE FROM saved_items_fts WHERE rowid = old.rowid;
-          INSERT INTO saved_items_fts(rowid, id, title, body, parent_post_title, user_note)
+        CREATE TRIGGER IF NOT EXISTS saved_items_au
+        AFTER UPDATE OF title, body, parent_post_title, user_note ON saved_items_table
+        WHEN old.title != new.title
+          OR coalesce(old.body, '') != coalesce(new.body, '')
+          OR coalesce(old.parent_post_title, '') != coalesce(new.parent_post_title, '')
+          OR coalesce(old.user_note, '') != coalesce(new.user_note, '')
+        BEGIN
+          INSERT INTO saved_items_fts(saved_items_fts, rowid, title, body, parent_post_title, user_note)
+          VALUES (
+            'delete',
+            old.rowid,
+            old.title,
+            coalesce(old.body, ''),
+            coalesce(old.parent_post_title, ''),
+            coalesce(old.user_note, '')
+          );
+          INSERT INTO saved_items_fts(rowid, title, body, parent_post_title, user_note)
           VALUES (
             new.rowid,
-            new.id,
             new.title,
             coalesce(new.body, ''),
             coalesce(new.parent_post_title, ''),
@@ -225,17 +296,9 @@ class AppDatabase extends _$AppDatabase {
       ''');
 
       if (needsRebuild) {
-        await db.customStatement('''
-          INSERT INTO saved_items_fts(rowid, id, title, body, parent_post_title, user_note)
-          SELECT
-            rowid,
-            id,
-            title,
-            coalesce(body, ''),
-            coalesce(parent_post_title, ''),
-            coalesce(user_note, '')
-          FROM saved_items_table;
-        ''');
+        await db.customStatement(
+          "INSERT INTO saved_items_fts(saved_items_fts) VALUES('rebuild');",
+        );
       }
     } catch (e, stack) {
       debugPrint('[Database] FTS5 initialization note: $e\n$stack');
@@ -704,7 +767,7 @@ class AppDatabase extends _$AppDatabase {
       final ftsToken = _sanitizeFtsQuery(filter.searchQuery!);
       if (ftsToken != null) {
         where.add(
-          's.id IN (SELECT id FROM saved_items_fts WHERE saved_items_fts MATCH ?)',
+          's.rowid IN (SELECT rowid FROM saved_items_fts WHERE saved_items_fts MATCH ?)',
         );
         vars.add(Variable.withString(ftsToken));
       }
@@ -783,16 +846,18 @@ class AppDatabase extends _$AppDatabase {
   // bulk upsert items nondestructively using ON CONFLICT DO UPDATE
   Future<void> upsertBatch(List<SavedItemsTableCompanion> entries) async {
     if (entries.isEmpty) return;
-    const chunkSize = 100;
-    for (var i = 0; i < entries.length; i += chunkSize) {
-      final chunk = entries.sublist(
-        i,
-        i + chunkSize > entries.length ? entries.length : i + chunkSize,
-      );
-      await batch((batch) {
-        batch.insertAllOnConflictUpdate(savedItemsTable, chunk);
-      });
-    }
+    const chunkSize = 500;
+    await transaction(() async {
+      for (var i = 0; i < entries.length; i += chunkSize) {
+        final chunk = entries.sublist(
+          i,
+          i + chunkSize > entries.length ? entries.length : i + chunkSize,
+        );
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(savedItemsTable, chunk);
+        });
+      }
+    });
   }
 
   Future<Map<String, SubredditEntry>> getAllSubredditsMap() async {
@@ -812,53 +877,59 @@ class AppDatabase extends _$AppDatabase {
     List<SubredditsTableCompanion> entries,
   ) async {
     if (entries.isEmpty) return;
-    const chunkSize = 100;
-    for (var i = 0; i < entries.length; i += chunkSize) {
-      final chunk = entries.sublist(
-        i,
-        i + chunkSize > entries.length ? entries.length : i + chunkSize,
-      );
-      await batch((batch) {
-        batch.insertAllOnConflictUpdate(subredditsTable, chunk);
-      });
-    }
+    const chunkSize = 500;
+    await transaction(() async {
+      for (var i = 0; i < entries.length; i += chunkSize) {
+        final chunk = entries.sublist(
+          i,
+          i + chunkSize > entries.length ? entries.length : i + chunkSize,
+        );
+        await batch((batch) {
+          batch.insertAllOnConflictUpdate(subredditsTable, chunk);
+        });
+      }
+    });
   }
 
   Future<List<SubredditInfo>> getSubredditsWithCounts() async {
-    final countExp = savedItemsTable.id.count();
-    final nsfwCountExp = const CustomExpression<int>(
-      'SUM(CASE WHEN saved_items_table.is_nsfw = 1 THEN 1 ELSE 0 END)',
-    );
-    final cleanSubExp = const CustomExpression<String>(
-      "LOWER(CASE WHEN saved_items_table.subreddit LIKE 'r/%' OR saved_items_table.subreddit LIKE 'u/%' THEN SUBSTR(saved_items_table.subreddit, 3) ELSE saved_items_table.subreddit END)",
-    );
+    final rows = await customSelect(
+      '''
+      WITH grouped_subs AS (
+        SELECT
+          subreddit,
+          COUNT(id) AS item_count,
+          SUM(CASE WHEN is_nsfw = 1 THEN 1 ELSE 0 END) AS nsfw_count,
+          LOWER(
+            CASE
+              WHEN subreddit LIKE 'r/%' OR subreddit LIKE 'u/%'
+              THEN SUBSTR(subreddit, 3)
+              ELSE subreddit
+            END
+          ) AS clean_sub
+        FROM saved_items_table
+        GROUP BY subreddit
+      )
+      SELECT
+        g.subreddit,
+        g.item_count,
+        g.nsfw_count,
+        s.is_nsfw AS verified_nsfw,
+        s.icon_url,
+        s.last_checked
+      FROM grouped_subs g
+      LEFT JOIN subreddits_table s ON LOWER(s.name) = g.clean_sub
+      ORDER BY g.item_count DESC
+      ''',
+      readsFrom: {savedItemsTable, subredditsTable},
+    ).get();
 
-    final query = selectOnly(savedItemsTable)
-      ..join([
-        leftOuterJoin(
-          subredditsTable,
-          subredditsTable.name.equalsExp(cleanSubExp),
-        ),
-      ])
-      ..addColumns([
-        savedItemsTable.subreddit,
-        countExp,
-        nsfwCountExp,
-        subredditsTable.isNsfw,
-        subredditsTable.iconUrl,
-        subredditsTable.lastChecked,
-      ])
-      ..groupBy([savedItemsTable.subreddit])
-      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
-
-    final rows = await query.get();
     return rows.map((row) {
-      final name = row.read(savedItemsTable.subreddit)!;
-      final count = row.read(countExp) ?? 0;
-      final nsfwCount = row.read(nsfwCountExp) ?? 0;
-      final verifiedNsfw = row.read(subredditsTable.isNsfw);
-      final iconUrl = row.read(subredditsTable.iconUrl);
-      final lastChecked = row.read(subredditsTable.lastChecked);
+      final name = row.read<String>('subreddit');
+      final count = row.read<int>('item_count');
+      final nsfwCount = row.read<int?>('nsfw_count') ?? 0;
+      final verifiedNsfw = row.read<bool?>('verified_nsfw');
+      final iconUrl = row.read<String?>('icon_url');
+      final lastChecked = row.read<DateTime?>('last_checked');
 
       final bool isNsfw;
       final bool isVerified;
@@ -1281,7 +1352,7 @@ class AppDatabase extends _$AppDatabase {
                 savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
                 savedItemsTable.title.isIn(['[deleted]', '[removed]'])),
       );
-    return query.watchSingle().map((row) => row.read(countExp) ?? 0);
+    return query.watchSingle().map((row) => row.read(countExp) ?? 0).distinct();
   }
 
   Stream<int> watchPendingEnrichmentCount() {
@@ -1294,7 +1365,7 @@ class AppDatabase extends _$AppDatabase {
           EnrichmentStatus.pending.index,
         ]),
       );
-    return query.watchSingle().map((row) => row.read(countExp) ?? 0);
+    return query.watchSingle().map((row) => row.read(countExp) ?? 0).distinct();
   }
 
   Future<int> getTotalCount() async {
@@ -1315,7 +1386,9 @@ class AppDatabase extends _$AppDatabase {
       await delete(collectionsTable).go();
       await delete(savedItemsTable).go();
       try {
-        await customStatement('DELETE FROM saved_items_fts;');
+        await customStatement(
+          "INSERT INTO saved_items_fts(saved_items_fts) VALUES('delete-all');",
+        );
       } catch (e, stack) {
         debugPrint('[Database] Note: Could not clear FTS5 index: $e\n$stack');
       }

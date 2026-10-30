@@ -310,24 +310,30 @@ class _SavedViewState extends ConsumerState<SavedView> {
                   ),
                   const SizedBox(width: 8),
                   feedStateAsync.when(
-                    data: (feedState) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHigh,
-                        borderRadius: BorderRadius.circular(100),
-                      ),
-                      child: Text(
-                        '${feedState.totalCount}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.onSurfaceVariant,
+                    data: (feedState) {
+                      if (feedState.totalCount <= 0 &&
+                          feedState.items.isNotEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
                         ),
-                      ),
-                    ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                        child: Text(
+                          '${feedState.totalCount}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      );
+                    },
                     loading: () => const SizedBox.shrink(),
                     error: (_, _) => const SizedBox.shrink(),
                   ),
