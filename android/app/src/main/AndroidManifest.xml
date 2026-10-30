@@ -8,9 +8,10 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
     <application
-        android:label="savedex"
+        android:label="${appName}"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,10 +42,10 @@
 
         <activity 
             android:name=".RedditAuthRedirectActivity"
-            android:label="Savedex"
+            android:label="${appName}"
             android:exported="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter android:label="Savedex">
+            <intent-filter android:label="${appName}">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
