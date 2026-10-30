@@ -290,37 +290,42 @@ class FloatingNavBar extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
         child: LayoutBuilder(
           builder: (context, constraints) {
+            if (constraints.maxWidth <= 0) {
+              return const SizedBox.shrink();
+            }
+
+            final maxAvailableWidth = constraints.maxWidth;
             final rightSectionWidth = contextActions.isEmpty
                 ? 0.0
                 : kNavBarIslandsSeparation +
                       (kNavBarActionButtonSize * 2) +
                       actionButtonsGap;
 
+            final minAllowedWidth = 120.0 > maxAvailableWidth
+                ? maxAvailableWidth
+                : 120.0;
+
             // subtract rightSectionWidth and the left docks 2x border width
             // so the row never overflows its horizontal constraint
             final availableLeftInnerWidth =
-                (constraints.maxWidth -
+                (maxAvailableWidth -
                         rightSectionWidth -
                         (mainIslandHorizontalPadding * 2) -
                         (kNavBarBorderWidth * 2))
-                    .clamp(120.0, constraints.maxWidth);
+                    .clamp(minAllowedWidth, maxAvailableWidth);
 
             final maxEqualTabWidth =
                 ((availableLeftInnerWidth - (mainIslandButtonGap * 2)) / 3)
                     .floorToDouble();
 
-            final double effectiveTabWidth;
-            if (shouldExpandTabs) {
-              effectiveTabWidth = maxEqualTabWidth.clamp(
-                44.0,
-                kNavBarTabButtonMaxWidthWithLabel,
-              );
-            } else {
-              effectiveTabWidth = maxEqualTabWidth.clamp(
-                44.0,
-                kNavBarTabButtonWidth,
-              );
-            }
+            final targetMaxWidth = shouldExpandTabs
+                ? kNavBarTabButtonMaxWidthWithLabel
+                : kNavBarTabButtonWidth;
+            final minTabWidth = 44.0 > targetMaxWidth ? targetMaxWidth : 44.0;
+            final effectiveTabWidth = maxEqualTabWidth.clamp(
+              minTabWidth,
+              targetMaxWidth,
+            );
 
             final mainTrackWidth =
                 (effectiveTabWidth * 3) + (mainIslandButtonGap * 2);
