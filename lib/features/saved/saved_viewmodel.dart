@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
@@ -318,6 +319,63 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 
   Future<void> retryNextPage() => fetchNextPage(isRetry: true);
+
+  // cancel any inflight pagination fetch and trims accumulated items back to
+  //  the first page when jumping back to the top from deep in the feed
+  void trimToFirstPage() {
+    final current = state.value;
+    if (current == null) return;
+    if (current.items.length <= _pageSize && !current.isLoadingMore) return;
+
+    _generation++;
+    if (current.items.length <= _pageSize) {
+      state = AsyncData(
+        current.copyWith(isLoadingMore: false, clearError: true),
+      );
+      return;
+    }
+
+    final filter = _getEffectiveFilter();
+    final trimmed = current.items.sublist(0, _pageSize);
+    final nextCursor = _extractItemCursor(trimmed.last, filter.sortOption);
+
+    state = AsyncData(
+      current.copyWith(
+        items: trimmed,
+        nextCursor: nextCursor,
+        hasMore: true,
+        isLoadingMore: false,
+        clearError: true,
+      ),
+    );
+  }
+
+  static FeedCursor _extractItemCursor(SavedItem item, SortOption sort) {
+    switch (sort) {
+      case SortOption.savedOrderDesc:
+      case SortOption.savedOrderAsc:
+        return FeedCursor(sortValue: item.importOrder, id: item.id);
+      case SortOption.createdDateDesc:
+      case SortOption.createdDateAsc:
+        return FeedCursor(
+          sortValue: item.createdAtUtc?.millisecondsSinceEpoch ?? 0,
+          id: item.id,
+        );
+      case SortOption.scoreDesc:
+      case SortOption.scoreAsc:
+        return FeedCursor(sortValue: item.score, id: item.id);
+      case SortOption.subredditAsc:
+      case SortOption.subredditDesc:
+        return FeedCursor(sortValue: item.subreddit, id: item.id);
+      case SortOption.authorAsc:
+      case SortOption.authorDesc:
+        return FeedCursor(sortValue: item.author ?? '', id: item.id);
+      case SortOption.titleAsc:
+        return FeedCursor(sortValue: item.title, id: item.id);
+      case SortOption.commentsDesc:
+        return FeedCursor(sortValue: item.numComments, id: item.id);
+    }
+  }
 
   Future<void> fetchNextPage({bool isRetry = false}) async {
     final current = state.value;

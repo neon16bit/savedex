@@ -42,6 +42,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
   late final TextEditingController _searchController;
   Timer? _searchDebounceTimer;
   late final ScrollController _scrollController;
+  bool _isScrollingToTop = false;
+  int _sliverResetEpoch = 0;
   final GlobalKey<PopupMenuButtonState<_SavedViewMenuAction>> _moreMenuKey =
       GlobalKey();
 
@@ -164,6 +166,11 @@ class _SavedViewState extends ConsumerState<SavedView> {
           if (_scrollController.hasClients &&
               _scrollController.positions.length == 1 &&
               _scrollController.offset > 0) {
+            if (_scrollController.offset > 1500.0) {
+              setState(() {
+                _sliverResetEpoch++;
+              });
+            }
             _scrollController.jumpTo(0);
           }
         });
@@ -180,15 +187,47 @@ class _SavedViewState extends ConsumerState<SavedView> {
     });
 
     // scroll to top when Saved tab is re-tapped in the bottom dock
-    ref.listen<int>(savedScrollToTopTriggerProvider, (prev, next) {
-      if (_scrollController.hasClients &&
-          _scrollController.positions.length == 1 &&
-          _scrollController.offset > 0) {
-        _scrollController.animateTo(
+    ref.listen<int>(savedScrollToTopTriggerProvider, (prev, next) async {
+      if (_isScrollingToTop) return;
+      if (!_scrollController.hasClients ||
+          _scrollController.positions.length != 1 ||
+          _scrollController.offset <= 0) {
+        return;
+      }
+
+      _isScrollingToTop = true;
+      try {
+        const jumpThreshold = 1500.0;
+        // Keep glideOffset <= default Viewport.cacheExtent (250.0) so that
+        // constraints.scrollOffset + constraints.cacheOrigin == 0.0 on the jump frame
+        // ensuring index 0 is built immediately and no widgets are
+        // constructed/disposed during the animateTo(0) glide.
+        const glideOffset = 220.0;
+
+        if (_scrollController.offset > jumpThreshold) {
+          ref.read(savedFeedPaginationProvider.notifier).trimToFirstPage();
+          setState(() {
+            _sliverResetEpoch++;
+          });
+          _scrollController.jumpTo(glideOffset);
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted ||
+              !_scrollController.hasClients ||
+              _scrollController.positions.length != 1) {
+            return;
+          }
+        }
+
+        await _scrollController.animateTo(
           0,
-          duration: const Duration(milliseconds: 350),
+          duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
         );
+      } catch (_) {
+      } finally {
+        if (mounted) {
+          _isScrollingToTop = false;
+        }
       }
     });
 
@@ -651,30 +690,45 @@ class _SavedViewState extends ConsumerState<SavedView> {
                 switch (feedLayoutMode) {
                   case FeedLayoutMode.card:
                   case FeedLayoutMode.compact:
-                    content = ListView.builder(
+                    content = CustomScrollView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(bottom: 104),
-                      itemCount: items.length + (showFooter ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index >= items.length) {
-                          return _buildPaginationFooter(context, feedState);
-                        }
-                        final item = items[index];
-                        if (feedLayoutMode == FeedLayoutMode.compact) {
-                          return CompactListItem(
-                            key: ValueKey(item.id),
-                            item: item,
-                          );
-                        }
-                        if (item.itemType == ItemType.comment) {
-                          return CommentCard(
-                            key: ValueKey(item.id),
-                            item: item,
-                          );
-                        }
-                        return PostCard(key: ValueKey(item.id), item: item);
-                      },
+                      slivers: [
+                        SliverPadding(
+                          key: ValueKey('feed_list_$_sliverResetEpoch'),
+                          padding: const EdgeInsets.only(bottom: 104),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate((
+                              context,
+                              index,
+                            ) {
+                              if (index >= items.length) {
+                                return _buildPaginationFooter(
+                                  context,
+                                  feedState,
+                                );
+                              }
+                              final item = items[index];
+                              if (feedLayoutMode == FeedLayoutMode.compact) {
+                                return CompactListItem(
+                                  key: ValueKey(item.id),
+                                  item: item,
+                                );
+                              }
+                              if (item.itemType == ItemType.comment) {
+                                return CommentCard(
+                                  key: ValueKey(item.id),
+                                  item: item,
+                                );
+                              }
+                              return PostCard(
+                                key: ValueKey(item.id),
+                                item: item,
+                              );
+                            }, childCount: items.length + (showFooter ? 1 : 0)),
+                          ),
+                        ),
+                      ],
                     );
                     break;
 
@@ -684,6 +738,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       slivers: [
                         SliverPadding(
+                          key: ValueKey('feed_grid_$_sliverResetEpoch'),
                           padding: const EdgeInsets.fromLTRB(10, 8, 10, 104),
                           sliver: SliverGrid(
                             gridDelegate:
@@ -716,7 +771,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
                 return NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
-                    if (notification.depth == 0 &&
+                    if (!_isScrollingToTop &&
+                        notification.depth == 0 &&
                         notification.metrics.pixels >=
                             notification.metrics.maxScrollExtent - 3000) {
                       final current = ref
