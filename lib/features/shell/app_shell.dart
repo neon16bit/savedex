@@ -30,6 +30,31 @@ final isSavedSearchExpandedProvider =
       SavedSearchExpandedNotifier.new,
     );
 
+class SavedFilterExpandedNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setExpanded(bool value) => state = value;
+  void toggle() => state = !state;
+}
+
+final isSavedFilterExpandedProvider =
+    NotifierProvider<SavedFilterExpandedNotifier, bool>(
+      SavedFilterExpandedNotifier.new,
+    );
+
+class SavedSearchOpenedViaFilterNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void setOpened(bool value) => state = value;
+}
+
+final isSavedSearchOpenedViaFilterProvider =
+    NotifierProvider<SavedSearchOpenedViaFilterNotifier, bool>(
+      SavedSearchOpenedViaFilterNotifier.new,
+    );
+
 class TriggerCounterNotifier extends Notifier<int> {
   @override
   int build() => 0;
@@ -73,6 +98,14 @@ class _AppShellState extends ConsumerState<AppShell> {
     final selectedIndex = ref.watch(selectedShellTabProvider).clamp(0, 2);
     _visitedTabs.add(selectedIndex);
 
+    final isSavedFilterExpanded =
+        selectedIndex == 0 && ref.watch(isSavedFilterExpandedProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    void dismissFilter() {
+      ref.read(isSavedFilterExpandedProvider.notifier).setExpanded(false);
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -88,7 +121,30 @@ class _AppShellState extends ConsumerState<AppShell> {
                   : const SizedBox.shrink(),
             ],
           ),
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !isSavedFilterExpanded,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                opacity: isSavedFilterExpanded ? 1.0 : 0.0,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: dismissFilter,
+                  onVerticalDragUpdate: (details) {
+                    if ((details.primaryDelta ?? 0) > 6) {
+                      dismissFilter();
+                    }
+                  },
+                  child: Container(
+                    color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.22),
+                  ),
+                ),
+              ),
+            ),
+          ),
           const Positioned(
+            key: ValueKey('app_shell_floating_nav_bar'),
             left: 0,
             right: 0,
             bottom: 0,

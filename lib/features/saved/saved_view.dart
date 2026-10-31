@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
@@ -39,8 +37,6 @@ class SavedView extends ConsumerStatefulWidget {
 }
 
 class _SavedViewState extends ConsumerState<SavedView> {
-  late final TextEditingController _searchController;
-  Timer? _searchDebounceTimer;
   late final ScrollController _scrollController;
   bool _isScrollingToTop = false;
   int _sliverResetEpoch = 0;
@@ -51,22 +47,10 @@ class _SavedViewState extends ConsumerState<SavedView> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    final initialQuery =
-        ref.read(searchFilterViewModelProvider).searchQuery ?? '';
-    _searchController = TextEditingController(text: initialQuery);
-    if (initialQuery.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          ref.read(isSavedSearchExpandedProvider.notifier).setExpanded(true);
-        }
-      });
-    }
   }
 
   @override
   void dispose() {
-    _searchDebounceTimer?.cancel();
-    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -177,11 +161,9 @@ class _SavedViewState extends ConsumerState<SavedView> {
       }
     });
 
-    // clear search query when search mode is closed from bottom navbar or appbar
+    // clear search query when search mode is closed
     ref.listen<bool>(isSavedSearchExpandedProvider, (prev, next) {
       if (prev == true && !next) {
-        _searchDebounceTimer?.cancel();
-        _searchController.clear();
         ref.read(searchFilterViewModelProvider.notifier).setSearchQuery(null);
       }
     });
@@ -231,21 +213,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
       }
     });
 
-    final isSearchExpanded = ref.watch(isSavedSearchExpandedProvider);
     final filter = ref.watch(searchFilterViewModelProvider);
     final filterVm = ref.read(searchFilterViewModelProvider.notifier);
-    final hasActiveNonSearchFilters =
-        filter.itemType != null ||
-        filter.isStarred != null ||
-        filter.selectedSubreddits.isNotEmpty ||
-        filter.selectedAuthors.isNotEmpty ||
-        filter.selectedFlairs.isNotEmpty ||
-        filter.selectedMediaTypes.isNotEmpty ||
-        filter.selectedCollectionIds.isNotEmpty ||
-        filter.isNsfw != null ||
-        filter.enrichmentStatus != null ||
-        filter.dateRangeStart != null ||
-        filter.dateRangeEnd != null;
     final feedLayoutMode = ref.watch(
       settingsViewModelProvider.select((s) => s.feedLayoutMode),
     );
@@ -270,400 +239,330 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: isSearchExpanded ? 0 : 12,
-        leading: isSearchExpanded
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: 'Close search',
-                onPressed: () {
-                  ref
-                      .read(isSavedSearchExpandedProvider.notifier)
-                      .setExpanded(false);
-                },
-              )
-            : null,
-        title: isSearchExpanded
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+        titleSpacing: 12,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                'Savedex',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
                 ),
-                decoration: InputDecoration(
-                  hintText: 'Search titles, comments, threads, notes...',
-                  hintStyle: TextStyle(
-                    fontSize: 14,
-                    color: colorScheme.onSurfaceVariant,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            feedStateAsync.when(
+              data: (feedState) {
+                if (feedState.totalCount <= 0 && feedState.items.isNotEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
                   ),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            filterVm.setSearchQuery(null);
-                            setState(() {});
-                          },
-                        )
-                      : null,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 10,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(100),
                   ),
-                ),
-                onSubmitted: (val) {
-                  _searchDebounceTimer?.cancel();
-                  filterVm.setSearchQuery(val.trim().isEmpty ? null : val);
-                },
-                onChanged: (val) {
-                  setState(() {});
-                  _searchDebounceTimer?.cancel();
-                  _searchDebounceTimer = Timer(
-                    const Duration(milliseconds: 250),
-                    () {
-                      if (mounted) {
-                        filterVm.setSearchQuery(
-                          val.trim().isEmpty ? null : val,
-                        );
-                      }
-                    },
-                  );
-                },
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      'Savedex',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                  child: Text(
+                    '${feedState.totalCount}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  feedStateAsync.when(
-                    data: (feedState) {
-                      if (feedState.totalCount <= 0 &&
-                          feedState.items.isNotEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(100),
-                        ),
-                        child: Text(
-                          '${feedState.totalCount}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      );
-                    },
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, _) => const SizedBox.shrink(),
-                  ),
-                ],
-              ),
-        actions: [
-          if (!isSearchExpanded) ...[
-            IconButton(
-              icon: const Icon(Icons.sort_rounded),
-              tooltip: 'Sort: ${filter.sortOption.label}',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => _openSortSheet(context),
+                );
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
             ),
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                PopupMenuButton<_SavedViewMenuAction>(
-                  key: _moreMenuKey,
-                  icon: const Icon(Icons.more_vert_rounded),
-                  tooltip: 'More options',
-                  style: IconButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  onSelected: (action) {
-                    switch (action) {
-                      case _SavedViewMenuAction.postView:
-                        _openPostViewMenu(context);
-                        break;
-                      case _SavedViewMenuAction.toggleNsfw:
-                        if (filter.isNsfw != null) {
-                          filterVm.setNsfwFilter(null);
-                        }
-                        ref
-                            .read(settingsViewModelProvider.notifier)
-                            .toggleHideNsfwInFeed();
-                        break;
-                      case _SavedViewMenuAction.syncReddit:
-                        _syncFromReddit(showErrorSnackbar: true);
-                        break;
-                      case _SavedViewMenuAction.fetchMetadata:
-                        enrichVm.startEnrichment();
-                        break;
-                      case _SavedViewMenuAction.pauseMetadata:
-                        enrichVm.pauseEnrichment();
-                        break;
-                      case _SavedViewMenuAction.resumeMetadata:
-                        enrichVm.resumeEnrichment();
-                        break;
-                      case _SavedViewMenuAction.stopMetadata:
-                        enrichVm.stopEnrichment();
-                        break;
-                      case _SavedViewMenuAction.importExport:
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (ctx) => const ImportView(),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sort_rounded),
+            tooltip: 'Sort: ${filter.sortOption.label}',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _openSortSheet(context),
+          ),
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              PopupMenuButton<_SavedViewMenuAction>(
+                key: _moreMenuKey,
+                icon: const Icon(Icons.more_vert_rounded),
+                tooltip: 'More options',
+                style: IconButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                onSelected: (action) {
+                  switch (action) {
+                    case _SavedViewMenuAction.postView:
+                      _openPostViewMenu(context);
+                      break;
+                    case _SavedViewMenuAction.toggleNsfw:
+                      if (filter.isNsfw != null) {
+                        filterVm.setNsfwFilter(null);
+                      }
+                      ref
+                          .read(settingsViewModelProvider.notifier)
+                          .toggleHideNsfwInFeed();
+                      break;
+                    case _SavedViewMenuAction.syncReddit:
+                      _syncFromReddit(showErrorSnackbar: true);
+                      break;
+                    case _SavedViewMenuAction.fetchMetadata:
+                      enrichVm.startEnrichment();
+                      break;
+                    case _SavedViewMenuAction.pauseMetadata:
+                      enrichVm.pauseEnrichment();
+                      break;
+                    case _SavedViewMenuAction.resumeMetadata:
+                      enrichVm.resumeEnrichment();
+                      break;
+                    case _SavedViewMenuAction.stopMetadata:
+                      enrichVm.stopEnrichment();
+                      break;
+                    case _SavedViewMenuAction.importExport:
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (ctx) => const ImportView()),
+                      );
+                      break;
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem<_SavedViewMenuAction>(
+                    value: _SavedViewMenuAction.postView,
+                    child: Row(
+                      children: [
+                        Icon(
+                          feedLayoutMode.icon,
+                          size: 20,
+                          color: colorScheme.onSurface,
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(child: Text('Post View')),
+                        Text(
+                          feedLayoutMode.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
                           ),
-                        );
-                        break;
-                    }
-                  },
-                  itemBuilder: (ctx) => [
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 18,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem<_SavedViewMenuAction>(
+                    value: _SavedViewMenuAction.toggleNsfw,
+                    child: Row(
+                      children: [
+                        Icon(
+                          hideNsfwInFeed
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          size: 20,
+                          color: hideNsfwInFeed
+                              ? colorScheme.error
+                              : colorScheme.onSurface,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            hideNsfwInFeed ? 'Show NSFW' : 'Hide NSFW',
+                          ),
+                        ),
+                        if (filter.isNsfw != null)
+                          Text(
+                            filter.isNsfw! ? 'Filter: NSFW' : 'Filter: SFW',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.outline,
+                            ),
+                          )
+                        else if (hideNsfwInFeed)
+                          Text(
+                            'Hidden',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.error,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  if (isAuthenticatedWithOAuth)
                     PopupMenuItem<_SavedViewMenuAction>(
-                      value: _SavedViewMenuAction.postView,
+                      value: _SavedViewMenuAction.syncReddit,
+                      enabled: !isSyncingReddit,
                       child: Row(
                         children: [
                           Icon(
-                            feedLayoutMode.icon,
+                            Icons.sync_rounded,
+                            size: 20,
+                            color: isSyncingReddit
+                                ? colorScheme.outline
+                                : colorScheme.onSurface,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            isSyncingReddit
+                                ? 'Syncing from Reddit...'
+                                : 'Sync from Reddit',
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (isEnrichRunning) ...[
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.pauseMetadata,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.pause_circle_outline_rounded,
                             size: 20,
                             color: colorScheme.onSurface,
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(child: Text('Post View')),
-                          Text(
-                            feedLayoutMode.label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 18,
-                            color: colorScheme.onSurfaceVariant,
-                          ),
+                          const Text('Pause Metadata Fetch'),
                         ],
                       ),
                     ),
                     PopupMenuItem<_SavedViewMenuAction>(
-                      value: _SavedViewMenuAction.toggleNsfw,
+                      value: _SavedViewMenuAction.stopMetadata,
                       child: Row(
                         children: [
                           Icon(
-                            hideNsfwInFeed
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded,
+                            Icons.stop_circle_outlined,
                             size: 20,
-                            color: hideNsfwInFeed
-                                ? colorScheme.error
-                                : colorScheme.onSurface,
+                            color: colorScheme.error,
                           ),
                           const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              hideNsfwInFeed ? 'Show NSFW' : 'Hide NSFW',
-                            ),
+                          Text(
+                            'Stop Metadata Fetch',
+                            style: TextStyle(color: colorScheme.error),
                           ),
-                          if (filter.isNsfw != null)
-                            Text(
-                              filter.isNsfw! ? 'Filter: NSFW' : 'Filter: SFW',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.outline,
-                              ),
-                            )
-                          else if (hideNsfwInFeed)
-                            Text(
-                              'Hidden',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.error,
-                              ),
-                            ),
                         ],
                       ),
                     ),
-                    const PopupMenuDivider(),
-                    if (isAuthenticatedWithOAuth)
-                      PopupMenuItem<_SavedViewMenuAction>(
-                        value: _SavedViewMenuAction.syncReddit,
-                        enabled: !isSyncingReddit,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.sync_rounded,
-                              size: 20,
-                              color: isSyncingReddit
-                                  ? colorScheme.outline
-                                  : colorScheme.onSurface,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              isSyncingReddit
-                                  ? 'Syncing from Reddit...'
-                                  : 'Sync from Reddit',
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (isEnrichRunning) ...[
-                      PopupMenuItem<_SavedViewMenuAction>(
-                        value: _SavedViewMenuAction.pauseMetadata,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.pause_circle_outline_rounded,
-                              size: 20,
-                              color: colorScheme.onSurface,
-                            ),
-                            const SizedBox(width: 12),
-                            const Text('Pause Metadata Fetch'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem<_SavedViewMenuAction>(
-                        value: _SavedViewMenuAction.stopMetadata,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.stop_circle_outlined,
-                              size: 20,
-                              color: colorScheme.error,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Stop Metadata Fetch',
-                              style: TextStyle(color: colorScheme.error),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ] else if (isEnrichPaused) ...[
-                      PopupMenuItem<_SavedViewMenuAction>(
-                        value: _SavedViewMenuAction.resumeMetadata,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.play_circle_outline_rounded,
-                              size: 20,
-                              color: colorScheme.primary,
-                            ),
-                            const SizedBox(width: 12),
-                            const Text('Resume Metadata Fetch'),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem<_SavedViewMenuAction>(
-                        value: _SavedViewMenuAction.stopMetadata,
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.stop_circle_outlined,
-                              size: 20,
-                              color: colorScheme.error,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Stop Metadata Fetch',
-                              style: TextStyle(color: colorScheme.error),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ] else ...[
-                      PopupMenuItem<_SavedViewMenuAction>(
-                        value: _SavedViewMenuAction.fetchMetadata,
-                        child: Consumer(
-                          builder: (context, menuRef, _) {
-                            final pendingCount =
-                                menuRef
-                                    .watch(pendingEnrichmentCountProvider)
-                                    .asData
-                                    ?.value ??
-                                0;
-                            return Row(
-                              children: [
-                                Icon(
-                                  Icons.auto_awesome_rounded,
-                                  size: 20,
-                                  color: pendingCount > 0
-                                      ? colorScheme.primary
-                                      : colorScheme.outline,
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  pendingCount > 0
-                                      ? 'Fetch Metadata (${_formatNumber(pendingCount)})'
-                                      : 'All Metadata Downloaded',
-                                  style: TextStyle(
-                                    color: pendingCount > 0
-                                        ? null
-                                        : colorScheme.outline,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                    const PopupMenuDivider(),
-                    const PopupMenuItem<_SavedViewMenuAction>(
-                      value: _SavedViewMenuAction.importExport,
+                  ] else if (isEnrichPaused) ...[
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.resumeMetadata,
                       child: Row(
                         children: [
-                          Icon(Icons.import_export_rounded, size: 20),
-                          SizedBox(width: 12),
-                          Text('Import & Export'),
+                          Icon(
+                            Icons.play_circle_outline_rounded,
+                            size: 20,
+                            color: colorScheme.primary,
+                          ),
+                          const SizedBox(width: 12),
+                          const Text('Resume Metadata Fetch'),
                         ],
+                      ),
+                    ),
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.stopMetadata,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.stop_circle_outlined,
+                            size: 20,
+                            color: colorScheme.error,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'Stop Metadata Fetch',
+                            style: TextStyle(color: colorScheme.error),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    PopupMenuItem<_SavedViewMenuAction>(
+                      value: _SavedViewMenuAction.fetchMetadata,
+                      child: Consumer(
+                        builder: (context, menuRef, _) {
+                          final pendingCount =
+                              menuRef
+                                  .watch(pendingEnrichmentCountProvider)
+                                  .asData
+                                  ?.value ??
+                              0;
+                          return Row(
+                            children: [
+                              Icon(
+                                Icons.auto_awesome_rounded,
+                                size: 20,
+                                color: pendingCount > 0
+                                    ? colorScheme.primary
+                                    : colorScheme.outline,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                pendingCount > 0
+                                    ? 'Fetch Metadata (${_formatNumber(pendingCount)})'
+                                    : 'All Metadata Downloaded',
+                                style: TextStyle(
+                                  color: pendingCount > 0
+                                      ? null
+                                      : colorScheme.outline,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],
-                ),
-                if (isEnriching)
-                  Positioned(
-                    top: 10,
-                    right: 8,
-                    child: Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: isEnrichPaused
-                            ? colorScheme.outline
-                            : colorScheme.primary,
-                        shape: BoxShape.circle,
-                      ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem<_SavedViewMenuAction>(
+                    value: _SavedViewMenuAction.importExport,
+                    child: Row(
+                      children: [
+                        Icon(Icons.import_export_rounded, size: 20),
+                        SizedBox(width: 12),
+                        Text('Import & Export'),
+                      ],
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(width: 4),
-          ],
+                ],
+              ),
+              if (isEnriching)
+                Positioned(
+                  top: 10,
+                  right: 8,
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: isEnrichPaused
+                          ? colorScheme.outline
+                          : colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(
         children: [
-          if (hasActiveNonSearchFilters)
-            _buildActiveFiltersBar(context, filter, filterVm),
           if ((feedStateAsync.isLoading && feedStateAsync.hasValue) ||
               isSyncingReddit)
             const LinearProgressIndicator(minHeight: 2),
@@ -693,6 +592,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     content = CustomScrollView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       slivers: [
                         SliverPadding(
                           key: ValueKey('feed_list_$_sliverResetEpoch'),
@@ -736,6 +637,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     content = CustomScrollView(
                       controller: _scrollController,
                       physics: const AlwaysScrollableScrollPhysics(),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       slivers: [
                         SliverPadding(
                           key: ValueKey('feed_grid_$_sliverResetEpoch'),
@@ -818,122 +721,6 @@ class _SavedViewState extends ConsumerState<SavedView> {
     );
   }
 
-  Widget _buildActiveFiltersBar(
-    BuildContext context,
-    FilterCriteria filter,
-    SearchFilterViewModel filterVm,
-  ) {
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        children: [
-          ActionChip(
-            avatar: const Icon(Icons.close_rounded, size: 14),
-            label: const Text('Clear All'),
-            onPressed: () {
-              filterVm.clearAllFilters();
-              if (_scrollController.hasClients &&
-                  _scrollController.positions.length == 1 &&
-                  _scrollController.offset > 0) {
-                _scrollController.jumpTo(0);
-              }
-            },
-          ),
-          const SizedBox(width: 8),
-
-          if (filter.isStarred == true)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Chip(
-                avatar: const Icon(
-                  Icons.star_rounded,
-                  size: 14,
-                  color: Colors.yellow,
-                ),
-                label: const Text('Starred'),
-                onDeleted: () => filterVm.toggleStarredOnly(false),
-              ),
-            ),
-
-          if (filter.itemType == ItemType.post)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Chip(
-                avatar: const Icon(Icons.article_rounded, size: 14),
-                label: const Text('Posts'),
-                onDeleted: () => filterVm.setItemType(null),
-              ),
-            ),
-
-          if (filter.itemType == ItemType.comment)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Chip(
-                avatar: const Icon(Icons.chat_bubble_rounded, size: 14),
-                label: const Text('Comments'),
-                onDeleted: () => filterVm.setItemType(null),
-              ),
-            ),
-
-          if (filter.isNsfw != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Chip(
-                label: Text(filter.isNsfw! ? 'NSFW' : 'SFW only'),
-                onDeleted: () => filterVm.setNsfwFilter(null),
-              ),
-            ),
-
-          if (filter.selectedSubreddits.isNotEmpty) ...[
-            ...filter.selectedSubreddits.map(
-              (sub) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Chip(
-                  avatar: Icon(
-                    SavedItem.isUserSubreddit(sub)
-                        ? Icons.person_rounded
-                        : Icons.tag_rounded,
-                    size: 14,
-                  ),
-                  label: Text(SavedItem.formatSubreddit(sub)),
-                  onDeleted: () => filterVm.toggleSubreddit(sub),
-                ),
-              ),
-            ),
-          ],
-
-          if (filter.selectedAuthors.isNotEmpty) ...[
-            ...filter.selectedAuthors.map(
-              (author) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Chip(
-                  avatar: const Icon(Icons.person_rounded, size: 14),
-                  label: Text('u/$author'),
-                  onDeleted: () => filterVm.toggleAuthor(author),
-                ),
-              ),
-            ),
-          ],
-
-          if (filter.selectedFlairs.isNotEmpty) ...[
-            ...filter.selectedFlairs.map(
-              (flair) => Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Chip(
-                  label: Text(flair),
-                  onDeleted: () => filterVm.toggleFlair(flair),
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyState(
     BuildContext context,
     WidgetRef ref,
@@ -984,8 +771,6 @@ class _SavedViewState extends ConsumerState<SavedView> {
               const SizedBox(height: 20),
               FilledButton.tonal(
                 onPressed: () {
-                  _searchDebounceTimer?.cancel();
-                  _searchController.clear();
                   ref
                       .read(searchFilterViewModelProvider.notifier)
                       .clearAllFilters();
