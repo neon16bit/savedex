@@ -58,7 +58,7 @@ class CommentCard extends ConsumerWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.2,
-                            color: colorScheme.onSurface,
+                            color: colorScheme.primary,
                           ),
                         ),
                       ),
@@ -109,12 +109,24 @@ class CommentCard extends ConsumerWidget {
                         children: [
                           if (item.author != null &&
                               item.author!.isNotEmpty) ...[
-                            Text(
-                              'u/${item.author}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurfaceVariant,
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (ctx) => ScopedFeedView(
+                                      args: ScopedFeedArgs.author(item.author!),
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                'u/${item.author}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ],

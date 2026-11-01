@@ -14,6 +14,7 @@ import 'package:savedex/features/detail/widgets/detail_markdown_content.dart';
 import 'package:savedex/features/detail/widgets/detail_media_view.dart';
 import 'package:savedex/features/detail/widgets/detail_user_note_card.dart';
 import 'package:savedex/features/detail/widgets/detail_utils.dart';
+import 'package:savedex/features/library/scoped_feed_view.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
 class ItemDetailView extends ConsumerStatefulWidget {
@@ -222,12 +223,24 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
               elevation: 0,
               scrolledUnderElevation: 2,
               titleSpacing: 0,
-              title: Text(
-                item.displaySubreddit,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+              title: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (ctx) => ScopedFeedView(
+                        args: ScopedFeedArgs.subreddit(item.subreddit),
+                      ),
+                    ),
+                  );
+                },
+                child: Text(
+                  item.displaySubreddit,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               actions: [
@@ -469,12 +482,24 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            Text(
-                              'u/${item.author}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: colorScheme.onSurface,
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (ctx) => ScopedFeedView(
+                                      args: ScopedFeedArgs.author(item.author!),
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                'u/${item.author}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                ),
                               ),
                             ),
                             if (item.createdAtUtc != null)

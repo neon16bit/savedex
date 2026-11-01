@@ -14,15 +14,28 @@ import 'package:url_launcher/url_launcher.dart';
 class ScopedFeedArgs {
   final Collection? collection;
   final String? subreddit;
+  final String? author;
 
-  const ScopedFeedArgs.collection(this.collection) : subreddit = null;
-  const ScopedFeedArgs.subreddit(this.subreddit) : collection = null;
+  const ScopedFeedArgs.collection(this.collection)
+    : subreddit = null,
+      author = null;
+  const ScopedFeedArgs.subreddit(this.subreddit)
+    : collection = null,
+      author = null;
+  const ScopedFeedArgs.author(this.author)
+    : collection = null,
+      subreddit = null;
 
   bool get isCollection => collection != null;
   bool get isSubreddit => subreddit != null;
+  bool get isAuthor => author != null;
 
-  String get title =>
-      isCollection ? collection!.name : SavedItem.formatSubreddit(subreddit!);
+  String get title {
+    if (isCollection) return collection!.name;
+    if (isSubreddit) return SavedItem.formatSubreddit(subreddit!);
+    final cleanAuthor = (author ?? '').replaceFirst(RegExp(r'^[ru]/'), '');
+    return 'u/$cleanAuthor';
+  }
 }
 
 class ScopedFeedView extends ConsumerStatefulWidget {
@@ -93,8 +106,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         oldWidget.args.collection?.id != widget.args.collection?.id ||
         oldWidget.args.collection?.name != widget.args.collection?.name;
     final subredditChanged = oldWidget.args.subreddit != widget.args.subreddit;
+    final authorChanged = oldWidget.args.author != widget.args.author;
 
-    if (collectionChanged || subredditChanged) {
+    if (collectionChanged || subredditChanged || authorChanged) {
       _searchDebounceTimer?.cancel();
       _dbDebounceTimer?.cancel();
       _selectedSubreddits.clear();
@@ -138,12 +152,16 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     }
 
     final updated = event.item!;
+    final cleanAuthor = widget.args.author?.replaceFirst(RegExp(r'^[ru]/'), '');
     final shouldRemove =
         (_isStarredOnly == true && !updated.isStarred) ||
         (widget.args.isCollection &&
             !updated.collections.any(
               (c) => c.id == widget.args.collection!.id,
-            ));
+            )) ||
+        (widget.args.isAuthor &&
+            (updated.author ?? '').toLowerCase() !=
+                (cleanAuthor ?? '').toLowerCase());
 
     if (index != -1) {
       if (shouldRemove) {
@@ -162,6 +180,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   }
 
   FilterCriteria _buildFilter() {
+    final cleanAuthor = widget.args.author?.replaceFirst(RegExp(r'^[ru]/'), '');
+
     return FilterCriteria(
       selectedCollectionIds: widget.args.isCollection
           ? {widget.args.collection!.id}
@@ -169,6 +189,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       selectedSubreddits: widget.args.isSubreddit
           ? {widget.args.subreddit!}
           : _selectedSubreddits,
+      selectedAuthors: widget.args.isAuthor && cleanAuthor != null
+          ? {cleanAuthor}
+          : const {},
       searchQuery: _searchQuery,
       itemType: _selectedItemType,
       isStarred: _isStarredOnly,
@@ -319,6 +342,14 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   Future<void> _openInReddit(String subreddit) async {
     final cleanSub = subreddit.replaceAll(RegExp(r'^[ru]/'), '');
     final uri = Uri.parse('https://www.reddit.com/r/$cleanSub/');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _openUserInReddit(String author) async {
+    final cleanUser = author.replaceAll(RegExp(r'^[ru]/'), '');
+    final uri = Uri.parse('https://www.reddit.com/user/$cleanUser/');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
@@ -487,6 +518,13 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               icon: const Icon(Icons.open_in_new_rounded),
               tooltip: 'Open subreddit on Reddit',
               onPressed: () => _openInReddit(widget.args.subreddit!),
+            ),
+          ],
+          if (widget.args.isAuthor) ...[
+            IconButton(
+              icon: const Icon(Icons.open_in_new_rounded),
+              tooltip: 'Open user on Reddit',
+              onPressed: () => _openUserInReddit(widget.args.author!),
             ),
           ],
           const SizedBox(width: 4),
@@ -705,7 +743,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                       ? Icons.search_off_rounded
                       : (widget.args.isCollection
                             ? Icons.bookmark_border_rounded
-                            : Icons.tag_rounded),
+                            : (widget.args.isAuthor
+                                  ? Icons.person_outline_rounded
+                                  : Icons.tag_rounded)),
                   size: 48,
                   color: colorScheme.outline,
                 ),
@@ -716,7 +756,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                     ? 'No matching items'
                     : (widget.args.isCollection
                           ? 'Collection is empty'
-                          : 'No saved items in this subreddit'),
+                          : (widget.args.isAuthor
+                                ? 'No saved items by this user'
+                                : 'No saved items in this subreddit')),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -727,7 +769,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                     ? 'Try different keywords or reset your filters.'
                     : (widget.args.isCollection
                           ? 'Tap the Collections button or 3-dot menu on any saved post or comment to add it here.'
-                          : 'Saved posts or comments from this subreddit will appear here.'),
+                          : (widget.args.isAuthor
+                                ? 'Saved posts or comments by ${widget.args.title} will appear here.'
+                                : 'Saved posts or comments from this subreddit will appear here.')),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: colorScheme.onSurfaceVariant,

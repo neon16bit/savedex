@@ -10,6 +10,7 @@ import 'package:savedex/features/detail/widgets/detail_dialogs.dart';
 import 'package:savedex/features/detail/widgets/detail_markdown_content.dart';
 import 'package:savedex/features/detail/widgets/detail_user_note_card.dart';
 import 'package:savedex/features/detail/widgets/detail_utils.dart';
+import 'package:savedex/features/library/scoped_feed_view.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
 class DetailDiscussionHeader extends StatelessWidget {
@@ -289,12 +290,31 @@ class DetailCommentCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                comment.author != null ? 'u/${comment.author}' : 'u/[deleted]',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.primary,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap:
+                    (comment.author != null &&
+                        comment.author!.isNotEmpty &&
+                        comment.author != '[deleted]')
+                    ? () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (ctx) => ScopedFeedView(
+                              args: ScopedFeedArgs.author(comment.author!),
+                            ),
+                          ),
+                        );
+                      }
+                    : null,
+                child: Text(
+                  comment.author != null
+                      ? 'u/${comment.author}'
+                      : 'u/[deleted]',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.primary,
+                  ),
                 ),
               ),
               if (comment.createdAtUtc != null) ...[
