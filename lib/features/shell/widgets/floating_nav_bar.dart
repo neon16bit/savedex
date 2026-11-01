@@ -1729,7 +1729,7 @@ class _StandaloneFloatingActionButton extends StatelessWidget {
         surfaceColor: fill,
         borderColor: borderColor,
         isDark: isDark,
-        enableBlur: false,
+        enableBlur: kEnableNavBarBlur,
         customShadow: spec.isActive
             ? BoxShadow(
                 color: colorScheme.primary.withValues(alpha: 0.35),
