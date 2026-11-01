@@ -35,7 +35,7 @@ class CommentCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -206,7 +206,7 @@ class CommentCard extends ConsumerWidget {
                       ),
                     ),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),
 
                   Row(
                     children: [
