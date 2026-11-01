@@ -130,7 +130,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
         ),
       );
     try {
-      final result = await actions.recoverFromArchive(item);
+      final result = await actions.recoverFromArchive(item, force: true);
       if (!messenger.mounted) return;
       messenger
         ..clearSnackBars()
@@ -329,16 +329,23 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                         PopupMenuItem(
                           value: 'refresh',
                           enabled: !isEnriching,
-                          child: Row(
-                            children: [
-                              const Icon(Icons.sync_rounded, size: 18),
-                              const SizedBox(width: 10),
-                              Text(
-                                isEnriching
-                                    ? 'Refreshing...'
-                                    : 'Refresh Metadata',
-                              ),
-                            ],
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onLongPress: isEnriching
+                                ? null
+                                : () =>
+                                      Navigator.of(ctx).pop('recover_archive'),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.sync_rounded, size: 18),
+                                const SizedBox(width: 10),
+                                Text(
+                                  isEnriching
+                                      ? 'Refreshing...'
+                                      : 'Refresh Metadata',
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         if (item.body != null && item.body!.trim().isNotEmpty)

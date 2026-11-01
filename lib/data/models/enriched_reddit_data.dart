@@ -27,6 +27,7 @@ class EnrichedRedditData {
   final String subredditType;
   final bool isSuccess;
   final bool isRateLimited;
+  final bool isNotFound;
   final String? errorMessage;
 
   const EnrichedRedditData({
@@ -50,6 +51,7 @@ class EnrichedRedditData {
     this.subredditType = 'public',
     this.isSuccess = true,
     this.isRateLimited = false,
+    this.isNotFound = false,
     this.errorMessage,
   });
 
@@ -62,11 +64,25 @@ class EnrichedRedditData {
     String id,
     String errorMessage, {
     bool isRateLimited = false,
+    bool isNotFound = false,
   }) {
     return EnrichedRedditData(
       id: id,
       isSuccess: false,
       isRateLimited: isRateLimited,
+      isNotFound: isNotFound,
+      errorMessage: errorMessage,
+    );
+  }
+
+  factory EnrichedRedditData.notFound(
+    String id, [
+    String errorMessage = 'Item was not found in archive',
+  ]) {
+    return EnrichedRedditData(
+      id: id,
+      isSuccess: false,
+      isNotFound: true,
       errorMessage: errorMessage,
     );
   }

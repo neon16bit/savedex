@@ -136,7 +136,7 @@ class ItemOptionsMenu extends ConsumerWidget {
           try {
             final result = await ref
                 .read(enrichmentViewModelProvider.notifier)
-                .recoverSingleItemFromArchive(item);
+                .recoverSingleItemFromArchive(item, force: true);
 
             if (result.success) {
               await ref
@@ -236,12 +236,18 @@ class ItemOptionsMenu extends ConsumerWidget {
         PopupMenuItem(
           value: 'refresh',
           enabled: !isEnriching,
-          child: Row(
-            children: [
-              const Icon(Icons.sync_rounded, size: 18),
-              const SizedBox(width: 10),
-              Text(isEnriching ? 'Refreshing...' : 'Refresh Metadata'),
-            ],
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPress: isEnriching
+                ? null
+                : () => Navigator.of(ctx).pop('recover_archive'),
+            child: Row(
+              children: [
+                const Icon(Icons.sync_rounded, size: 18),
+                const SizedBox(width: 10),
+                Text(isEnriching ? 'Refreshing...' : 'Refresh Metadata'),
+              ],
+            ),
           ),
         ),
         if (item.body != null && item.body!.trim().isNotEmpty)

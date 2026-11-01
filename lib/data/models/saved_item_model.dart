@@ -25,6 +25,7 @@ class SavedItem {
   final bool isStarred;
   final bool isArchived;
   final bool isArchiveRecovered;
+  final bool isArchiveUnavailable;
   final String? userNote;
   final String csvSource;
   final int importOrder;
@@ -57,6 +58,7 @@ class SavedItem {
     this.isStarred = false,
     this.isArchived = false,
     this.isArchiveRecovered = false,
+    this.isArchiveUnavailable = false,
     this.userNote,
     this.csvSource = 'saved_posts.csv',
     required this.importOrder,
@@ -115,16 +117,38 @@ class SavedItem {
 
   bool get canAttemptArchiveRecovery =>
       !isArchiveRecovered &&
+      !isArchiveUnavailable &&
       (enrichmentStatus == EnrichmentStatus.failed || hasRemovedContent);
 
   bool get hasRemovedContent =>
-      _isRemovedMarker(author) ||
-      _isRemovedMarker(body) ||
-      _isRemovedMarker(title);
+      isRemovedMarker(author) ||
+      isRemovedMarker(body) ||
+      isRemovedMarker(title);
 
-  static bool _isRemovedMarker(String? value) {
-    final normalized = value?.trim().toLowerCase();
-    return normalized == '[deleted]' || normalized == '[removed]';
+  static bool isRemovedMarker(String? value) {
+    if (value == null) return false;
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    if (normalized == '[deleted]' ||
+        normalized == '[removed]' ||
+        normalized == 'deleted' ||
+        normalized == 'removed' ||
+        normalized == 'removed by reddit' ||
+        normalized == 'removed by moderator') {
+      return true;
+    }
+    if (normalized.startsWith('removed by reddit') ||
+        normalized.startsWith('removed by moderator')) {
+      return true;
+    }
+    if (normalized.startsWith('[') && normalized.endsWith(']')) {
+      final inner = normalized.substring(1, normalized.length - 1).trim();
+      return inner.startsWith('removed by') ||
+          inner.startsWith('deleted by') ||
+          inner == 'removed' ||
+          inner == 'deleted';
+    }
+    return false;
   }
 
   bool get isUserPost =>
@@ -354,6 +378,7 @@ class SavedItem {
     bool? isStarred,
     bool? isArchived,
     bool? isArchiveRecovered,
+    bool? isArchiveUnavailable,
     String? userNote,
     String? csvSource,
     int? importOrder,
@@ -402,6 +427,7 @@ class SavedItem {
       isStarred: isStarred ?? this.isStarred,
       isArchived: isArchived ?? this.isArchived,
       isArchiveRecovered: isArchiveRecovered ?? this.isArchiveRecovered,
+      isArchiveUnavailable: isArchiveUnavailable ?? this.isArchiveUnavailable,
       userNote: clearUserNote ? null : (userNote ?? this.userNote),
       csvSource: csvSource ?? this.csvSource,
       importOrder: importOrder ?? this.importOrder,
@@ -441,6 +467,7 @@ class SavedItem {
         other.isStarred == isStarred &&
         other.isArchived == isArchived &&
         other.isArchiveRecovered == isArchiveRecovered &&
+        other.isArchiveUnavailable == isArchiveUnavailable &&
         other.userNote == userNote &&
         other.csvSource == csvSource &&
         other.importOrder == importOrder &&
@@ -475,6 +502,7 @@ class SavedItem {
     isStarred,
     isArchived,
     isArchiveRecovered,
+    isArchiveUnavailable,
     userNote,
     csvSource,
     importOrder,

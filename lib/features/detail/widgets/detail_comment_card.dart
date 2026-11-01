@@ -484,7 +484,7 @@ class DetailCommentCard extends StatelessWidget {
                         if (onRecoverArchive != null) {
                           onRecoverArchive!();
                         } else {
-                          actions.recoverFromArchive(comment);
+                          actions.recoverFromArchive(comment, force: true);
                         }
                       } else if (val == 'refresh') {
                         onRefresh();
@@ -548,16 +548,22 @@ class DetailCommentCard extends StatelessWidget {
                       PopupMenuItem(
                         value: 'refresh',
                         enabled: !isEnriching,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.sync_rounded, size: 18),
-                            const SizedBox(width: 10),
-                            Text(
-                              isEnriching
-                                  ? 'Refreshing...'
-                                  : 'Refresh Metadata',
-                            ),
-                          ],
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onLongPress: isEnriching
+                              ? null
+                              : () => Navigator.of(ctx).pop('recover_archive'),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.sync_rounded, size: 18),
+                              const SizedBox(width: 10),
+                              Text(
+                                isEnriching
+                                    ? 'Refreshing...'
+                                    : 'Refresh Metadata',
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       if (comment.body != null &&

@@ -41,7 +41,7 @@ class PullPushApiService {
   }) async {
     final records = await fetchMetadataBatch(ids: [id], itemType: itemType);
     return records[id] ??
-        EnrichedRedditData.failure(
+        EnrichedRedditData.notFound(
           id,
           'Item was not found in PullPush archive',
         );
@@ -80,11 +80,20 @@ class PullPushApiService {
       final end = (start + _maxIdsPerRequest).clamp(0, cleanIds.length);
       final batchClean = cleanIds.sublist(start, end);
 
-      void markBatchFailure(String message) {
+      void markBatchFailure(
+        String message, {
+        bool isRateLimited = false,
+        bool isNotFound = false,
+      }) {
         for (final clean in batchClean) {
           final rawList = rawIdsByClean[clean] ?? [clean];
           for (final rawId in rawList) {
-            results[rawId] = EnrichedRedditData.failure(rawId, message);
+            results[rawId] = EnrichedRedditData.failure(
+              rawId,
+              message,
+              isRateLimited: isRateLimited,
+              isNotFound: isNotFound,
+            );
           }
         }
       }
@@ -95,18 +104,23 @@ class PullPushApiService {
 
       debugPrint('[PullPushApi] Requesting URL: $uri');
 
-      final response = await _getWithRetry(uri, isCancelled: isCancelled);
+      final fetchResult = await _getWithRetry(uri, isCancelled: isCancelled);
 
       if (isCancelled?.call() == true) {
         debugPrint('[PullPushApi] Cancelled after HTTP response');
         break;
       }
 
+      final response = fetchResult.response;
       if (response == null) {
         debugPrint(
-          '[PullPushApi] ERROR: No response (timeout or connection error) for batch: ${batchClean.join(', ')}',
+          '[PullPushApi] ERROR: No successful response (rate-limited: ${fetchResult.isRateLimited}, error: ${fetchResult.error}) for batch: ${batchClean.join(', ')}',
         );
-        markBatchFailure('PullPush lookup failed');
+        markBatchFailure(
+          fetchResult.error ?? 'PullPush lookup failed',
+          isRateLimited: fetchResult.isRateLimited,
+          isNotFound: false,
+        );
         continue;
       }
 
@@ -166,7 +180,7 @@ class PullPushApiService {
             for (final rawId in rawList) {
               results.putIfAbsent(
                 rawId,
-                () => EnrichedRedditData.failure(
+                () => EnrichedRedditData.notFound(
                   rawId,
                   'Item was not found in PullPush archive',
                 ),
@@ -183,33 +197,61 @@ class PullPushApiService {
     return results;
   }
 
-  Future<http.Response?> _getWithRetry(
-    Uri uri, {
-    bool Function()? isCancelled,
-  }) async {
+  Future<({http.Response? response, bool isRateLimited, String? error})>
+  _getWithRetry(Uri uri, {bool Function()? isCancelled}) async {
+    int? lastStatusCode;
+    String? lastError;
+
     for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
-      if (isCancelled?.call() == true) return null;
+      if (isCancelled?.call() == true) {
+        return (response: null, isRateLimited: false, error: 'Cancelled');
+      }
+      lastStatusCode = null;
       try {
         final stopwatch = Stopwatch()..start();
         final response = await _client
             .get(uri, headers: {'User-Agent': _userAgent})
             .timeout(const Duration(seconds: 15));
         stopwatch.stop();
+        lastStatusCode = response.statusCode;
         debugPrint(
           '[PullPushApi] Attempt $attempt finished in ${stopwatch.elapsedMilliseconds}ms -> HTTP ${response.statusCode}',
         );
-        if (isCancelled?.call() == true) return null;
+        if (isCancelled?.call() == true) {
+          return (response: null, isRateLimited: false, error: 'Cancelled');
+        }
+        if (response.statusCode == 200) {
+          return (response: response, isRateLimited: false, error: null);
+        }
         if (!_isRetryable(response.statusCode) || attempt == _maxAttempts) {
-          return response.statusCode == 200 ? response : null;
+          final isRateLimited = response.statusCode == 429;
+          return (
+            response: null,
+            isRateLimited: isRateLimited,
+            error: isRateLimited
+                ? 'Rate limit exceeded (429)'
+                : 'HTTP ${response.statusCode}',
+          );
         }
         await Future.delayed(_retryDelay(response, attempt));
       } catch (e) {
+        lastError = e.toString();
         debugPrint('[PullPushApi] Attempt $attempt failed with exception: $e');
-        if (isCancelled?.call() == true || attempt == _maxAttempts) return null;
+        if (isCancelled?.call() == true || attempt == _maxAttempts) {
+          return (
+            response: null,
+            isRateLimited: lastStatusCode == 429,
+            error: lastError,
+          );
+        }
         await Future.delayed(_defaultRetryDelay * attempt);
       }
     }
-    return null;
+    return (
+      response: null,
+      isRateLimited: lastStatusCode == 429,
+      error: lastError ?? 'Lookup failed after $_maxAttempts attempts',
+    );
   }
 
   bool _isRetryable(int statusCode) =>

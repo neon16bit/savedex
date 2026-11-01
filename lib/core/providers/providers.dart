@@ -110,6 +110,11 @@ final archiveRecoveryCountProvider = StreamProvider<int>((ref) {
   return repo.watchArchiveRecoveryCount();
 });
 
+final archiveUnavailableCountProvider = StreamProvider<int>((ref) {
+  final repo = ref.watch(savedItemRepositoryProvider);
+  return repo.watchArchiveUnavailableCount();
+});
+
 final allCollectionsProvider = StreamProvider<List<Collection>>((ref) {
   final repo = ref.watch(collectionRepositoryProvider);
   return repo.watchAllCollections();

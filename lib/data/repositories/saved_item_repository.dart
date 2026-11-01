@@ -562,8 +562,7 @@ class SavedItemRepository {
                 companionTitle != null &&
                 companionTitle.isNotEmpty &&
                 companionTitle != 'Untitled Post' &&
-                companionTitle != '[deleted]' &&
-                companionTitle != '[removed]';
+                !SavedItem.isRemovedMarker(companionTitle);
             final enrichmentNeedsUpdate =
                 existing.enrichmentStatus != EnrichmentStatus.enriched &&
                 companionEnrichment == EnrichmentStatus.enriched;
@@ -579,15 +578,14 @@ class SavedItemRepository {
                 (existing.body == null || existing.body!.isEmpty) &&
                 companionBody != null &&
                 companionBody.isNotEmpty &&
-                companionBody != '[deleted]' &&
-                companionBody != '[removed]';
+                !SavedItem.isRemovedMarker(companionBody);
             final authorNeedsUpdate =
                 (existing.author == null ||
                     existing.author!.isEmpty ||
-                    existing.author == '[deleted]') &&
+                    SavedItem.isRemovedMarker(existing.author)) &&
                 companionAuthor != null &&
                 companionAuthor.isNotEmpty &&
-                companionAuthor != '[deleted]';
+                !SavedItem.isRemovedMarker(companionAuthor);
             final mediaNeedsUpdate =
                 (existing.mediaUrl == null || existing.mediaUrl!.isEmpty) &&
                 companionMediaUrl != null &&
@@ -1067,8 +1065,7 @@ class SavedItemRepository {
             companionTitle != null &&
             companionTitle.isNotEmpty &&
             companionTitle != 'Untitled Post' &&
-            companionTitle != '[deleted]' &&
-            companionTitle != '[removed]';
+            !SavedItem.isRemovedMarker(companionTitle);
         final needsScoreUpdate =
             existing.score == 0 &&
             companionScore != null &&
@@ -1077,8 +1074,7 @@ class SavedItemRepository {
             (existing.body == null || existing.body!.isEmpty) &&
             companionBody != null &&
             companionBody.isNotEmpty &&
-            companionBody != '[deleted]' &&
-            companionBody != '[removed]';
+            !SavedItem.isRemovedMarker(companionBody);
         final needsSubredditTypeUpdate =
             (existing.subredditType.isEmpty ||
                 existing.subredditType == 'public') &&
@@ -1151,7 +1147,7 @@ class SavedItemRepository {
               author:
                   (existing.author != null &&
                       existing.author!.isNotEmpty &&
-                      existing.author != '[deleted]')
+                      !SavedItem.isRemovedMarker(existing.author))
                   ? Value(existing.author)
                   : (companion.author.present
                         ? companion.author
@@ -1386,13 +1382,14 @@ class SavedItemRepository {
   }
 
   Future<({bool success, String? error})> recoverItemFromArchive(
-    SavedItem item,
-  ) async {
+    SavedItem item, {
+    bool force = false,
+  }) async {
     final current = await getItemById(item.id);
     if (current == null) {
       return (success: false, error: 'Item no longer exists');
     }
-    if (!current.canAttemptArchiveRecovery) {
+    if (!force && !current.canAttemptArchiveRecovery) {
       return (
         success: false,
         error:
@@ -1400,7 +1397,7 @@ class SavedItemRepository {
       );
     }
 
-    return _recoverItemsFromArchive([current]).then((results) {
+    return _recoverItemsFromArchive([current], force: force).then((results) {
       return results[current.id] ??
           (success: false, error: 'Archive recovery failed');
     });
@@ -1413,13 +1410,19 @@ class SavedItemRepository {
 
   Future<Map<String, ({bool success, String? error})>> recoverItemsFromArchive(
     List<SavedItem> items, {
+    bool force = false,
     bool Function()? isCancelled,
   }) {
-    return _recoverItemsFromArchive(items, isCancelled: isCancelled);
+    return _recoverItemsFromArchive(
+      items,
+      force: force,
+      isCancelled: isCancelled,
+    );
   }
 
   Future<Map<String, ({bool success, String? error})>> _recoverItemsFromArchive(
     List<SavedItem> items, {
+    bool force = false,
     bool Function()? isCancelled,
   }) async {
     final results = <String, ({bool success, String? error})>{};
@@ -1430,7 +1433,7 @@ class SavedItemRepository {
       if (current == null) {
         debugPrint('[ArchiveRecovery] Item ${item.id} no longer exists in DB');
         results[item.id] = (success: false, error: 'Item no longer exists');
-      } else if (!current.canAttemptArchiveRecovery) {
+      } else if (!force && !current.canAttemptArchiveRecovery) {
         debugPrint(
           '[ArchiveRecovery] Item ${item.id} ("${item.title}") not eligible (status: ${current.enrichmentStatus.name}, hasRemoved: ${current.hasRemovedContent})',
         );
@@ -1475,6 +1478,9 @@ class SavedItemRepository {
         } else if (backend == ArchiveBackend.automatic) {
           pendingFallback.add(item);
         } else {
+          if (meta?.isNotFound == true) {
+            await _markItemArchiveUnavailable(item.id);
+          }
           results[item.id] = (
             success: false,
             error: meta?.errorMessage ?? 'Archive lookup failed',
@@ -1509,16 +1515,26 @@ class SavedItemRepository {
             await _writeRecoveredMetadata(item, meta);
             results[item.id] = (success: true, error: null);
           } else {
-            final err = meta?.errorMessage ?? 'Archive lookup failed';
-            debugPrint(
-              '[ArchiveRecovery] Item ${item.id} failed across all archive sources: $err',
+            // Only mark unavailable if BOTH archives explicitly confirmed not found
+            if (primaryMetadata[item.id]?.isNotFound == true &&
+                meta?.isNotFound == true) {
+              await _markItemArchiveUnavailable(item.id);
+            }
+            results[item.id] = (
+              success: false,
+              error: meta?.errorMessage ?? 'Archive lookup failed',
             );
-            results[item.id] = (success: false, error: err);
           }
         }
       }
     }
     return results;
+  }
+
+  Future<int> _markItemArchiveUnavailable(String id) {
+    return (db.update(db.savedItemsTable)..where((t) => t.id.equals(id))).write(
+      const SavedItemsTableCompanion(isArchiveUnavailable: Value(true)),
+    );
   }
 
   Future<int> _writeRecoveredMetadata(
@@ -1558,6 +1574,7 @@ class SavedItemRepository {
         createdAtUtc: Value(meta.createdAtUtc ?? current.createdAtUtc),
         enrichmentStatus: const Value(EnrichmentStatus.enriched),
         isArchiveRecovered: const Value(true),
+        isArchiveUnavailable: const Value(false),
       ),
     );
   }
@@ -1647,6 +1664,7 @@ class SavedItemRepository {
           isArchiveRecovered: Value(
             refreshedHasRemovedContent ? false : item.isArchiveRecovered,
           ),
+          isArchiveUnavailable: const Value(false),
         ),
       );
       return (success: true, error: null, willRetry: false);
@@ -1658,6 +1676,7 @@ class SavedItemRepository {
         SavedItemsTableCompanion(
           enrichmentStatus: Value(EnrichmentStatus.failed),
           isArchiveRecovered: Value(item.isArchiveRecovered),
+          isArchiveUnavailable: const Value(false),
         ),
       );
       return (success: false, error: e.toString(), willRetry: false);
@@ -1672,14 +1691,9 @@ class SavedItemRepository {
   }
 
   static bool _hasRemovedContent(String? author, String? body, String? title) {
-    bool isRemovedMarker(String? value) {
-      final normalized = value?.trim().toLowerCase();
-      return normalized == '[deleted]' || normalized == '[removed]';
-    }
-
-    return isRemovedMarker(author) ||
-        isRemovedMarker(body) ||
-        isRemovedMarker(title);
+    return SavedItem.isRemovedMarker(author) ||
+        SavedItem.isRemovedMarker(body) ||
+        SavedItem.isRemovedMarker(title);
   }
 
   Future<List<SavedItem>> getPendingEnrichmentItems({int limit = 50}) async {
@@ -1706,6 +1720,14 @@ class SavedItemRepository {
   Future<int> getArchiveRecoveryCount() => db.getArchiveRecoveryCount();
 
   Stream<int> watchArchiveRecoveryCount() => db.watchArchiveRecoveryCount();
+
+  Future<int> getArchiveUnavailableCount() => db.getArchiveUnavailableCount();
+
+  Stream<int> watchArchiveUnavailableCount() =>
+      db.watchArchiveUnavailableCount();
+
+  Future<int> resetArchiveUnavailableStatus() =>
+      db.resetArchiveUnavailableStatus();
 
   Stream<int> watchPendingEnrichmentCount() => db.watchPendingEnrichmentCount();
 

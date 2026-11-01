@@ -61,7 +61,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -124,9 +124,18 @@ class AppDatabase extends _$AppDatabase {
         await customStatement('DROP INDEX IF EXISTS idx_saved_score_asc;');
         await customStatement('DROP INDEX IF EXISTS idx_saved_starred_asc;');
         await _rebuildFts(this);
-        await _createIndexes(this);
-        _ftsInitFuture = Future.value();
       }
+      if (from < 13) {
+        await m.addColumn(
+          savedItemsTable,
+          savedItemsTable.isArchiveUnavailable,
+        );
+        await customStatement(
+          'DROP INDEX IF EXISTS idx_saved_archive_recovery;',
+        );
+      }
+      await _createIndexes(this);
+      _ftsInitFuture = Future.value();
     },
   );
 
@@ -188,13 +197,7 @@ class AppDatabase extends _$AppDatabase {
       await db.customStatement('''
         CREATE INDEX IF NOT EXISTS idx_saved_archive_recovery
         ON saved_items_table (import_order ASC)
-        WHERE is_archive_recovered = 0
-          AND (
-            enrichment_status = 3
-            OR author IN ('[deleted]', '[removed]')
-            OR body IN ('[deleted]', '[removed]')
-            OR title IN ('[deleted]', '[removed]')
-          );
+        WHERE is_archive_recovered = 0 AND is_archive_unavailable = 0;
       ''');
     } catch (e, stack) {
       debugPrint('[Database] Create indexes note: $e\n$stack');
@@ -411,17 +414,15 @@ class AppDatabase extends _$AppDatabase {
       }
 
       if (searchQuery != null && searchQuery.trim().isNotEmpty) {
-        final queryPattern = '%${searchQuery.trim().toLowerCase()}%';
-        final titleMatch = tbl.title.lower().like(queryPattern);
-        final bodyMatch = tbl.body.lower().like(queryPattern);
-        final parentPostTitleMatch = tbl.parentPostTitle.lower().like(
-          queryPattern,
-        );
-        final noteMatch = tbl.userNote.lower().like(queryPattern);
-
-        predicate =
-            predicate &
-            (titleMatch | bodyMatch | parentPostTitleMatch | noteMatch);
+        final ftsToken = _sanitizeFtsQuery(searchQuery);
+        if (ftsToken != null) {
+          final escaped = ftsToken.replaceAll("'", "''");
+          predicate =
+              predicate &
+              CustomExpression<bool>(
+                'rowid IN (SELECT rowid FROM saved_items_fts WHERE saved_items_fts MATCH \'$escaped\')',
+              );
+        }
       }
 
       return predicate;
@@ -1295,18 +1296,28 @@ class AppDatabase extends _$AppDatabase {
     return row?.read(countExp) ?? 0;
   }
 
+  Expression<bool> _isArchiveRemovedField(GeneratedColumn<String> col) {
+    final lower = col.lower();
+    return col.isIn(['[deleted]', '[removed]', 'deleted', 'removed']) |
+        lower.like('[%removed by%]') |
+        lower.like('[%deleted by%]') |
+        lower.like('removed by reddit%') |
+        lower.like('removed by moderator%');
+  }
+
   Future<List<SavedItemEntry>> getArchiveRecoveryItems({
     int limit = 50,
     List<String> excludeIds = const [],
   }) {
     Expression<bool> predicate =
         savedItemsTable.isArchiveRecovered.equals(false) &
+        savedItemsTable.isArchiveUnavailable.equals(false) &
         (savedItemsTable.enrichmentStatus.equals(
               EnrichmentStatus.failed.index,
             ) |
-            savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
-            savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
-            savedItemsTable.title.isIn(['[deleted]', '[removed]']));
+            _isArchiveRemovedField(savedItemsTable.author) |
+            _isArchiveRemovedField(savedItemsTable.body) |
+            _isArchiveRemovedField(savedItemsTable.title));
     if (excludeIds.isNotEmpty) {
       predicate = predicate & savedItemsTable.id.isNotIn(excludeIds);
     }
@@ -1328,12 +1339,13 @@ class AppDatabase extends _$AppDatabase {
       ..addColumns([countExp])
       ..where(
         savedItemsTable.isArchiveRecovered.equals(false) &
+            savedItemsTable.isArchiveUnavailable.equals(false) &
             (savedItemsTable.enrichmentStatus.equals(
                   EnrichmentStatus.failed.index,
                 ) |
-                savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
-                savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
-                savedItemsTable.title.isIn(['[deleted]', '[removed]'])),
+                _isArchiveRemovedField(savedItemsTable.author) |
+                _isArchiveRemovedField(savedItemsTable.body) |
+                _isArchiveRemovedField(savedItemsTable.title)),
       );
     final row = await query.getSingleOrNull();
     return row?.read(countExp) ?? 0;
@@ -1345,14 +1357,46 @@ class AppDatabase extends _$AppDatabase {
       ..addColumns([countExp])
       ..where(
         savedItemsTable.isArchiveRecovered.equals(false) &
+            savedItemsTable.isArchiveUnavailable.equals(false) &
             (savedItemsTable.enrichmentStatus.equals(
                   EnrichmentStatus.failed.index,
                 ) |
-                savedItemsTable.author.isIn(['[deleted]', '[removed]']) |
-                savedItemsTable.body.isIn(['[deleted]', '[removed]']) |
-                savedItemsTable.title.isIn(['[deleted]', '[removed]'])),
+                _isArchiveRemovedField(savedItemsTable.author) |
+                _isArchiveRemovedField(savedItemsTable.body) |
+                _isArchiveRemovedField(savedItemsTable.title)),
       );
     return query.watchSingle().map((row) => row.read(countExp) ?? 0).distinct();
+  }
+
+  Future<int> getArchiveUnavailableCount() async {
+    final countExp = savedItemsTable.id.count();
+    final query = selectOnly(savedItemsTable)
+      ..addColumns([countExp])
+      ..where(
+        savedItemsTable.isArchiveRecovered.equals(false) &
+            savedItemsTable.isArchiveUnavailable.equals(true),
+      );
+    final row = await query.getSingleOrNull();
+    return row?.read(countExp) ?? 0;
+  }
+
+  Stream<int> watchArchiveUnavailableCount() {
+    final countExp = savedItemsTable.id.count();
+    final query = selectOnly(savedItemsTable)
+      ..addColumns([countExp])
+      ..where(
+        savedItemsTable.isArchiveRecovered.equals(false) &
+            savedItemsTable.isArchiveUnavailable.equals(true),
+      );
+    return query.watchSingle().map((row) => row.read(countExp) ?? 0).distinct();
+  }
+
+  Future<int> resetArchiveUnavailableStatus() {
+    return (update(
+      savedItemsTable,
+    )..where((t) => t.isArchiveUnavailable.equals(true))).write(
+      const SavedItemsTableCompanion(isArchiveUnavailable: Value(false)),
+    );
   }
 
   Stream<int> watchPendingEnrichmentCount() {
@@ -1381,17 +1425,11 @@ class AppDatabase extends _$AppDatabase {
       await customStatement('DROP TRIGGER IF EXISTS saved_items_ai;');
       await customStatement('DROP TRIGGER IF EXISTS saved_items_ad;');
       await customStatement('DROP TRIGGER IF EXISTS saved_items_au;');
+      await customStatement('DROP TABLE IF EXISTS saved_items_fts;');
 
       await delete(itemCollectionsTable).go();
       await delete(collectionsTable).go();
       await delete(savedItemsTable).go();
-      try {
-        await customStatement(
-          "INSERT INTO saved_items_fts(saved_items_fts) VALUES('delete-all');",
-        );
-      } catch (e, stack) {
-        debugPrint('[Database] Note: Could not clear FTS5 index: $e\n$stack');
-      }
 
       try {
         await customStatement(
@@ -1452,6 +1490,7 @@ extension SavedItemEntryExtension on SavedItemEntry {
       subredditType: subredditType,
       enrichmentStatus: enrichmentStatus,
       isArchiveRecovered: isArchiveRecovered,
+      isArchiveUnavailable: isArchiveUnavailable,
       collections: collections,
     );
   }

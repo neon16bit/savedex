@@ -508,6 +508,12 @@ class SettingsView extends ConsumerWidget {
                     final count =
                         ref.watch(archiveRecoveryCountProvider).asData?.value ??
                         0;
+                    final unavailableCount =
+                        ref
+                            .watch(archiveUnavailableCountProvider)
+                            .asData
+                            ?.value ??
+                        0;
                     final isStarting = recoveryState.isStarting;
                     final isRunning = recoveryState.isRunning;
                     final hasSummary =
@@ -515,15 +521,26 @@ class SettingsView extends ConsumerWidget {
                         !isRunning &&
                         recoveryState.total > 0 &&
                         recoveryState.processed > 0;
-                    final subtitle = isStarting
-                        ? 'Preparing archive recovery...'
-                        : isRunning
-                        ? 'Recovering ${recoveryState.processed}/${recoveryState.total} items'
-                        : hasSummary
-                        ? '${recoveryState.completed} recovered, ${recoveryState.failed} unavailable'
-                        : count == 0
-                        ? 'No failed or removed items available'
-                        : '$count items available for archive recovery';
+                    final String subtitle;
+                    if (isStarting) {
+                      subtitle = 'Preparing archive recovery...';
+                    } else if (isRunning) {
+                      subtitle =
+                          'Recovering ${recoveryState.processed}/${recoveryState.total} items';
+                    } else if (hasSummary) {
+                      subtitle =
+                          '${recoveryState.completed} recovered, ${recoveryState.failed} unavailable';
+                    } else if (count == 0 && unavailableCount > 0) {
+                      subtitle =
+                          'All eligible items checked ($unavailableCount unavailable in archive)';
+                    } else if (count == 0 && unavailableCount == 0) {
+                      subtitle = 'No failed or removed items available';
+                    } else if (unavailableCount > 0) {
+                      subtitle =
+                          '$count items available ($unavailableCount unavailable in archive)';
+                    } else {
+                      subtitle = '$count items available for archive recovery';
+                    }
 
                     return Column(
                       mainAxisSize: MainAxisSize.min,
@@ -549,24 +566,68 @@ class SettingsView extends ConsumerWidget {
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                           subtitle: Text(subtitle),
-                          trailing: FilledButton.tonal(
-                            onPressed:
-                                (count == 0 ||
-                                    isStarting ||
-                                    isRunning ||
-                                    isEnrichmentRunning)
-                                ? null
-                                : recoveryVm.start,
-                            style: FilledButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                            ),
-                            child: Text(
-                              isStarting
-                                  ? 'Preparing...'
-                                  : isRunning
-                                  ? 'Running...'
-                                  : 'Recover Now',
-                            ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (unavailableCount > 0 &&
+                                  !isRunning &&
+                                  !isStarting)
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.restart_alt_rounded,
+                                    size: 20,
+                                  ),
+                                  tooltip:
+                                      'Reset and re-check $unavailableCount unavailable item(s)',
+                                  onPressed: () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text(
+                                          'Re-check Unavailable Items?',
+                                        ),
+                                        content: Text(
+                                          'This will reset the status of $unavailableCount item(s) previously not found in public archives so they can be queried again.',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
+                                            child: const Text('Cancel'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
+                                            child: const Text('Reset'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirm == true) {
+                                      await recoveryVm.resetUnavailable();
+                                    }
+                                  },
+                                ),
+                              FilledButton.tonal(
+                                onPressed:
+                                    (count == 0 ||
+                                        isStarting ||
+                                        isRunning ||
+                                        isEnrichmentRunning)
+                                    ? null
+                                    : recoveryVm.start,
+                                style: FilledButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                child: Text(
+                                  isStarting
+                                      ? 'Preparing...'
+                                      : isRunning
+                                      ? 'Running...'
+                                      : 'Recover Now',
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         if (isRunning)

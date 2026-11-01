@@ -224,6 +224,12 @@ class ArchiveRecoveryNotifier extends Notifier<ArchiveRecoveryState> {
       failed: state.failed,
     );
   }
+
+  Future<void> resetUnavailable() async {
+    if (state.isRunning || state.isStarting) return;
+    await ref.read(savedItemRepositoryProvider).resetArchiveUnavailableStatus();
+    state = const ArchiveRecoveryState();
+  }
 }
 
 class EnrichmentViewModel extends Notifier<EnrichmentState> {
@@ -567,8 +573,11 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
   }
 
   Future<({bool success, String? error})> recoverSingleItemFromArchive(
-    SavedItem item,
-  ) {
-    return ref.read(savedItemRepositoryProvider).recoverItemFromArchive(item);
+    SavedItem item, {
+    bool force = false,
+  }) {
+    return ref
+        .read(savedItemRepositoryProvider)
+        .recoverItemFromArchive(item, force: force);
   }
 }

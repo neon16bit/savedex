@@ -38,6 +38,8 @@ class SavedItemsTable extends Table {
   )();
   BoolColumn get isArchiveRecovered =>
       boolean().withDefault(const Constant(false))();
+  BoolColumn get isArchiveUnavailable =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};

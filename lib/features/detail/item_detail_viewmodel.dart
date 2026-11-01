@@ -123,11 +123,12 @@ class ItemDetailActions {
   }
 
   Future<({bool success, String? error})> recoverFromArchive(
-    SavedItem item,
-  ) async {
+    SavedItem item, {
+    bool force = false,
+  }) async {
     final result = await _ref
         .read(enrichmentViewModelProvider.notifier)
-        .recoverSingleItemFromArchive(item);
+        .recoverSingleItemFromArchive(item, force: force);
     if (result.success) {
       await _ref
           .read(savedFeedPaginationProvider.notifier)

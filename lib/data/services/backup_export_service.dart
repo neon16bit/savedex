@@ -180,6 +180,7 @@ class BackupExportService {
         'saved_at',
         'created_at',
         'is_archive_recovered',
+        'is_archive_unavailable',
         'csv_source',
         'import_order',
       ],
@@ -218,6 +219,7 @@ class BackupExportService {
         item.savedAtUtc.toIso8601String(),
         item.createdAtUtc?.toIso8601String() ?? '',
         item.isArchiveRecovered ? 'true' : 'false',
+        item.isArchiveUnavailable ? 'true' : 'false',
         item.csvSource,
         item.importOrder,
       ]);
@@ -368,6 +370,9 @@ class BackupExportService {
     final savedAtIndex = headerRow.indexOf('saved_at');
     final createdAtIndex = headerRow.indexOf('created_at');
     final isArchiveRecoveredIndex = headerRow.indexOf('is_archive_recovered');
+    final isArchiveUnavailableIndex = headerRow.indexOf(
+      'is_archive_unavailable',
+    );
     final csvSourceIndex = headerRow.indexOf('csv_source');
     final importOrderIndex = headerRow.indexOf('import_order');
 
@@ -471,6 +476,14 @@ class BackupExportService {
       final isArchiveRecovered =
           isArchiveRecoveredStr == 'true' || isArchiveRecoveredStr == '1';
 
+      final isArchiveUnavailableStr =
+          isArchiveUnavailableIndex != -1 &&
+              isArchiveUnavailableIndex < row.length
+          ? row[isArchiveUnavailableIndex].trim().toLowerCase()
+          : 'false';
+      final isArchiveUnavailable =
+          isArchiveUnavailableStr == 'true' || isArchiveUnavailableStr == '1';
+
       final userNote = userNoteIndex != -1 && userNoteIndex < row.length
           ? row[userNoteIndex].trim()
           : null;
@@ -510,8 +523,7 @@ class BackupExportService {
           : '';
       final createdAtUtc = DateTime.tryParse(createdAtStr)?.toUtc();
 
-      final csvSourceStr =
-          csvSourceIndex != -1 && csvSourceIndex < row.length
+      final csvSourceStr = csvSourceIndex != -1 && csvSourceIndex < row.length
           ? row[csvSourceIndex].trim()
           : '';
       final importOrderStr =
@@ -566,6 +578,7 @@ class BackupExportService {
           isStarred: Value(isStarred),
           isArchived: Value(isArchived),
           isArchiveRecovered: Value(isArchiveRecovered),
+          isArchiveUnavailable: Value(isArchiveUnavailable),
           userNote: Value(
             userNote != null && userNote.isNotEmpty ? userNote : null,
           ),
@@ -654,6 +667,7 @@ class BackupExportService {
         'isStarred': item.isStarred,
         'isArchived': item.isArchived,
         'isArchiveRecovered': item.isArchiveRecovered,
+        'isArchiveUnavailable': item.isArchiveUnavailable,
         'userNote': item.userNote,
         'csvSource': item.csvSource,
         'importOrder': item.importOrder,
@@ -784,6 +798,9 @@ class BackupExportService {
       isStarred: Value((map['isStarred'] as bool?) ?? false),
       isArchived: Value((map['isArchived'] as bool?) ?? false),
       isArchiveRecovered: Value((map['isArchiveRecovered'] as bool?) ?? false),
+      isArchiveUnavailable: Value(
+        (map['isArchiveUnavailable'] as bool?) ?? false,
+      ),
       userNote: Value(map['userNote'] as String?),
       csvSource: Value((map['csvSource'] as String?) ?? 'backup'),
       importOrder: Value((map['importOrder'] as num?)?.toInt() ?? 0),
