@@ -9,7 +9,6 @@ import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/services/backup_export_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
-import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 enum ImportExportType {
@@ -340,10 +339,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       );
 
       ref.invalidate(savedFeedPaginationProvider);
-      ref.invalidate(availableSubredditsProvider);
-      ref.invalidate(availableAuthorsProvider);
-      ref.invalidate(availableAuthorsWithCountsProvider);
-      ref.invalidate(availableFlairsProvider);
 
       final settings = ref.read(settingsViewModelProvider);
       final shouldEnrich =
@@ -458,10 +453,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       );
 
       ref.invalidate(savedFeedPaginationProvider);
-      ref.invalidate(availableSubredditsProvider);
-      ref.invalidate(availableAuthorsProvider);
-      ref.invalidate(availableAuthorsWithCountsProvider);
-      ref.invalidate(availableFlairsProvider);
 
       final settings = ref.read(settingsViewModelProvider);
       final shouldEnrich = settings.autoEnrichOnImport && newImported > 0;
@@ -523,10 +514,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       } catch (_) {}
 
       ref.invalidate(savedFeedPaginationProvider);
-      ref.invalidate(availableSubredditsProvider);
-      ref.invalidate(availableAuthorsProvider);
-      ref.invalidate(availableAuthorsWithCountsProvider);
-      ref.invalidate(availableFlairsProvider);
 
       return summary;
     } catch (e) {

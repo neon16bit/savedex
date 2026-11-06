@@ -296,15 +296,7 @@ class DetailCommentCard extends StatelessWidget {
                     (comment.author != null &&
                         comment.author!.isNotEmpty &&
                         comment.author != '[deleted]')
-                    ? () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (ctx) => ScopedFeedView(
-                              args: ScopedFeedArgs.author(comment.author!),
-                            ),
-                          ),
-                        );
-                      }
+                    ? () => ScopedFeedView.openAuthor(context, comment.author!)
                     : null,
                 child: Text(
                   comment.author != null

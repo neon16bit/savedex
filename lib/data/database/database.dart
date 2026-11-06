@@ -371,11 +371,16 @@ class AppDatabase extends _$AppDatabase {
       }
 
       if (subreddits.isNotEmpty) {
-        predicate = predicate & tbl.subreddit.isIn(subreddits);
+        predicate =
+            predicate & tbl.subreddit.collate(Collate.noCase).isIn(subreddits);
       }
 
       if (authors.isNotEmpty) {
-        predicate = predicate & tbl.author.isIn(authors);
+        predicate =
+            predicate &
+            coalesce([tbl.author, const Constant('')])
+                .collate(Collate.noCase)
+                .isIn(authors);
       }
 
       if (flairs.isNotEmpty) {
@@ -718,13 +723,13 @@ class AppDatabase extends _$AppDatabase {
     }
     if (filter.selectedSubreddits.isNotEmpty) {
       where.add(
-        's.subreddit IN (${List.filled(filter.selectedSubreddits.length, '?').join(',')})',
+        's.subreddit COLLATE NOCASE IN (${List.filled(filter.selectedSubreddits.length, '?').join(',')})',
       );
       vars.addAll(filter.selectedSubreddits.map(Variable.withString));
     }
     if (filter.selectedAuthors.isNotEmpty) {
       where.add(
-        's.author IN (${List.filled(filter.selectedAuthors.length, '?').join(',')})',
+        "COALESCE(s.author, '') COLLATE NOCASE IN (${List.filled(filter.selectedAuthors.length, '?').join(',')})",
       );
       vars.addAll(filter.selectedAuthors.map(Variable.withString));
     }
@@ -1021,6 +1026,8 @@ class AppDatabase extends _$AppDatabase {
   Future<List<(String, int)>> searchSubredditsWithCounts({
     String query = '',
     int limit = 15,
+    int? collectionId,
+    String? author,
   }) async {
     final countExp = savedItemsTable.id.count();
     final cleanedQuery = query.trim().toLowerCase().replaceFirst(
@@ -1031,14 +1038,39 @@ class AppDatabase extends _$AppDatabase {
     final selectQuery = selectOnly(savedItemsTable)
       ..addColumns([savedItemsTable.subreddit, countExp]);
 
+    Expression<bool>? predicate;
+
+    if (collectionId != null) {
+      selectQuery.join([
+        innerJoin(
+          itemCollectionsTable,
+          itemCollectionsTable.itemId.equalsExp(savedItemsTable.id),
+        ),
+      ]);
+      predicate = itemCollectionsTable.collectionId.equals(collectionId);
+    }
+
+    if (author != null && author.trim().isNotEmpty) {
+      final cleanAuthor = author.trim().replaceFirst(RegExp(r'^[ru]/'), '');
+      final authorExp = coalesce([savedItemsTable.author, const Constant('')])
+          .collate(Collate.noCase)
+          .equals(cleanAuthor);
+      predicate = predicate == null ? authorExp : (predicate & authorExp);
+    }
+
     if (cleanedQuery.isNotEmpty) {
-      selectQuery.where(
-        savedItemsTable.subreddit.lower().like('%$cleanedQuery%'),
+      final queryExp = savedItemsTable.subreddit.lower().like(
+        '%$cleanedQuery%',
       );
+      predicate = predicate == null ? queryExp : (predicate & queryExp);
+    }
+
+    if (predicate != null) {
+      selectQuery.where(predicate);
     }
 
     selectQuery
-      ..groupBy([savedItemsTable.subreddit])
+      ..groupBy([savedItemsTable.subreddit.collate(Collate.noCase)])
       ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)])
       ..limit(limit);
 
@@ -1051,10 +1083,12 @@ class AppDatabase extends _$AppDatabase {
   Future<List<(String, int)>> searchAuthorsWithCounts({
     String query = '',
     int limit = 15,
+    int? collectionId,
+    String? subreddit,
   }) async {
     final countExp = savedItemsTable.id.count();
     final cleanedQuery = query.trim().toLowerCase().replaceFirst(
-      RegExp(r'^u/'),
+      RegExp(r'^[ru]/'),
       '',
     );
 
@@ -1063,15 +1097,35 @@ class AppDatabase extends _$AppDatabase {
         savedItemsTable.author.isBiggerThanValue('') &
         savedItemsTable.author.isNotValue('[deleted]');
 
+    if (subreddit != null && subreddit.trim().isNotEmpty) {
+      final cleanSub = subreddit.trim().replaceFirst(RegExp(r'^[ru]/'), '');
+      predicate =
+          predicate &
+          savedItemsTable.subreddit.collate(Collate.noCase).equals(cleanSub);
+    }
+
     if (cleanedQuery.isNotEmpty) {
       predicate =
           predicate & savedItemsTable.author.lower().like('%$cleanedQuery%');
     }
 
     final selectQuery = selectOnly(savedItemsTable)
-      ..addColumns([savedItemsTable.author, countExp])
+      ..addColumns([savedItemsTable.author, countExp]);
+
+    if (collectionId != null) {
+      selectQuery.join([
+        innerJoin(
+          itemCollectionsTable,
+          itemCollectionsTable.itemId.equalsExp(savedItemsTable.id),
+        ),
+      ]);
+      predicate =
+          predicate & itemCollectionsTable.collectionId.equals(collectionId);
+    }
+
+    selectQuery
       ..where(predicate)
-      ..groupBy([savedItemsTable.author])
+      ..groupBy([savedItemsTable.author.collate(Collate.noCase)])
       ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)])
       ..limit(limit);
 
@@ -1084,6 +1138,9 @@ class AppDatabase extends _$AppDatabase {
   Future<List<(String, int)>> searchFlairsWithCounts({
     String query = '',
     int limit = 15,
+    int? collectionId,
+    String? subreddit,
+    String? author,
   }) async {
     final countExp = savedItemsTable.id.count();
     final cleanedQuery = query.trim().toLowerCase();
@@ -1092,13 +1149,42 @@ class AppDatabase extends _$AppDatabase {
         savedItemsTable.postFlair.isNotNull() &
         savedItemsTable.postFlair.isBiggerThanValue('');
 
+    if (subreddit != null && subreddit.trim().isNotEmpty) {
+      final cleanSub = subreddit.trim().replaceFirst(RegExp(r'^[ru]/'), '');
+      predicate =
+          predicate &
+          savedItemsTable.subreddit.collate(Collate.noCase).equals(cleanSub);
+    }
+
+    if (author != null && author.trim().isNotEmpty) {
+      final cleanAuthor = author.trim().replaceFirst(RegExp(r'^[ru]/'), '');
+      predicate =
+          predicate &
+          coalesce([savedItemsTable.author, const Constant('')])
+              .collate(Collate.noCase)
+              .equals(cleanAuthor);
+    }
+
     if (cleanedQuery.isNotEmpty) {
       predicate =
           predicate & savedItemsTable.postFlair.lower().like('%$cleanedQuery%');
     }
 
     final selectQuery = selectOnly(savedItemsTable)
-      ..addColumns([savedItemsTable.postFlair, countExp])
+      ..addColumns([savedItemsTable.postFlair, countExp]);
+
+    if (collectionId != null) {
+      selectQuery.join([
+        innerJoin(
+          itemCollectionsTable,
+          itemCollectionsTable.itemId.equalsExp(savedItemsTable.id),
+        ),
+      ]);
+      predicate =
+          predicate & itemCollectionsTable.collectionId.equals(collectionId);
+    }
+
+    selectQuery
       ..where(predicate)
       ..groupBy([savedItemsTable.postFlair])
       ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)])
@@ -1108,58 +1194,6 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((row) {
       return (row.read(savedItemsTable.postFlair)!, row.read(countExp) ?? 0);
     }).toList();
-  }
-
-  Future<List<(String, int)>> getAuthorsWithCounts() async {
-    final countExp = savedItemsTable.id.count();
-    final query = selectOnly(savedItemsTable)
-      ..addColumns([savedItemsTable.author, countExp])
-      ..where(
-        savedItemsTable.author.isNotNull() &
-            savedItemsTable.author.isBiggerThanValue(''),
-      )
-      ..groupBy([savedItemsTable.author])
-      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
-
-    final rows = await query.get();
-    return rows.map((row) {
-      return (row.read(savedItemsTable.author)!, row.read(countExp) ?? 0);
-    }).toList();
-  }
-
-  Future<List<(String, int)>> getFlairsWithCounts() async {
-    final countExp = savedItemsTable.id.count();
-    final query = selectOnly(savedItemsTable)
-      ..addColumns([savedItemsTable.postFlair, countExp])
-      ..where(
-        savedItemsTable.postFlair.isNotNull() &
-            savedItemsTable.postFlair.isBiggerThanValue(''),
-      )
-      ..groupBy([savedItemsTable.postFlair])
-      ..orderBy([OrderingTerm(expression: countExp, mode: OrderingMode.desc)]);
-
-    final rows = await query.get();
-    return rows.map((row) {
-      return (row.read(savedItemsTable.postFlair)!, row.read(countExp) ?? 0);
-    }).toList();
-  }
-
-  Future<List<String>> getDistinctAuthors() async {
-    final query = selectOnly(savedItemsTable, distinct: true)
-      ..addColumns([savedItemsTable.author])
-      ..where(savedItemsTable.author.isNotNull())
-      ..orderBy([
-        OrderingTerm(
-          expression: savedItemsTable.author,
-          mode: OrderingMode.asc,
-        ),
-      ]);
-
-    final rows = await query.get();
-    return rows
-        .map((row) => row.read(savedItemsTable.author)!)
-        .where((a) => a.isNotEmpty)
-        .toList();
   }
 
   Stream<List<CollectionEntry>> watchCollectionsForItem(String itemId) {
@@ -1232,30 +1266,6 @@ class AppDatabase extends _$AppDatabase {
     final rows = await query.get();
     return rows.map((r) {
       return (r.readTable(collectionsTable), r.read(countExp) ?? 0);
-    }).toList();
-  }
-
-  Future<List<(String, int)>> getSubredditsForCollection(
-    int collectionId,
-  ) async {
-    final countExp = savedItemsTable.id.count();
-    final query =
-        selectOnly(savedItemsTable).join([
-            innerJoin(
-              itemCollectionsTable,
-              itemCollectionsTable.itemId.equalsExp(savedItemsTable.id),
-            ),
-          ])
-          ..addColumns([savedItemsTable.subreddit, countExp])
-          ..where(itemCollectionsTable.collectionId.equals(collectionId))
-          ..groupBy([savedItemsTable.subreddit])
-          ..orderBy([
-            OrderingTerm(expression: countExp, mode: OrderingMode.desc),
-          ]);
-
-    final rows = await query.get();
-    return rows.map((row) {
-      return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
     }).toList();
   }
 

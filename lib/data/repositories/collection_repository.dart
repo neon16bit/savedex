@@ -207,7 +207,4 @@ class CollectionRepository {
         )
         .toList();
   }
-
-  Future<List<(String, int)>> getSubredditsForCollection(int collectionId) =>
-      _db.getSubredditsForCollection(collectionId);
 }

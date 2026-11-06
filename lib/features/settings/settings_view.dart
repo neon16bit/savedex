@@ -998,10 +998,6 @@ class SettingsView extends ConsumerWidget {
                   .clearAllFilters();
               ref.read(savedFeedPaginationProvider.notifier).clearFeed();
               ref.invalidate(savedFeedPaginationProvider);
-              ref.invalidate(availableSubredditsProvider);
-              ref.invalidate(availableAuthorsWithCountsProvider);
-              ref.invalidate(availableAuthorsProvider);
-              ref.invalidate(availableFlairsProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context)
                   ..clearSnackBars()

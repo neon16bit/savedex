@@ -225,15 +225,8 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
               titleSpacing: 0,
               title: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) => ScopedFeedView(
-                        args: ScopedFeedArgs.subreddit(item.subreddit),
-                      ),
-                    ),
-                  );
-                },
+                onTap: () =>
+                    ScopedFeedView.openSubreddit(context, item.subreddit),
                 child: Text(
                   item.displaySubreddit,
                   overflow: TextOverflow.ellipsis,
@@ -484,15 +477,12 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           children: [
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (ctx) => ScopedFeedView(
-                                      args: ScopedFeedArgs.author(item.author!),
-                                    ),
-                                  ),
-                                );
-                              },
+                              onTap: item.author != '[deleted]'
+                                  ? () => ScopedFeedView.openAuthor(
+                                      context,
+                                      item.author!,
+                                    )
+                                  : null,
                               child: Text(
                                 'u/${item.author}',
                                 style: TextStyle(

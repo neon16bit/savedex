@@ -603,6 +603,9 @@ class FilterCriteria {
 
   bool get hasActiveFilters =>
       (searchQuery != null && searchQuery!.trim().isNotEmpty) ||
+      hasActiveNonSearchFilters;
+
+  bool get hasActiveNonSearchFilters =>
       selectedSubreddits.isNotEmpty ||
       selectedAuthors.isNotEmpty ||
       selectedFlairs.isNotEmpty ||

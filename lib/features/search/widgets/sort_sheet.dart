@@ -4,12 +4,25 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 
 class SortSheet extends ConsumerWidget {
-  const SortSheet({super.key});
+  final SortOption? currentSort;
+  final ValueChanged<SortOption>? onSortSelected;
+  final Set<SortOption> excludedOptions;
+
+  const SortSheet({
+    super.key,
+    this.currentSort,
+    this.onSortSelected,
+    this.excludedOptions = const {},
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(searchFilterViewModelProvider);
-    final viewModel = ref.read(searchFilterViewModelProvider.notifier);
+    final selectedSort =
+        currentSort ??
+        ref.watch(searchFilterViewModelProvider.select((f) => f.sortOption));
+    final options = SortOption.values
+        .where((o) => !excludedOptions.contains(o))
+        .toList();
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -67,12 +80,12 @@ class SortSheet extends ConsumerWidget {
                     horizontal: 16,
                     vertical: 12,
                   ),
-                  itemCount: SortOption.values.length,
+                  itemCount: options.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 4),
                   itemBuilder: (context, index) {
-                    final option = SortOption.values[index];
-                    final isSelected = filter.sortOption == option;
+                    final option = options[index];
+                    final isSelected = selectedSort == option;
 
                     return Material(
                       color: isSelected
@@ -82,7 +95,13 @@ class SortSheet extends ConsumerWidget {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: () {
-                          viewModel.setSortOption(option);
+                          if (onSortSelected != null) {
+                            onSortSelected!(option);
+                          } else {
+                            ref
+                                .read(searchFilterViewModelProvider.notifier)
+                                .setSortOption(option);
+                          }
                           Navigator.pop(context);
                         },
                         child: Padding(

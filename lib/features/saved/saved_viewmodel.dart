@@ -176,7 +176,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     }());
   }
 
-  static bool _itemMatchesFilter(SavedItem item, FilterCriteria f) {
+  static bool itemMatchesFilter(SavedItem item, FilterCriteria f) {
     if (f.isStarred != null && item.isStarred != f.isStarred) return false;
     if (f.isArchived != null && item.isArchived != f.isArchived) return false;
     if (f.isNsfw != null && item.isNsfw != f.isNsfw) return false;
@@ -185,13 +185,18 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
         item.enrichmentStatus != f.enrichmentStatus) {
       return false;
     }
-    if (f.selectedSubreddits.isNotEmpty &&
-        !f.selectedSubreddits.contains(item.subreddit)) {
-      return false;
+    if (f.selectedSubreddits.isNotEmpty) {
+      final itemSub = item.subreddit.toLowerCase();
+      if (!f.selectedSubreddits.any((s) => s.toLowerCase() == itemSub)) {
+        return false;
+      }
     }
-    if (f.selectedAuthors.isNotEmpty &&
-        !f.selectedAuthors.contains(item.author)) {
-      return false;
+    if (f.selectedAuthors.isNotEmpty) {
+      final itemAuthor = (item.author ?? '').toLowerCase();
+      if (itemAuthor.isEmpty ||
+          !f.selectedAuthors.any((a) => a.toLowerCase() == itemAuthor)) {
+        return false;
+      }
     }
     if (f.selectedFlairs.isNotEmpty &&
         (item.postFlair == null ||
@@ -609,7 +614,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     if (prev == null) return;
     final filter = _getEffectiveFilter();
     final inList = prev.items.any((i) => i.id == updatedItem.id);
-    final matches = _itemMatchesFilter(updatedItem, filter);
+    final matches = itemMatchesFilter(updatedItem, filter);
 
     if (inList) {
       if (matches) {
@@ -679,7 +684,7 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       }
     }
 
-    final matches = _itemMatchesFilter(freshItem, filter);
+    final matches = itemMatchesFilter(freshItem, filter);
     if (inList) {
       if (matches) {
         state = AsyncData(

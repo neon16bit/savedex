@@ -428,28 +428,17 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     final isDark = theme.brightness == Brightness.dark;
 
     // only watch providers relevant to the active tab to avoid unnecessary rebuilds
-    final List<_ContextActionSpec> contextActions;
+    final List<ContextActionSpec> contextActions;
     final bool hasActiveNonSearchFilters;
     if (selectedTab == 0) {
       hasActiveNonSearchFilters = ref.watch(
         searchFilterViewModelProvider.select(
-          (filter) =>
-              filter.itemType != null ||
-              filter.isStarred != null ||
-              filter.selectedSubreddits.isNotEmpty ||
-              filter.selectedAuthors.isNotEmpty ||
-              filter.selectedFlairs.isNotEmpty ||
-              filter.selectedMediaTypes.isNotEmpty ||
-              filter.selectedCollectionIds.isNotEmpty ||
-              filter.isNsfw != null ||
-              filter.enrichmentStatus != null ||
-              filter.dateRangeStart != null ||
-              filter.dateRangeEnd != null,
+          (filter) => filter.hasActiveNonSearchFilters,
         ),
       );
 
       contextActions = [
-        _ContextActionSpec(
+        ContextActionSpec(
           key: 'saved_open_search',
           tooltip: 'Search Saved',
           icon: Icons.search_rounded,
@@ -470,7 +459,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
             });
           },
         ),
-        _ContextActionSpec(
+        ContextActionSpec(
           key: 'saved_filter',
           tooltip: 'Filter Saved Items',
           icon: Icons.tune_rounded,
@@ -509,7 +498,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       if (librarySubTab == 0) {
         final collectionSort = ref.watch(collectionSortOptionProvider);
         contextActions = [
-          _ContextActionSpec(
+          ContextActionSpec(
             key: 'library_new_collection',
             tooltip: 'New Collection',
             icon: Icons.add_rounded,
@@ -519,7 +508,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
               showCollectionFormDialog(context);
             },
           ),
-          _ContextActionSpec(
+          ContextActionSpec(
             key: 'library_sort_collections',
             tooltip: 'Sort Collections: ${collectionSort.label}',
             icon: Icons.sort_rounded,
@@ -537,7 +526,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
           subredditSearchQueryProvider.select((q) => q.trim().isNotEmpty),
         );
         contextActions = [
-          _ContextActionSpec(
+          ContextActionSpec(
             key: 'library_search_subreddits',
             tooltip: 'Search Subreddits',
             icon: Icons.search_rounded,
@@ -547,7 +536,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
               ref.read(subredditSearchFocusTriggerProvider.notifier).trigger();
             },
           ),
-          _ContextActionSpec(
+          ContextActionSpec(
             key: 'library_sort_subreddits',
             tooltip: 'Sort Subreddits: ${subredditSort.label}',
             icon: Icons.sort_rounded,
@@ -583,7 +572,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       }
 
       contextActions = [
-        _ContextActionSpec(
+        ContextActionSpec(
           key: 'settings_import_export',
           tooltip: 'Import & Export Data',
           icon: Icons.swap_vert_rounded,
@@ -594,7 +583,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                 .push(MaterialPageRoute(builder: (_) => const ImportView()));
           },
         ),
-        _ContextActionSpec(
+        ContextActionSpec(
           key: 'settings_cycle_theme_${themeMode.name}',
           tooltip: themeTooltip,
           icon: themeIcon,
@@ -611,25 +600,6 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
         ),
       ];
     }
-
-    const shouldExpandTabs =
-        kShowNavBarLabels || kExpandNavBarTabsToAvailableSpace;
-
-    final tabButtonHeight = kShowNavBarLabels
-        ? kNavBarButtonHeightWithLabel
-        : kNavBarButtonSize;
-    final mainIslandHorizontalPadding = shouldExpandTabs
-        ? kNavBarMainIslandHorizontalPaddingWithLabel
-        : kNavBarMainIslandHorizontalPaddingIconOnly;
-    final mainIslandButtonGap = shouldExpandTabs
-        ? kNavBarMainIslandButtonGapWithLabel
-        : kNavBarMainIslandButtonGapIconOnly;
-    final actionButtonsGap = shouldExpandTabs
-        ? kNavBarActionButtonsGapWithLabel
-        : kNavBarActionButtonsGapIconOnly;
-
-    final dockHeight = tabButtonHeight + (kNavBarIslandPadding * 2);
-    final dockRadius = kNavBarButtonRadius + kNavBarIslandPadding;
 
     final Alignment activeAlignment = switch (selectedTab) {
       0 => Alignment.centerLeft,
@@ -684,78 +654,28 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                 return const SizedBox.shrink();
               }
 
-              final maxAvailableWidth = constraints.maxWidth;
-              final rightSectionWidth = contextActions.isEmpty
-                  ? 0.0
-                  : kNavBarIslandsSeparation +
-                        (kNavBarActionButtonSize * contextActions.length) +
-                        (actionButtonsGap * (contextActions.length - 1));
-
-              final minAllowedWidth = 120.0 > maxAvailableWidth
-                  ? maxAvailableWidth
-                  : 120.0;
-
-              // subtract rightSectionWidth and the left docks 2x border width
-              // so the row never overflows its horizontal constraint
-              final availableLeftInnerWidth =
-                  (maxAvailableWidth -
-                          rightSectionWidth -
-                          (mainIslandHorizontalPadding * 2) -
-                          (kNavBarBorderWidth * 2))
-                      .clamp(minAllowedWidth, maxAvailableWidth);
-
-              final maxEqualTabWidth =
-                  ((availableLeftInnerWidth - (mainIslandButtonGap * 2)) / 3)
-                      .floorToDouble();
-
-              final targetMaxWidth = shouldExpandTabs
-                  ? kNavBarTabButtonMaxWidthWithLabel
-                  : kNavBarTabButtonWidth;
-              final minTabWidth = 44.0 > targetMaxWidth ? targetMaxWidth : 44.0;
-              final effectiveTabWidth = maxEqualTabWidth.clamp(
-                minTabWidth,
-                targetMaxWidth,
+              final m = NavBarLayoutMetrics.compute(
+                context: context,
+                maxAvailableWidth: constraints.maxWidth,
+                actionCount: contextActions.length,
+                bottomInset: bottomInset,
+                isKeyboardOpen: isKeyboardOpen,
               );
-
-              final mainTrackWidth =
-                  (effectiveTabWidth * 3) + (mainIslandButtonGap * 2);
-
-              final dockWidth =
-                  mainTrackWidth +
-                  (mainIslandHorizontalPadding * 2) +
-                  (kNavBarBorderWidth * 2);
-
-              final totalBarWidth = (dockWidth + rightSectionWidth).clamp(
-                minAllowedWidth,
-                maxAvailableWidth,
-              );
-
-              final barHeight = dockHeight > kNavBarActionButtonSize
-                  ? dockHeight
-                  : kNavBarActionButtonSize;
-              final dockTop = (barHeight - dockHeight) / 2;
-              final actionButtonTop = (barHeight - kNavBarActionButtonSize) / 2;
-
-              final searchLeftNormal = dockWidth + kNavBarIslandsSeparation;
-              final filterLeftNormal =
-                  searchLeftNormal + kNavBarActionButtonSize + actionButtonsGap;
-
-              final searchContentWidth =
-                  (totalBarWidth - (kNavBarSearchBarHorizontalPadding * 2))
-                      .clamp(0.0, totalBarWidth);
-
-              final screenHeight = MediaQuery.sizeOf(context).height;
-              final topPadding = MediaQuery.paddingOf(context).top;
-              final availableHeightAboveBar =
-                  screenHeight -
-                  bottomInset -
-                  barHeight -
-                  (isKeyboardOpen ? 12 : 24) -
-                  topPadding;
-              final maxAllowedHeight =
-                  (availableHeightAboveBar - (isKeyboardOpen ? 12.0 : 80.0))
-                      .clamp(220.0, kFilterCardCompactHeight);
-              final cardHeight = maxAllowedHeight;
+              final tabButtonHeight = m.tabButtonHeight;
+              final mainIslandHorizontalPadding = m.mainIslandHorizontalPadding;
+              final dockHeight = m.dockHeight;
+              final dockRadius = m.dockRadius;
+              final effectiveTabWidth = m.effectiveTabWidth;
+              final mainTrackWidth = m.mainTrackWidth;
+              final dockWidth = m.dockWidth;
+              final totalBarWidth = m.totalBarWidth;
+              final barHeight = m.barHeight;
+              final dockTop = m.dockTop;
+              final actionButtonTop = m.actionButtonTop;
+              final searchLeftNormal = m.searchLeftNormal;
+              final filterLeftNormal = m.filterLeftNormal;
+              final searchContentWidth = m.searchContentWidth;
+              final cardHeight = m.cardHeight;
 
               return Center(
                 child: SizedBox(
@@ -771,7 +691,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                         switchInCurve: Curves.easeOutCubic,
                         switchOutCurve: Curves.easeInCubic,
                         transitionBuilder: (child, animation) {
-                          return _UnclippedSizeTransition(
+                          return UnclippedSizeTransition(
                             sizeFactor: animation,
                             alignment: Alignment.bottomCenter,
                             child: child,
@@ -781,7 +701,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                             ? Padding(
                                 key: const ValueKey('filter_sheet_expanded'),
                                 padding: const EdgeInsets.only(bottom: 10),
-                                child: _InteractiveFilterCard(
+                                child: InteractiveFilterCard(
                                   width: totalBarWidth,
                                   height: cardHeight,
                                   onClose: () {
@@ -793,7 +713,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                         )
                                         .setExpanded(false);
                                   },
-                                  child: _FrostedNavBarIsland(
+                                  child: FrostedNavBarIsland(
                                     width: totalBarWidth,
                                     height: cardHeight,
                                     borderRadius: 24.0,
@@ -842,7 +762,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                 opacity: isSavedSearching ? 0.0 : 1.0,
                                 child: IgnorePointer(
                                   ignoring: isSavedSearching,
-                                  child: _FrostedNavBarIsland(
+                                  child: FrostedNavBarIsland(
                                     width: dockWidth,
                                     height: dockHeight,
                                     borderRadius: dockRadius,
@@ -886,7 +806,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                   opacity: isSavedSearching ? 0.0 : 1.0,
                                   child: IgnorePointer(
                                     ignoring: isSavedSearching,
-                                    child: _StandaloneFloatingActionButton(
+                                    child: StandaloneFloatingActionButton(
                                       spec: contextActions[0],
                                       dockSurface: dockSurface,
                                       dockBorder: dockBorder,
@@ -911,7 +831,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                     ? dockHeight
                                     : kNavBarActionButtonSize,
                                 child: isSavedSearching
-                                    ? _FrostedNavBarIsland(
+                                    ? FrostedNavBarIsland(
                                         animate: true,
                                         animationDuration:
                                             kNavBarExpandDuration,
@@ -946,7 +866,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                           ),
                                         ),
                                       )
-                                    : _StandaloneFloatingActionButton(
+                                    : StandaloneFloatingActionButton(
                                         spec: contextActions[1],
                                         dockSurface: dockSurface,
                                         dockBorder: dockBorder,
@@ -967,7 +887,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                     opacity: isSavedSearching ? 0.0 : 1.0,
                                     child: IgnorePointer(
                                       ignoring: isSavedSearching,
-                                      child: _StandaloneFloatingActionButton(
+                                      child: StandaloneFloatingActionButton(
                                         spec: contextActions[1],
                                         dockSurface: dockSurface,
                                         dockBorder: dockBorder,
@@ -995,7 +915,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                       ? dockHeight
                                       : kNavBarActionButtonSize,
                                   child: isSavedSearching
-                                      ? _FrostedNavBarIsland(
+                                      ? FrostedNavBarIsland(
                                           animate: true,
                                           animationDuration:
                                               kNavBarExpandDuration,
@@ -1030,7 +950,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                             ),
                                           ),
                                         )
-                                      : _StandaloneFloatingActionButton(
+                                      : StandaloneFloatingActionButton(
                                           spec: contextActions[0],
                                           dockSurface: dockSurface,
                                           dockBorder: dockBorder,
@@ -1269,7 +1189,166 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
   }
 }
 
-class _ContextActionSpec {
+class NavBarLayoutMetrics {
+  final double tabButtonHeight;
+  final double mainIslandHorizontalPadding;
+  final double mainIslandButtonGap;
+  final double actionButtonsGap;
+  final double dockHeight;
+  final double dockRadius;
+  final double effectiveTabWidth;
+  final double mainTrackWidth;
+  final double dockWidth;
+  final double totalBarWidth;
+  final double barHeight;
+  final double dockTop;
+  final double actionButtonTop;
+  final double searchLeftNormal;
+  final double filterLeftNormal;
+  final double searchContentWidth;
+  final double cardHeight;
+
+  const NavBarLayoutMetrics({
+    required this.tabButtonHeight,
+    required this.mainIslandHorizontalPadding,
+    required this.mainIslandButtonGap,
+    required this.actionButtonsGap,
+    required this.dockHeight,
+    required this.dockRadius,
+    required this.effectiveTabWidth,
+    required this.mainTrackWidth,
+    required this.dockWidth,
+    required this.totalBarWidth,
+    required this.barHeight,
+    required this.dockTop,
+    required this.actionButtonTop,
+    required this.searchLeftNormal,
+    required this.filterLeftNormal,
+    required this.searchContentWidth,
+    required this.cardHeight,
+  });
+
+  factory NavBarLayoutMetrics.compute({
+    required BuildContext context,
+    required double maxAvailableWidth,
+    required int actionCount,
+    required double bottomInset,
+    required bool isKeyboardOpen,
+  }) {
+    const shouldExpandTabs =
+        kShowNavBarLabels || kExpandNavBarTabsToAvailableSpace;
+
+    final tabButtonHeight = kShowNavBarLabels
+        ? kNavBarButtonHeightWithLabel
+        : kNavBarButtonSize;
+    final mainIslandHorizontalPadding = shouldExpandTabs
+        ? kNavBarMainIslandHorizontalPaddingWithLabel
+        : kNavBarMainIslandHorizontalPaddingIconOnly;
+    final mainIslandButtonGap = shouldExpandTabs
+        ? kNavBarMainIslandButtonGapWithLabel
+        : kNavBarMainIslandButtonGapIconOnly;
+    final actionButtonsGap = shouldExpandTabs
+        ? kNavBarActionButtonsGapWithLabel
+        : kNavBarActionButtonsGapIconOnly;
+
+    final dockHeight = tabButtonHeight + (kNavBarIslandPadding * 2);
+    final dockRadius = kNavBarButtonRadius + kNavBarIslandPadding;
+
+    final rightSectionWidth = actionCount <= 0
+        ? 0.0
+        : kNavBarIslandsSeparation +
+              (kNavBarActionButtonSize * actionCount) +
+              (actionButtonsGap * (actionCount - 1));
+
+    final minAllowedWidth = 120.0 > maxAvailableWidth
+        ? maxAvailableWidth
+        : 120.0;
+
+    final availableLeftInnerWidth =
+        (maxAvailableWidth -
+                rightSectionWidth -
+                (mainIslandHorizontalPadding * 2) -
+                (kNavBarBorderWidth * 2))
+            .clamp(minAllowedWidth, maxAvailableWidth);
+
+    final maxEqualTabWidth =
+        ((availableLeftInnerWidth - (mainIslandButtonGap * 2)) / 3)
+            .floorToDouble();
+
+    final targetMaxWidth = shouldExpandTabs
+        ? kNavBarTabButtonMaxWidthWithLabel
+        : kNavBarTabButtonWidth;
+    final minTabWidth = 44.0 > targetMaxWidth ? targetMaxWidth : 44.0;
+    final effectiveTabWidth = maxEqualTabWidth.clamp(
+      minTabWidth,
+      targetMaxWidth,
+    );
+
+    final mainTrackWidth = (effectiveTabWidth * 3) + (mainIslandButtonGap * 2);
+
+    final dockWidth =
+        mainTrackWidth +
+        (mainIslandHorizontalPadding * 2) +
+        (kNavBarBorderWidth * 2);
+
+    final totalBarWidth = (dockWidth + rightSectionWidth).clamp(
+      minAllowedWidth,
+      maxAvailableWidth,
+    );
+
+    final barHeight = dockHeight > kNavBarActionButtonSize
+        ? dockHeight
+        : kNavBarActionButtonSize;
+    final dockTop = (barHeight - dockHeight) / 2;
+    final actionButtonTop = (barHeight - kNavBarActionButtonSize) / 2;
+
+    final searchLeftNormal = dockWidth + kNavBarIslandsSeparation;
+    final filterLeftNormal =
+        searchLeftNormal + kNavBarActionButtonSize + actionButtonsGap;
+
+    final searchContentWidth =
+        (totalBarWidth - (kNavBarSearchBarHorizontalPadding * 2)).clamp(
+          0.0,
+          totalBarWidth,
+        );
+
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final availableHeightAboveBar =
+        screenHeight -
+        bottomInset -
+        barHeight -
+        (isKeyboardOpen ? 12 : 24) -
+        topPadding;
+    final cardHeight =
+        (availableHeightAboveBar - (isKeyboardOpen ? 12.0 : 80.0)).clamp(
+          220.0,
+          kFilterCardCompactHeight,
+        );
+
+    return NavBarLayoutMetrics(
+      tabButtonHeight: tabButtonHeight,
+      mainIslandHorizontalPadding: mainIslandHorizontalPadding,
+      mainIslandButtonGap: mainIslandButtonGap,
+      actionButtonsGap: actionButtonsGap,
+      dockHeight: dockHeight,
+      dockRadius: dockRadius,
+      effectiveTabWidth: effectiveTabWidth,
+      mainTrackWidth: mainTrackWidth,
+      dockWidth: dockWidth,
+      totalBarWidth: totalBarWidth,
+      barHeight: barHeight,
+      dockTop: dockTop,
+      actionButtonTop: actionButtonTop,
+      searchLeftNormal: searchLeftNormal,
+      filterLeftNormal: filterLeftNormal,
+      searchContentWidth: searchContentWidth,
+      cardHeight: cardHeight,
+    );
+  }
+}
+
+class ContextActionSpec {
   final String key;
   final String tooltip;
   final IconData icon;
@@ -1277,7 +1356,7 @@ class _ContextActionSpec {
   final bool hasBadge;
   final VoidCallback onTap;
 
-  const _ContextActionSpec({
+  const ContextActionSpec({
     required this.key,
     required this.tooltip,
     required this.icon,
@@ -1381,11 +1460,12 @@ class _BottomClipper extends CustomClipper<Rect> {
   bool shouldReclip(_BottomClipper oldClipper) => false;
 }
 
-class _UnclippedSizeTransition extends AnimatedWidget {
+class UnclippedSizeTransition extends AnimatedWidget {
   final Widget child;
   final Alignment alignment;
 
-  const _UnclippedSizeTransition({
+  const UnclippedSizeTransition({
+    super.key,
     required Animation<double> sizeFactor,
     this.alignment = Alignment.bottomCenter,
     required this.child,
@@ -1406,13 +1486,14 @@ class _UnclippedSizeTransition extends AnimatedWidget {
   }
 }
 
-class _InteractiveFilterCard extends StatefulWidget {
+class InteractiveFilterCard extends StatefulWidget {
   final double width;
   final double height;
   final VoidCallback onClose;
   final Widget child;
 
-  const _InteractiveFilterCard({
+  const InteractiveFilterCard({
+    super.key,
     required this.width,
     required this.height,
     required this.onClose,
@@ -1420,10 +1501,10 @@ class _InteractiveFilterCard extends StatefulWidget {
   });
 
   @override
-  State<_InteractiveFilterCard> createState() => _InteractiveFilterCardState();
+  State<InteractiveFilterCard> createState() => _InteractiveFilterCardState();
 }
 
-class _InteractiveFilterCardState extends State<_InteractiveFilterCard>
+class _InteractiveFilterCardState extends State<InteractiveFilterCard>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animController;
   Animation<double>? _offsetAnim;
@@ -1449,7 +1530,7 @@ class _InteractiveFilterCardState extends State<_InteractiveFilterCard>
   }
 
   @override
-  void didUpdateWidget(_InteractiveFilterCard oldWidget) {
+  void didUpdateWidget(InteractiveFilterCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_dragOffset > widget.height) {
       _dragOffset = widget.height;
@@ -1556,7 +1637,7 @@ class _InteractiveFilterCardState extends State<_InteractiveFilterCard>
   }
 }
 
-class _FrostedNavBarIsland extends StatelessWidget {
+class FrostedNavBarIsland extends StatelessWidget {
   final double? width;
   final double? height;
   final double borderRadius;
@@ -1571,7 +1652,8 @@ class _FrostedNavBarIsland extends StatelessWidget {
   final BoxShadow? customShadow;
   final Widget child;
 
-  const _FrostedNavBarIsland({
+  const FrostedNavBarIsland({
+    super.key,
     this.width,
     this.height,
     required this.borderRadius,
@@ -1696,13 +1778,14 @@ class _FrostedNavBarIsland extends StatelessWidget {
   }
 }
 
-class _StandaloneFloatingActionButton extends StatelessWidget {
-  final _ContextActionSpec spec;
+class StandaloneFloatingActionButton extends StatelessWidget {
+  final ContextActionSpec spec;
   final Color dockSurface;
   final Color dockBorder;
   final bool isDark;
 
-  const _StandaloneFloatingActionButton({
+  const StandaloneFloatingActionButton({
+    super.key,
     required this.spec,
     required this.dockSurface,
     required this.dockBorder,
@@ -1722,7 +1805,7 @@ class _StandaloneFloatingActionButton extends StatelessWidget {
 
     return Tooltip(
       message: spec.tooltip,
-      child: _FrostedNavBarIsland(
+      child: FrostedNavBarIsland(
         width: kNavBarActionButtonSize,
         height: kNavBarActionButtonSize,
         borderRadius: kNavBarActionButtonRadius,

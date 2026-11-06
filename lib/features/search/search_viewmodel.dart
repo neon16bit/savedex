@@ -1,44 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
-import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
-import 'package:savedex/data/models/subreddit_info.dart';
 
 final searchFilterViewModelProvider =
     NotifierProvider<SearchFilterViewModel, FilterCriteria>(() {
       return SearchFilterViewModel();
     });
-
-final availableSubredditsProvider = FutureProvider<List<SubredditInfo>>((
-  ref,
-) async {
-  final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.getSubredditsWithCounts();
-});
-
-final availableAuthorsWithCountsProvider = FutureProvider<List<(String, int)>>((
-  ref,
-) async {
-  final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.getAuthorsWithCounts();
-});
-
-final availableAuthorsProvider = FutureProvider<List<String>>((ref) async {
-  final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.getDistinctAuthors();
-});
-
-final availableFlairsProvider = FutureProvider<List<(String, int)>>((
-  ref,
-) async {
-  final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.getFlairsWithCounts();
-});
-
-final availableCollectionsProvider = StreamProvider<List<Collection>>((ref) {
-  final repo = ref.watch(collectionRepositoryProvider);
-  return repo.watchAllCollections();
-});
 
 class SearchFilterViewModel extends Notifier<FilterCriteria> {
   @override
@@ -55,9 +22,11 @@ class SearchFilterViewModel extends Notifier<FilterCriteria> {
   }
 
   void toggleSubreddit(String subreddit) {
+    final lower = subreddit.toLowerCase();
     final updated = Set<String>.from(state.selectedSubreddits);
-    if (updated.contains(subreddit)) {
-      updated.remove(subreddit);
+    final hadMatch = updated.any((s) => s.toLowerCase() == lower);
+    if (hadMatch) {
+      updated.removeWhere((s) => s.toLowerCase() == lower);
     } else {
       updated.add(subreddit);
     }
@@ -65,9 +34,11 @@ class SearchFilterViewModel extends Notifier<FilterCriteria> {
   }
 
   void toggleAuthor(String author) {
+    final lower = author.toLowerCase();
     final updated = Set<String>.from(state.selectedAuthors);
-    if (updated.contains(author)) {
-      updated.remove(author);
+    final hadMatch = updated.any((a) => a.toLowerCase() == lower);
+    if (hadMatch) {
+      updated.removeWhere((a) => a.toLowerCase() == lower);
     } else {
       updated.add(author);
     }
@@ -167,7 +138,18 @@ class SearchFilterViewModel extends Notifier<FilterCriteria> {
     state = state.copyWith(groupCommentsByPost: group);
   }
 
+  void clearNonSearchFilters() {
+    state = FilterCriteria(
+      searchQuery: state.searchQuery,
+      sortOption: state.sortOption,
+      groupCommentsByPost: state.groupCommentsByPost,
+    );
+  }
+
   void clearAllFilters() {
-    state = const FilterCriteria();
+    state = FilterCriteria(
+      sortOption: state.sortOption,
+      groupCommentsByPost: state.groupCommentsByPost,
+    );
   }
 }

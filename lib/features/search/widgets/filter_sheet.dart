@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show TableUpdateQuery;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
+import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 
 enum _CompactEntityCategory {
@@ -38,8 +40,26 @@ class FilterCardDragCancelNotification extends FilterCardDragNotification {
 class FilterSheet extends ConsumerStatefulWidget {
   final VoidCallback? onClose;
   final bool isFloatingCard;
+  final FilterCriteria? scopedFilter;
+  final ValueChanged<FilterCriteria>? onScopedFilterChanged;
+  final int? scopedCollectionId;
+  final String? scopedSubreddit;
+  final String? scopedAuthor;
 
-  const FilterSheet({super.key, this.onClose, this.isFloatingCard = false});
+  const FilterSheet({
+    super.key,
+    this.onClose,
+    this.isFloatingCard = false,
+    this.scopedFilter,
+    this.onScopedFilterChanged,
+    this.scopedCollectionId,
+    this.scopedSubreddit,
+    this.scopedAuthor,
+  });
+
+  bool get isScoped => scopedFilter != null && onScopedFilterChanged != null;
+  bool get showSubredditsTab => scopedSubreddit == null;
+  bool get showAuthorsTab => scopedAuthor == null;
 
   @override
   ConsumerState<FilterSheet> createState() => _FilterSheetState();
@@ -48,7 +68,7 @@ class FilterSheet extends ConsumerStatefulWidget {
 class _FilterSheetState extends ConsumerState<FilterSheet> {
   static const int _kMaxFilterResults = 15;
 
-  _CompactEntityCategory _currentEntity = _CompactEntityCategory.subreddits;
+  late _CompactEntityCategory _currentEntity;
 
   late final ScrollController _cardScrollController;
   late final TextEditingController _subSearchController;
@@ -60,6 +80,8 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   String _flairSearchQuery = '';
 
   Timer? _searchDebounce;
+  StreamSubscription? _dbUpdatesSub;
+  Timer? _dbUpdateDebounce;
 
   List<(String, int)>? _subResults;
   bool _isLoadingSubs = false;
@@ -76,6 +98,11 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   @override
   void initState() {
     super.initState();
+    _currentEntity = widget.showSubredditsTab
+        ? _CompactEntityCategory.subreddits
+        : (widget.showAuthorsTab
+              ? _CompactEntityCategory.authors
+              : _CompactEntityCategory.flairs);
     _cardScrollController = ScrollController();
     _subSearchController = TextEditingController()
       ..addListener(_onSubSearchChanged);
@@ -84,9 +111,92 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     _flairSearchController = TextEditingController()
       ..addListener(_onFlairSearchChanged);
 
-    _loadSubreddits();
-    _loadAuthors();
-    _loadFlairs();
+    _loadCurrentEntity();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final db = ref.read(databaseProvider);
+      _dbUpdatesSub = db
+          .tableUpdates(
+            TableUpdateQuery.onAllTables([
+              db.savedItemsTable,
+              db.itemCollectionsTable,
+            ]),
+          )
+          .listen((_) => _onDbTableUpdated());
+    });
+  }
+
+  void _loadCurrentEntity({bool force = false, bool silent = false}) {
+    switch (_currentEntity) {
+      case _CompactEntityCategory.subreddits:
+        if (widget.showSubredditsTab) {
+          _loadSubreddits(force: force, silent: silent);
+        }
+        break;
+      case _CompactEntityCategory.authors:
+        if (widget.showAuthorsTab) {
+          _loadAuthors(force: force, silent: silent);
+        }
+        break;
+      case _CompactEntityCategory.flairs:
+        _loadFlairs(force: force, silent: silent);
+        break;
+    }
+  }
+
+  void _onDbTableUpdated() {
+    if (!mounted) return;
+    final isBackgroundEnriching =
+        ref.read(enrichmentViewModelProvider).isRunning ||
+        ref.read(archiveRecoveryStateProvider).isRunning;
+    if (isBackgroundEnriching && (_dbUpdateDebounce?.isActive ?? false)) {
+      return;
+    }
+
+    _dbUpdateDebounce?.cancel();
+    final delay = isBackgroundEnriching
+        ? const Duration(milliseconds: 3000)
+        : const Duration(milliseconds: 600);
+
+    _dbUpdateDebounce = Timer(delay, () {
+      if (!mounted) return;
+      _loadedSubQuery = null;
+      _loadedAuthorQuery = null;
+      _loadedFlairQuery = null;
+      _loadCurrentEntity(force: true, silent: true);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant FilterSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final scopeChanged =
+        oldWidget.scopedCollectionId != widget.scopedCollectionId ||
+        oldWidget.scopedSubreddit != widget.scopedSubreddit ||
+        oldWidget.scopedAuthor != widget.scopedAuthor;
+    if (scopeChanged) {
+      _subResults = null;
+      _loadedSubQuery = null;
+      _authorResults = null;
+      _loadedAuthorQuery = null;
+      _flairResults = null;
+      _loadedFlairQuery = null;
+
+      if (_currentEntity == _CompactEntityCategory.subreddits &&
+          !widget.showSubredditsTab) {
+        _currentEntity = widget.showAuthorsTab
+            ? _CompactEntityCategory.authors
+            : _CompactEntityCategory.flairs;
+      } else if (_currentEntity == _CompactEntityCategory.authors &&
+          !widget.showAuthorsTab) {
+        _currentEntity = widget.showSubredditsTab
+            ? _CompactEntityCategory.subreddits
+            : _CompactEntityCategory.flairs;
+      }
+
+      _loadCurrentEntity(force: true);
+    }
   }
 
   void _onSubSearchChanged() {
@@ -125,68 +235,84 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     });
   }
 
-  Future<void> _loadSubreddits({bool force = false}) async {
+  Future<void> _loadSubreddits({
+    bool force = false,
+    bool silent = false,
+  }) async {
     final query = _subSearchQuery.trim();
     if (!force && _subResults != null && _loadedSubQuery == query) return;
-    setState(() => _isLoadingSubs = true);
+    if (!silent || _subResults == null) {
+      setState(() => _isLoadingSubs = true);
+    }
     try {
       final repo = ref.read(savedItemRepositoryProvider);
       final results = await repo.searchSubredditsWithCounts(
         query: query,
         limit: _kMaxFilterResults,
+        collectionId: widget.scopedCollectionId,
+        author: widget.scopedAuthor,
       );
-      if (!mounted) return;
+      if (!mounted || _subSearchQuery.trim() != query) return;
       setState(() {
         _subResults = results;
         _loadedSubQuery = query;
         _isLoadingSubs = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || _subSearchQuery.trim() != query) return;
       setState(() => _isLoadingSubs = false);
     }
   }
 
-  Future<void> _loadAuthors({bool force = false}) async {
+  Future<void> _loadAuthors({bool force = false, bool silent = false}) async {
     final query = _authorSearchQuery.trim();
     if (!force && _authorResults != null && _loadedAuthorQuery == query) return;
-    setState(() => _isLoadingAuthors = true);
+    if (!silent || _authorResults == null) {
+      setState(() => _isLoadingAuthors = true);
+    }
     try {
       final repo = ref.read(savedItemRepositoryProvider);
       final results = await repo.searchAuthorsWithCounts(
         query: query,
         limit: _kMaxFilterResults,
+        collectionId: widget.scopedCollectionId,
+        subreddit: widget.scopedSubreddit,
       );
-      if (!mounted) return;
+      if (!mounted || _authorSearchQuery.trim() != query) return;
       setState(() {
         _authorResults = results;
         _loadedAuthorQuery = query;
         _isLoadingAuthors = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || _authorSearchQuery.trim() != query) return;
       setState(() => _isLoadingAuthors = false);
     }
   }
 
-  Future<void> _loadFlairs({bool force = false}) async {
+  Future<void> _loadFlairs({bool force = false, bool silent = false}) async {
     final query = _flairSearchQuery.trim();
     if (!force && _flairResults != null && _loadedFlairQuery == query) return;
-    setState(() => _isLoadingFlairs = true);
+    if (!silent || _flairResults == null) {
+      setState(() => _isLoadingFlairs = true);
+    }
     try {
       final repo = ref.read(savedItemRepositoryProvider);
       final results = await repo.searchFlairsWithCounts(
         query: query,
         limit: _kMaxFilterResults,
+        collectionId: widget.scopedCollectionId,
+        subreddit: widget.scopedSubreddit,
+        author: widget.scopedAuthor,
       );
-      if (!mounted) return;
+      if (!mounted || _flairSearchQuery.trim() != query) return;
       setState(() {
         _flairResults = results;
         _loadedFlairQuery = query;
         _isLoadingFlairs = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || _flairSearchQuery.trim() != query) return;
       setState(() => _isLoadingFlairs = false);
     }
   }
@@ -196,19 +322,14 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     setState(() {
       _currentEntity = cat;
     });
-    switch (cat) {
-      case _CompactEntityCategory.subreddits:
-        _loadSubreddits();
-      case _CompactEntityCategory.authors:
-        _loadAuthors();
-      case _CompactEntityCategory.flairs:
-        _loadFlairs();
-    }
+    _loadCurrentEntity();
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _dbUpdateDebounce?.cancel();
+    _dbUpdatesSub?.cancel();
     _cardScrollController.dispose();
     _subSearchController.removeListener(_onSubSearchChanged);
     _subSearchController.dispose();
@@ -289,10 +410,153 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     );
   }
 
+  void _setItemType(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    ItemType? type,
+  ) {
+    if (widget.isScoped) {
+      widget.onScopedFilterChanged!(
+        filter.copyWith(itemType: type, clearItemType: type == null),
+      );
+    } else {
+      viewModel?.setItemType(type);
+    }
+  }
+
+  void _toggleStarredOnly(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    bool starredOnly,
+  ) {
+    if (widget.isScoped) {
+      widget.onScopedFilterChanged!(
+        filter.copyWith(
+          isStarred: starredOnly ? true : null,
+          clearStarred: !starredOnly,
+        ),
+      );
+    } else {
+      viewModel?.toggleStarredOnly(starredOnly);
+    }
+  }
+
+  void _setNsfwFilter(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    bool? isNsfw,
+  ) {
+    if (widget.isScoped) {
+      widget.onScopedFilterChanged!(
+        filter.copyWith(isNsfw: isNsfw, clearNsfw: isNsfw == null),
+      );
+    } else {
+      viewModel?.setNsfwFilter(isNsfw);
+    }
+  }
+
+  void _toggleMediaType(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    MediaType type,
+  ) {
+    if (widget.isScoped) {
+      final updated = Set<MediaType>.from(filter.selectedMediaTypes);
+      if (updated.contains(type)) {
+        updated.remove(type);
+      } else {
+        updated.add(type);
+      }
+      widget.onScopedFilterChanged!(
+        filter.copyWith(selectedMediaTypes: updated),
+      );
+    } else {
+      viewModel?.toggleMediaType(type);
+    }
+  }
+
+  void _toggleSubreddit(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    String subreddit,
+  ) {
+    if (widget.isScoped) {
+      final lower = subreddit.toLowerCase();
+      final updated = Set<String>.from(filter.selectedSubreddits);
+      final hadMatch = updated.any((s) => s.toLowerCase() == lower);
+      if (hadMatch) {
+        updated.removeWhere((s) => s.toLowerCase() == lower);
+      } else {
+        updated.add(subreddit);
+      }
+      widget.onScopedFilterChanged!(
+        filter.copyWith(selectedSubreddits: updated),
+      );
+    } else {
+      viewModel?.toggleSubreddit(subreddit);
+    }
+  }
+
+  void _toggleAuthor(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    String author,
+  ) {
+    if (widget.isScoped) {
+      final lower = author.toLowerCase();
+      final updated = Set<String>.from(filter.selectedAuthors);
+      final hadMatch = updated.any((a) => a.toLowerCase() == lower);
+      if (hadMatch) {
+        updated.removeWhere((a) => a.toLowerCase() == lower);
+      } else {
+        updated.add(author);
+      }
+      widget.onScopedFilterChanged!(filter.copyWith(selectedAuthors: updated));
+    } else {
+      viewModel?.toggleAuthor(author);
+    }
+  }
+
+  void _toggleFlair(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    String flair,
+  ) {
+    if (widget.isScoped) {
+      final updated = Set<String>.from(filter.selectedFlairs);
+      if (updated.contains(flair)) {
+        updated.remove(flair);
+      } else {
+        updated.add(flair);
+      }
+      widget.onScopedFilterChanged!(filter.copyWith(selectedFlairs: updated));
+    } else {
+      viewModel?.toggleFlair(flair);
+    }
+  }
+
+  void _resetFilters(FilterCriteria filter, SearchFilterViewModel? viewModel) {
+    if (widget.isScoped) {
+      widget.onScopedFilterChanged!(
+        FilterCriteria(
+          searchQuery: filter.searchQuery,
+          sortOption: filter.sortOption,
+          groupCommentsByPost: filter.groupCommentsByPost,
+        ),
+      );
+    } else {
+      viewModel?.clearNonSearchFilters();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filter = ref.watch(searchFilterViewModelProvider);
-    final viewModel = ref.read(searchFilterViewModelProvider.notifier);
+    final filter = widget.isScoped
+        ? widget.scopedFilter!
+        : ref.watch(searchFilterViewModelProvider);
+    final viewModel = widget.isScoped
+        ? null
+        : ref.read(searchFilterViewModelProvider.notifier);
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -331,7 +595,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     ScrollController scrollController,
     ColorScheme colorScheme,
     ThemeData theme,
-    SearchFilterViewModel viewModel,
+    SearchFilterViewModel? viewModel,
     FilterCriteria filter,
   ) {
     final isFloating = widget.isFloatingCard;
@@ -392,7 +656,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                       ),
 
                       const Spacer(),
-                      if (filter.hasActiveFilters)
+                      if (filter.hasActiveNonSearchFilters)
                         TextButton(
                           style: TextButton.styleFrom(
                             foregroundColor: colorScheme.error,
@@ -403,7 +667,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           ),
                           onPressed: () {
                             HapticFeedback.lightImpact();
-                            viewModel.clearAllFilters();
+                            _resetFilters(filter, viewModel);
                           },
                           child: const Text(
                             'Reset',
@@ -435,13 +699,16 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           _buildCompactChoiceChip(
                             label: 'All',
                             isSelected: filter.itemType == null,
-                            onSelected: () => viewModel.setItemType(null),
+                            onSelected: () =>
+                                _setItemType(filter, viewModel, null),
                             colorScheme: colorScheme,
                           ),
                           _buildCompactChoiceChip(
                             label: 'Posts',
                             isSelected: filter.itemType == ItemType.post,
-                            onSelected: () => viewModel.setItemType(
+                            onSelected: () => _setItemType(
+                              filter,
+                              viewModel,
                               filter.itemType == ItemType.post
                                   ? null
                                   : ItemType.post,
@@ -451,7 +718,9 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           _buildCompactChoiceChip(
                             label: 'Comments',
                             isSelected: filter.itemType == ItemType.comment,
-                            onSelected: () => viewModel.setItemType(
+                            onSelected: () => _setItemType(
+                              filter,
+                              viewModel,
                               filter.itemType == ItemType.comment
                                   ? null
                                   : ItemType.comment,
@@ -461,7 +730,9 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           _buildCompactChoiceChip(
                             label: 'Starred',
                             isSelected: filter.isStarred == true,
-                            onSelected: () => viewModel.toggleStarredOnly(
+                            onSelected: () => _toggleStarredOnly(
+                              filter,
+                              viewModel,
                               filter.isStarred != true,
                             ),
                             colorScheme: colorScheme,
@@ -469,7 +740,9 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           _buildCompactChoiceChip(
                             label: 'NSFW',
                             isSelected: filter.isNsfw == true,
-                            onSelected: () => viewModel.setNsfwFilter(
+                            onSelected: () => _setNsfwFilter(
+                              filter,
+                              viewModel,
                               filter.isNsfw == true ? null : true,
                             ),
                             colorScheme: colorScheme,
@@ -477,7 +750,9 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           _buildCompactChoiceChip(
                             label: 'SFW',
                             isSelected: filter.isNsfw == false,
-                            onSelected: () => viewModel.setNsfwFilter(
+                            onSelected: () => _setNsfwFilter(
+                              filter,
+                              viewModel,
                               filter.isNsfw == false ? null : false,
                             ),
                             colorScheme: colorScheme,
@@ -517,7 +792,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                                 label: opt.$2,
                                 isSelected: isSelected,
                                 onSelected: () =>
-                                    viewModel.toggleMediaType(opt.$1),
+                                    _toggleMediaType(filter, viewModel, opt.$1),
                                 colorScheme: colorScheme,
                               );
                             }).toList(),
@@ -535,26 +810,31 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                   padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
                   child: Row(
                     children: [
-                      _buildEntityTab(
-                        label: 'Subreddits',
-                        count: filter.selectedSubreddits.length,
-                        isSelected:
-                            _currentEntity == _CompactEntityCategory.subreddits,
-                        onTap: () =>
-                            _selectEntity(_CompactEntityCategory.subreddits),
-                        colorScheme: colorScheme,
-                      ),
-                      const SizedBox(width: 6),
-                      _buildEntityTab(
-                        label: 'Authors',
-                        count: filter.selectedAuthors.length,
-                        isSelected:
-                            _currentEntity == _CompactEntityCategory.authors,
-                        onTap: () =>
-                            _selectEntity(_CompactEntityCategory.authors),
-                        colorScheme: colorScheme,
-                      ),
-                      const SizedBox(width: 6),
+                      if (widget.showSubredditsTab) ...[
+                        _buildEntityTab(
+                          label: 'Subreddits',
+                          count: filter.selectedSubreddits.length,
+                          isSelected:
+                              _currentEntity ==
+                              _CompactEntityCategory.subreddits,
+                          onTap: () =>
+                              _selectEntity(_CompactEntityCategory.subreddits),
+                          colorScheme: colorScheme,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (widget.showAuthorsTab) ...[
+                        _buildEntityTab(
+                          label: 'Authors',
+                          count: filter.selectedAuthors.length,
+                          isSelected:
+                              _currentEntity == _CompactEntityCategory.authors,
+                          onTap: () =>
+                              _selectEntity(_CompactEntityCategory.authors),
+                          colorScheme: colorScheme,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       _buildEntityTab(
                         label: 'Flairs',
                         count: filter.selectedFlairs.length,
@@ -669,19 +949,22 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
 
   Widget _buildEntityChipList(
     FilterCriteria filter,
-    SearchFilterViewModel viewModel,
+    SearchFilterViewModel? viewModel,
     ColorScheme colorScheme,
     ScrollController scrollController,
   ) {
     switch (_currentEntity) {
       case _CompactEntityCategory.subreddits:
         final results = _subResults ?? const <(String, int)>[];
-        final resultMap = {for (final s in results) s.$1: s};
+        final resultMap = {for (final s in results) s.$1.toLowerCase(): s};
+        final selectedLowers = {
+          for (final sel in filter.selectedSubreddits) sel.toLowerCase(),
+        };
         final displayList = <(String, int)>[
           for (final sel in filter.selectedSubreddits)
-            resultMap[sel] ?? (sel, 0),
+            resultMap[sel.toLowerCase()] ?? (sel, 0),
           for (final s in results)
-            if (!filter.selectedSubreddits.contains(s.$1)) s,
+            if (!selectedLowers.contains(s.$1.toLowerCase())) s,
         ];
 
         if (_isLoadingSubs && _subResults == null) {
@@ -732,14 +1015,16 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                 children: displayList.map((s) {
                   final name = s.$1;
                   final count = s.$2;
-                  final isSelected = filter.selectedSubreddits.contains(name);
+                  final isSelected = selectedLowers.contains(
+                    name.toLowerCase(),
+                  );
                   final label = count > 0
                       ? '${SavedItem.formatSubreddit(name)} ($count)'
                       : SavedItem.formatSubreddit(name);
                   return _buildEntityChip(
                     label: label,
                     isSelected: isSelected,
-                    onSelected: () => viewModel.toggleSubreddit(name),
+                    onSelected: () => _toggleSubreddit(filter, viewModel, name),
                     colorScheme: colorScheme,
                   );
                 }).toList(),
@@ -750,11 +1035,15 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
 
       case _CompactEntityCategory.authors:
         final results = _authorResults ?? const <(String, int)>[];
-        final resultMap = {for (final a in results) a.$1: a};
+        final resultMap = {for (final a in results) a.$1.toLowerCase(): a};
+        final selectedLowers = {
+          for (final sel in filter.selectedAuthors) sel.toLowerCase(),
+        };
         final displayList = <(String, int)>[
-          for (final sel in filter.selectedAuthors) resultMap[sel] ?? (sel, 0),
+          for (final sel in filter.selectedAuthors)
+            resultMap[sel.toLowerCase()] ?? (sel, 0),
           for (final a in results)
-            if (!filter.selectedAuthors.contains(a.$1)) a,
+            if (!selectedLowers.contains(a.$1.toLowerCase())) a,
         ];
 
         if (_isLoadingAuthors && _authorResults == null) {
@@ -805,12 +1094,14 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                 children: displayList.map((a) {
                   final name = a.$1;
                   final count = a.$2;
-                  final isSelected = filter.selectedAuthors.contains(name);
+                  final isSelected = selectedLowers.contains(
+                    name.toLowerCase(),
+                  );
                   final label = count > 0 ? 'u/$name ($count)' : 'u/$name';
                   return _buildEntityChip(
                     label: label,
                     isSelected: isSelected,
-                    onSelected: () => viewModel.toggleAuthor(name),
+                    onSelected: () => _toggleAuthor(filter, viewModel, name),
                     colorScheme: colorScheme,
                   );
                 }).toList(),
@@ -881,7 +1172,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                   return _buildEntityChip(
                     label: label,
                     isSelected: isSelected,
-                    onSelected: () => viewModel.toggleFlair(flair),
+                    onSelected: () => _toggleFlair(filter, viewModel, flair),
                     colorScheme: colorScheme,
                   );
                 }).toList(),

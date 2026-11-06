@@ -1829,24 +1829,40 @@ class SavedItemRepository {
   Future<List<(String, int)>> searchSubredditsWithCounts({
     String query = '',
     int limit = 15,
-  }) => db.searchSubredditsWithCounts(query: query, limit: limit);
+    int? collectionId,
+    String? author,
+  }) => db.searchSubredditsWithCounts(
+    query: query,
+    limit: limit,
+    collectionId: collectionId,
+    author: author,
+  );
 
   Future<List<(String, int)>> searchAuthorsWithCounts({
     String query = '',
     int limit = 15,
-  }) => db.searchAuthorsWithCounts(query: query, limit: limit);
+    int? collectionId,
+    String? subreddit,
+  }) => db.searchAuthorsWithCounts(
+    query: query,
+    limit: limit,
+    collectionId: collectionId,
+    subreddit: subreddit,
+  );
 
   Future<List<(String, int)>> searchFlairsWithCounts({
     String query = '',
     int limit = 15,
-  }) => db.searchFlairsWithCounts(query: query, limit: limit);
-
-  Future<List<(String, int)>> getAuthorsWithCounts() =>
-      db.getAuthorsWithCounts();
-
-  Future<List<(String, int)>> getFlairsWithCounts() => db.getFlairsWithCounts();
-
-  Future<List<String>> getDistinctAuthors() => db.getDistinctAuthors();
+    int? collectionId,
+    String? subreddit,
+    String? author,
+  }) => db.searchFlairsWithCounts(
+    query: query,
+    limit: limit,
+    collectionId: collectionId,
+    subreddit: subreddit,
+    author: author,
+  );
 
   Future<int> getTotalCount() => db.getTotalCount();
 
