@@ -59,6 +59,22 @@ class SearchFilterViewModel extends Notifier<FilterCriteria> {
     state = state.copyWith(selectedSubreddits: {subreddit});
   }
 
+  void setSelectedSubreddits(Set<String> subreddits) {
+    if (state.selectedSubreddits.length == subreddits.length &&
+        state.selectedSubreddits.containsAll(subreddits)) {
+      return;
+    }
+    state = state.copyWith(selectedSubreddits: subreddits);
+  }
+
+  void clearQuickFilters() {
+    state = state.copyWith(
+      clearItemType: true,
+      clearStarred: true,
+      clearNsfw: true,
+    );
+  }
+
   void selectSingleAuthor(String author) {
     state = state.copyWith(selectedAuthors: {author});
   }

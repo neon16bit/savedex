@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show TableUpdateQuery;
+import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
@@ -125,15 +125,20 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
             db.savedItemsTable,
             db.collectionsTable,
             db.itemCollectionsTable,
+            if (effectiveFilter.isNsfw != null) db.subredditsTable,
           ]),
         )
-        .listen((_) => _onTableUpdate());
+        .listen(_onTableUpdate);
 
     ref.onDispose(() {
       _dbUpdatesSub?.cancel();
       _debounceTimer?.cancel();
       _busyItemIds.clear();
     });
+
+    if (effectiveFilter.isNsfw != null) {
+      unawaited(repo.ensureSubredditsEnrichedInBackground());
+    }
 
     final page = await repo.getSavedItemsPage(
       filter: effectiveFilter,
@@ -176,10 +181,17 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     }());
   }
 
-  static bool itemMatchesFilter(SavedItem item, FilterCriteria f) {
+  static bool itemMatchesFilter(
+    SavedItem item,
+    FilterCriteria f, {
+    bool? isSubredditNsfw,
+  }) {
     if (f.isStarred != null && item.isStarred != f.isStarred) return false;
     if (f.isArchived != null && item.isArchived != f.isArchived) return false;
-    if (f.isNsfw != null && item.isNsfw != f.isNsfw) return false;
+    if (f.isNsfw != null) {
+      final effectiveNsfw = item.isNsfw || (isSubredditNsfw ?? false);
+      if (effectiveNsfw != f.isNsfw) return false;
+    }
     if (f.itemType != null && item.itemType != f.itemType) return false;
     if (f.enrichmentStatus != null &&
         item.enrichmentStatus != f.enrichmentStatus) {
@@ -250,8 +262,16 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
     return true;
   }
 
-  void _onTableUpdate() {
+  void _onTableUpdate(Set<TableUpdate> updates) {
     if (_shouldIgnoreTableUpdate) return;
+    if (ref
+        .read(savedItemRepositoryProvider)
+        .shouldIgnoreSubredditTableUpdate(
+          updates,
+          effectiveIsNsfw: _getEffectiveFilter().isNsfw,
+        )) {
+      return;
+    }
 
     final isBackgroundEnriching =
         ref.read(enrichmentViewModelProvider).isRunning ||
@@ -278,6 +298,29 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       final filter = _getEffectiveFilter();
       final db = ref.read(databaseProvider);
       final gen = _generation;
+
+      if (filter.isNsfw != null) {
+        unawaited(repo.ensureSubredditsEnrichedInBackground());
+      }
+      if (filter.isNsfw == false && filter.selectedSubreddits.isNotEmpty) {
+        final allowed = await repo.filterSfwSubreddits(
+          filter.selectedSubreddits,
+        );
+        if (gen != _generation) return;
+        if (allowed.length != filter.selectedSubreddits.length) {
+          final latestRaw = ref.read(searchFilterViewModelProvider);
+          if (latestRaw.selectedSubreddits.length ==
+                  filter.selectedSubreddits.length &&
+              latestRaw.selectedSubreddits.containsAll(
+                filter.selectedSubreddits,
+              )) {
+            ref
+                .read(searchFilterViewModelProvider.notifier)
+                .setSelectedSubreddits(allowed);
+            return;
+          }
+        }
+      }
 
       final totalCount = await db.countFilteredSavedItems(filter);
       if (gen != _generation) return;
@@ -684,7 +727,14 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       }
     }
 
-    final matches = itemMatchesFilter(freshItem, filter);
+    final subNsfw = filter.isNsfw != null
+        ? await repo.isSubredditNsfw(freshItem.subreddit)
+        : null;
+    final matches = itemMatchesFilter(
+      freshItem,
+      filter,
+      isSubredditNsfw: subNsfw,
+    );
     if (inList) {
       if (matches) {
         state = AsyncData(

@@ -139,6 +139,12 @@ class AppDatabase extends _$AppDatabase {
     },
   );
 
+  static String _cleanSubSql(String colExpr) =>
+      "LOWER(CASE WHEN $colExpr LIKE 'r/%' OR $colExpr LIKE 'u/%' THEN SUBSTR($colExpr, 3) ELSE $colExpr END)";
+
+  static String _buildEffectiveNsfwSql(String alias) =>
+      "($alias.is_nsfw = 1 OR EXISTS (SELECT 1 FROM subreddits_table sub WHERE sub.name = ${_cleanSubSql('$alias.subreddit')} AND sub.is_nsfw = 1))";
+
   Future<void>? _ftsInitFuture;
 
   Future<void> ensureFtsSchema() {
@@ -363,7 +369,10 @@ class AppDatabase extends _$AppDatabase {
       }
 
       if (isNsfw != null) {
-        predicate = predicate & tbl.isNsfw.equals(isNsfw);
+        final nsfwExpr = CustomExpression<bool>(
+          _buildEffectiveNsfwSql(tbl.actualTableName),
+        );
+        predicate = predicate & (isNsfw ? nsfwExpr : nsfwExpr.not());
       }
 
       if (isStarred != null) {
@@ -714,8 +723,8 @@ class AppDatabase extends _$AppDatabase {
       vars.add(Variable.withInt(filter.enrichmentStatus!.index));
     }
     if (filter.isNsfw != null) {
-      where.add('s.is_nsfw = ?');
-      vars.add(Variable.withBool(filter.isNsfw!));
+      final effectiveNsfw = _buildEffectiveNsfwSql('s');
+      where.add(filter.isNsfw! ? effectiveNsfw : 'NOT $effectiveNsfw');
     }
     if (filter.isStarred != null) {
       where.add('s.is_starred = ?');
@@ -817,7 +826,7 @@ class AppDatabase extends _$AppDatabase {
     final rows = await customSelect(
       sql,
       variables: vars,
-      readsFrom: {savedItemsTable},
+      readsFrom: {savedItemsTable, if (filter.isNsfw != null) subredditsTable},
     ).get();
 
     final entries = rows.map((r) => savedItemsTable.map(r.data)).toList();
@@ -843,7 +852,7 @@ class AppDatabase extends _$AppDatabase {
     final row = await customSelect(
       sql,
       variables: vars,
-      readsFrom: {savedItemsTable},
+      readsFrom: {savedItemsTable, if (filter.isNsfw != null) subredditsTable},
     ).getSingle();
 
     return row.read<int>('c');
@@ -873,6 +882,18 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<SubredditEntry>> getAllSubreddits() async {
     return select(subredditsTable).get();
+  }
+
+  Future<bool> isSubredditNsfw(String subreddit) async {
+    final clean = subreddit.trim().toLowerCase().replaceFirst(
+      RegExp(r'^[ru]/'),
+      '',
+    );
+    if (clean.isEmpty) return false;
+    final entry = await (select(
+      subredditsTable,
+    )..where((t) => t.name.equals(clean))).getSingleOrNull();
+    return entry?.isNsfw == true;
   }
 
   Future<void> upsertSubreddit(SubredditsTableCompanion entry) async {
@@ -1023,11 +1044,45 @@ class AppDatabase extends _$AppDatabase {
     return controller.stream;
   }
 
+  Future<Set<String>> filterSfwSubreddits(Set<String> subreddits) async {
+    if (subreddits.isEmpty) return const {};
+    final placeholders = List.filled(subreddits.length, '?').join(',');
+    final rows = await customSelect(
+      '''
+      SELECT
+        s.subreddit,
+        sub.is_nsfw AS verified_nsfw,
+        SUM(CASE WHEN s.is_nsfw = 0 THEN 1 ELSE 0 END) AS sfw_count
+      FROM saved_items_table s
+      LEFT JOIN subreddits_table sub
+        ON sub.name = ${_cleanSubSql('s.subreddit')}
+      WHERE s.subreddit COLLATE NOCASE IN ($placeholders)
+      GROUP BY s.subreddit COLLATE NOCASE
+      ''',
+      variables: subreddits.map(Variable.withString).toList(),
+      readsFrom: {savedItemsTable, subredditsTable},
+    ).get();
+    final allowedLowers = <String>{};
+    for (final r in rows) {
+      final verifiedNsfw = r.read<bool?>('verified_nsfw');
+      final sfwCount = r.read<int?>('sfw_count') ?? 0;
+      final isSubNsfw = verifiedNsfw ?? (sfwCount == 0);
+      if (!isSubNsfw) {
+        allowedLowers.add(r.read<String>('subreddit').toLowerCase());
+      }
+    }
+    return {
+      for (final sub in subreddits)
+        if (allowedLowers.contains(sub.toLowerCase())) sub,
+    };
+  }
+
   Future<List<(String, int)>> searchSubredditsWithCounts({
     String query = '',
     int limit = 15,
     int? collectionId,
     String? author,
+    bool? isNsfw,
   }) async {
     final countExp = savedItemsTable.id.count();
     final cleanedQuery = query.trim().toLowerCase().replaceFirst(
@@ -1058,6 +1113,14 @@ class AppDatabase extends _$AppDatabase {
       predicate = predicate == null ? authorExp : (predicate & authorExp);
     }
 
+    if (isNsfw != null) {
+      final nsfwExpr = CustomExpression<bool>(
+        _buildEffectiveNsfwSql(savedItemsTable.actualTableName),
+      );
+      final targetExpr = isNsfw ? nsfwExpr : nsfwExpr.not();
+      predicate = predicate == null ? targetExpr : (predicate & targetExpr);
+    }
+
     if (cleanedQuery.isNotEmpty) {
       final queryExp = savedItemsTable.subreddit.lower().like(
         '%$cleanedQuery%',
@@ -1085,6 +1148,7 @@ class AppDatabase extends _$AppDatabase {
     int limit = 15,
     int? collectionId,
     String? subreddit,
+    bool? isNsfw,
   }) async {
     final countExp = savedItemsTable.id.count();
     final cleanedQuery = query.trim().toLowerCase().replaceFirst(
@@ -1102,6 +1166,13 @@ class AppDatabase extends _$AppDatabase {
       predicate =
           predicate &
           savedItemsTable.subreddit.collate(Collate.noCase).equals(cleanSub);
+    }
+
+    if (isNsfw != null) {
+      final nsfwExpr = CustomExpression<bool>(
+        _buildEffectiveNsfwSql(savedItemsTable.actualTableName),
+      );
+      predicate = predicate & (isNsfw ? nsfwExpr : nsfwExpr.not());
     }
 
     if (cleanedQuery.isNotEmpty) {
@@ -1141,6 +1212,7 @@ class AppDatabase extends _$AppDatabase {
     int? collectionId,
     String? subreddit,
     String? author,
+    bool? isNsfw,
   }) async {
     final countExp = savedItemsTable.id.count();
     final cleanedQuery = query.trim().toLowerCase();
@@ -1163,6 +1235,13 @@ class AppDatabase extends _$AppDatabase {
           coalesce([savedItemsTable.author, const Constant('')])
               .collate(Collate.noCase)
               .equals(cleanAuthor);
+    }
+
+    if (isNsfw != null) {
+      final nsfwExpr = CustomExpression<bool>(
+        _buildEffectiveNsfwSql(savedItemsTable.actualTableName),
+      );
+      predicate = predicate & (isNsfw ? nsfwExpr : nsfwExpr.not());
     }
 
     if (cleanedQuery.isNotEmpty) {

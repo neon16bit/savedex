@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show TableUpdateQuery;
+import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -160,9 +160,10 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               db.savedItemsTable,
               db.collectionsTable,
               db.itemCollectionsTable,
+              db.subredditsTable,
             ]),
           )
-          .listen((_) => _onDbUpdate());
+          .listen(_onDbUpdate);
       _itemMutationsSub = ref
           .read(savedFeedPaginationProvider.notifier)
           .itemMutations
@@ -219,9 +220,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
-  void _onSingleItemMutated(
+  Future<void> _onSingleItemMutated(
     ({String itemId, SavedItem? item, bool deleted}) event,
-  ) {
+  ) async {
     if (!mounted) return;
     _ignoreDbUpdatesUntil = DateTime.now().add(
       const Duration(milliseconds: 600),
@@ -240,21 +241,32 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     }
 
     final updated = event.item!;
+    var filter = _buildFilter();
+    bool? subNsfw;
+    if (filter.isNsfw != null) {
+      subNsfw = await ref
+          .read(savedItemRepositoryProvider)
+          .isSubredditNsfw(updated.subreddit);
+      if (!mounted) return;
+      filter = _buildFilter();
+    }
+    final currentIndex = _items.indexWhere((i) => i.id == event.itemId);
     final matches = SavedFeedPaginationNotifier.itemMatchesFilter(
       updated,
-      _buildFilter(),
+      filter,
+      isSubredditNsfw: filter.isNsfw != null ? subNsfw : null,
     );
 
-    if (index != -1) {
+    if (currentIndex != -1) {
       if (!matches) {
         setState(() {
-          _items = List.of(_items)..removeAt(index);
+          _items = List.of(_items)..removeAt(currentIndex);
           if (_totalCount > 0) _totalCount--;
         });
-      } else if (_items[index] != updated) {
+      } else if (_items[currentIndex] != updated) {
         setState(() {
           final next = List.of(_items);
-          next[index] = updated;
+          next[currentIndex] = updated;
           _items = next;
         });
       }
@@ -265,7 +277,6 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
   FilterCriteria _buildFilter() {
     final cleanAuthor = widget.args.author?.replaceFirst(RegExp(r'^[ru]/'), '');
-    final hideNsfw = ref.read(settingsViewModelProvider).hideNsfwInFeed;
 
     return _scopedFilter.copyWith(
       selectedCollectionIds: widget.args.isCollection
@@ -277,7 +288,6 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       selectedAuthors: widget.args.isAuthor && cleanAuthor != null
           ? {cleanAuthor}
           : _scopedFilter.selectedAuthors,
-      isNsfw: _scopedFilter.isNsfw ?? (hideNsfw ? false : null),
     );
   }
 
@@ -444,10 +454,18 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     }
   }
 
-  void _onDbUpdate() {
+  void _onDbUpdate(Set<TableUpdate> updates) {
     if (!mounted) return;
     final until = _ignoreDbUpdatesUntil;
     if (until != null && DateTime.now().isBefore(until)) return;
+    if (ref
+        .read(savedItemRepositoryProvider)
+        .shouldIgnoreSubredditTableUpdate(
+          updates,
+          effectiveIsNsfw: _buildFilter().isNsfw,
+        )) {
+      return;
+    }
 
     final isBackgroundEnriching =
         ref.read(enrichmentViewModelProvider).isRunning ||
@@ -465,6 +483,13 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       if (!mounted) return;
       final checkUntil = _ignoreDbUpdatesUntil;
       if (checkUntil != null && DateTime.now().isBefore(checkUntil)) return;
+      if (_buildFilter().isNsfw != null) {
+        unawaited(
+          ref
+              .read(savedItemRepositoryProvider)
+              .ensureSubredditsEnrichedInBackground(),
+        );
+      }
       _reloadInBackground();
     });
   }
@@ -1060,15 +1085,6 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-
-    ref.listen<bool>(
-      settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
-      (prev, next) {
-        if (prev != next && _scopedFilter.isNsfw == null) {
-          _loadInitial(resetScroll: true);
-        }
-      },
-    );
 
     return _ScopedFeedInherited(
       args: widget.args,

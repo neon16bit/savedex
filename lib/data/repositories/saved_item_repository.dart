@@ -704,6 +704,9 @@ class SavedItemRepository {
 
         if (toUpsert.isNotEmpty) {
           await db.upsertBatch(toUpsert);
+          if (newCount > 0) {
+            _subredditsCheckedForDataset = false;
+          }
         }
 
         processed = end;
@@ -1196,6 +1199,9 @@ class SavedItemRepository {
 
     if (toUpsert.isNotEmpty) {
       await db.upsertBatch(toUpsert);
+      if (newCount > 0) {
+        _subredditsCheckedForDataset = false;
+      }
     }
 
     if (!reconcileOrder) {
@@ -1739,6 +1745,19 @@ class SavedItemRepository {
 
   final Set<String> _inFlightSubredditEnrichments = {};
   final Set<String> _attemptedSubredditEnrichments = {};
+  bool _subredditsCheckedForDataset = false;
+  bool _isCheckingUnverifiedSubreddits = false;
+  bool _pendingSubredditNsfwNotify = false;
+
+  bool shouldIgnoreSubredditTableUpdate(
+    Set<TableUpdate> updates, {
+    required bool? effectiveIsNsfw,
+  }) {
+    if (updates.isEmpty) return false;
+    final subTableName = db.subredditsTable.actualTableName;
+    if (!updates.every((u) => u.table == subTableName)) return false;
+    return effectiveIsNsfw == null || _inFlightSubredditEnrichments.isNotEmpty;
+  }
 
   Future<void> saveSubredditMetadata(
     String name, {
@@ -1758,6 +1777,29 @@ class SavedItemRepository {
     );
   }
 
+  Future<void> ensureSubredditsEnrichedInBackground() async {
+    if (_subredditsCheckedForDataset || _isCheckingUnverifiedSubreddits) {
+      return;
+    }
+    List<String> unverified = const [];
+    _isCheckingUnverifiedSubreddits = true;
+    try {
+      final subreddits = await db.getSubredditsWithCounts();
+      _subredditsCheckedForDataset = true;
+      unverified = subreddits
+          .where((s) => !s.isVerified && !SavedItem.isUserSubreddit(s.name))
+          .map((s) => s.name)
+          .toList();
+    } catch (_) {
+      return;
+    } finally {
+      _isCheckingUnverifiedSubreddits = false;
+    }
+    if (unverified.isNotEmpty) {
+      await enrichSubreddits(unverified);
+    }
+  }
+
   Future<void> enrichSubreddits(List<String> names) async {
     final cleanNames = names
         .where((n) => !SavedItem.isUserSubreddit(n))
@@ -1765,6 +1807,7 @@ class SavedItemRepository {
         .where(
           (n) =>
               n.isNotEmpty &&
+              n != 'reddit' &&
               !_inFlightSubredditEnrichments.contains(n) &&
               !_attemptedSubredditEnrichments.contains(n),
         )
@@ -1785,6 +1828,7 @@ class SavedItemRepository {
     _attemptedSubredditEnrichments.addAll(toFetch);
 
     final pendingBatch = <SubredditsTableCompanion>[];
+    var batchHasNsfw = false;
     const int flushBatchSize = 40;
 
     try {
@@ -1792,6 +1836,9 @@ class SavedItemRepository {
         try {
           final about = await _redditApi.fetchSubredditAbout(name);
           if (about != null) {
+            if (about.isNsfw) {
+              batchHasNsfw = true;
+            }
             pendingBatch.add(
               SubredditsTableCompanion(
                 name: Value(name),
@@ -1809,6 +1856,10 @@ class SavedItemRepository {
             );
           }
           if (pendingBatch.length >= flushBatchSize) {
+            if (batchHasNsfw) {
+              _pendingSubredditNsfwNotify = true;
+              batchHasNsfw = false;
+            }
             await db.upsertSubredditsBatch(List.of(pendingBatch));
             pendingBatch.clear();
           }
@@ -1817,25 +1868,44 @@ class SavedItemRepository {
         await Future.delayed(const Duration(milliseconds: 250));
       }
       if (pendingBatch.isNotEmpty) {
+        if (batchHasNsfw) {
+          _pendingSubredditNsfwNotify = true;
+        }
         await db.upsertSubredditsBatch(pendingBatch);
       }
     } finally {
+      await Future<void>.delayed(Duration.zero);
       _inFlightSubredditEnrichments.removeAll(toFetch);
+      if (_inFlightSubredditEnrichments.isEmpty &&
+          _pendingSubredditNsfwNotify) {
+        _pendingSubredditNsfwNotify = false;
+        db.notifyUpdates({
+          TableUpdate.onTable(db.subredditsTable, kind: UpdateKind.update),
+        });
+      }
     }
   }
 
   Future<List<SubredditEntry>> getAllSubreddits() => db.getAllSubreddits();
+
+  Future<bool> isSubredditNsfw(String subreddit) =>
+      db.isSubredditNsfw(subreddit);
+
+  Future<Set<String>> filterSfwSubreddits(Set<String> subreddits) =>
+      db.filterSfwSubreddits(subreddits);
 
   Future<List<(String, int)>> searchSubredditsWithCounts({
     String query = '',
     int limit = 15,
     int? collectionId,
     String? author,
+    bool? isNsfw,
   }) => db.searchSubredditsWithCounts(
     query: query,
     limit: limit,
     collectionId: collectionId,
     author: author,
+    isNsfw: isNsfw,
   );
 
   Future<List<(String, int)>> searchAuthorsWithCounts({
@@ -1843,11 +1913,13 @@ class SavedItemRepository {
     int limit = 15,
     int? collectionId,
     String? subreddit,
+    bool? isNsfw,
   }) => db.searchAuthorsWithCounts(
     query: query,
     limit: limit,
     collectionId: collectionId,
     subreddit: subreddit,
+    isNsfw: isNsfw,
   );
 
   Future<List<(String, int)>> searchFlairsWithCounts({
@@ -1856,15 +1928,21 @@ class SavedItemRepository {
     int? collectionId,
     String? subreddit,
     String? author,
+    bool? isNsfw,
   }) => db.searchFlairsWithCounts(
     query: query,
     limit: limit,
     collectionId: collectionId,
     subreddit: subreddit,
     author: author,
+    isNsfw: isNsfw,
   );
 
   Future<int> getTotalCount() => db.getTotalCount();
 
-  Future<void> clearAllData() => db.clearAllData();
+  Future<void> clearAllData() async {
+    _attemptedSubredditEnrichments.clear();
+    _subredditsCheckedForDataset = false;
+    await db.clearAllData();
+  }
 }

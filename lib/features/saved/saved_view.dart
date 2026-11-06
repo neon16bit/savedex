@@ -115,6 +115,45 @@ class _SavedViewState extends ConsumerState<SavedView> {
     return summary;
   }
 
+  Future<void> _pruneSelectedSubredditsForSfw() async {
+    final currentSubs = ref
+        .read(searchFilterViewModelProvider)
+        .selectedSubreddits;
+    if (currentSubs.isEmpty) return;
+    final repo = ref.read(savedItemRepositoryProvider);
+    final allowed = await repo.filterSfwSubreddits(currentSubs);
+    if (!mounted) return;
+    final latestFilter = ref.read(searchFilterViewModelProvider);
+    final hideNsfw = ref.read(settingsViewModelProvider).hideNsfwInFeed;
+    final stillSfw =
+        latestFilter.isNsfw == false ||
+        (latestFilter.isNsfw == null && hideNsfw);
+    if (!stillSfw) return;
+    if (allowed.length != currentSubs.length &&
+        latestFilter.selectedSubreddits.length == currentSubs.length &&
+        latestFilter.selectedSubreddits.containsAll(currentSubs)) {
+      ref
+          .read(searchFilterViewModelProvider.notifier)
+          .setSelectedSubreddits(allowed);
+    }
+  }
+
+  void _resetScrollOnFilterChange() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scrollController.hasClients &&
+          _scrollController.positions.length == 1 &&
+          _scrollController.offset > 0) {
+        if (_scrollController.offset > 1500.0) {
+          setState(() {
+            _sliverResetEpoch++;
+          });
+        }
+        _scrollController.jumpTo(0);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final feedStateAsync = ref.watch(savedFeedPaginationProvider);
@@ -145,21 +184,21 @@ class _SavedViewState extends ConsumerState<SavedView> {
     // reset scroll to top when filters change
     ref.listen(searchFilterViewModelProvider, (prev, next) {
       if (prev != next) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          if (_scrollController.hasClients &&
-              _scrollController.positions.length == 1 &&
-              _scrollController.offset > 0) {
-            if (_scrollController.offset > 1500.0) {
-              setState(() {
-                _sliverResetEpoch++;
-              });
-            }
-            _scrollController.jumpTo(0);
-          }
-        });
+        _resetScrollOnFilterChange();
       }
     });
+
+    ref.listen<bool>(
+      settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
+      (prev, next) {
+        if (prev != next) {
+          _resetScrollOnFilterChange();
+          if (next && ref.read(searchFilterViewModelProvider).isNsfw == null) {
+            _pruneSelectedSubredditsForSfw();
+          }
+        }
+      },
+    );
 
     // clear search query when search mode is closed
     ref.listen<bool>(isSavedSearchExpandedProvider, (prev, next) {
@@ -221,6 +260,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
     final hideNsfwInFeed = ref.watch(
       settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
     );
+    final isNsfwHidden =
+        filter.isNsfw == false || (filter.isNsfw == null && hideNsfwInFeed);
     final isAuthenticatedWithOAuth = ref.watch(
       settingsViewModelProvider.select((s) => s.isAuthenticatedWithOAuth),
     );
@@ -306,12 +347,25 @@ class _SavedViewState extends ConsumerState<SavedView> {
                       _openPostViewMenu(context);
                       break;
                     case _SavedViewMenuAction.toggleNsfw:
-                      if (filter.isNsfw != null) {
-                        filterVm.setNsfwFilter(null);
+                      if (isNsfwHidden) {
+                        if (filter.isNsfw != null) {
+                          filterVm.setNsfwFilter(null);
+                        }
+                        ref
+                            .read(settingsViewModelProvider.notifier)
+                            .toggleHideNsfwInFeed(false);
+                      } else {
+                        if (filter.isNsfw != null) {
+                          filterVm.setNsfwFilter(null);
+                        }
+                        if (hideNsfwInFeed) {
+                          _pruneSelectedSubredditsForSfw();
+                        } else {
+                          ref
+                              .read(settingsViewModelProvider.notifier)
+                              .toggleHideNsfwInFeed(true);
+                        }
                       }
-                      ref
-                          .read(settingsViewModelProvider.notifier)
-                          .toggleHideNsfwInFeed();
                       break;
                     case _SavedViewMenuAction.syncReddit:
                       _syncFromReddit(showErrorSnackbar: true);
@@ -369,27 +423,34 @@ class _SavedViewState extends ConsumerState<SavedView> {
                     child: Row(
                       children: [
                         Icon(
-                          hideNsfwInFeed
+                          isNsfwHidden
                               ? Icons.visibility_off_rounded
                               : Icons.visibility_rounded,
                           size: 20,
-                          color: hideNsfwInFeed
+                          color: isNsfwHidden
                               ? colorScheme.error
                               : colorScheme.onSurface,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text(
-                            hideNsfwInFeed ? 'Show NSFW' : 'Hide NSFW',
-                          ),
+                          child: Text(isNsfwHidden ? 'Show NSFW' : 'Hide NSFW'),
                         ),
-                        if (filter.isNsfw != null)
+                        if (filter.isNsfw == true)
                           Text(
-                            filter.isNsfw! ? 'Filter: NSFW' : 'Filter: SFW',
+                            'Filter: NSFW',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
                               color: colorScheme.outline,
+                            ),
+                          )
+                        else if (filter.isNsfw == false)
+                          Text(
+                            'Filter: SFW',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.error,
                             ),
                           )
                         else if (hideNsfwInFeed)

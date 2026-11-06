@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show TableUpdateQuery;
+import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +9,7 @@ import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 enum _CompactEntityCategory {
   subreddits('Subreddits'),
@@ -94,10 +95,21 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   List<(String, int)>? _flairResults;
   bool _isLoadingFlairs = false;
   String? _loadedFlairQuery;
+  bool? _activeIsNsfw;
+
+  bool? _computeEffectiveIsNsfw() {
+    if (widget.isScoped) {
+      return widget.scopedFilter!.isNsfw;
+    }
+    final filter = ref.read(searchFilterViewModelProvider);
+    final hideNsfw = ref.read(settingsViewModelProvider).hideNsfwInFeed;
+    return filter.isNsfw ?? (hideNsfw ? false : null);
+  }
 
   @override
   void initState() {
     super.initState();
+    _activeIsNsfw = _computeEffectiveIsNsfw();
     _currentEntity = widget.showSubredditsTab
         ? _CompactEntityCategory.subreddits
         : (widget.showAuthorsTab
@@ -115,16 +127,81 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (_activeIsNsfw != null) {
+        unawaited(
+          ref
+              .read(savedItemRepositoryProvider)
+              .ensureSubredditsEnrichedInBackground(),
+        );
+        if (_activeIsNsfw == false) {
+          _pruneSelectedSubredditsForSfw();
+        }
+      }
       final db = ref.read(databaseProvider);
       _dbUpdatesSub = db
           .tableUpdates(
             TableUpdateQuery.onAllTables([
               db.savedItemsTable,
               db.itemCollectionsTable,
+              db.subredditsTable,
             ]),
           )
-          .listen((_) => _onDbTableUpdated());
+          .listen(_onDbTableUpdated);
     });
+  }
+
+  Future<void> _pruneSelectedSubredditsForSfw() async {
+    if (!widget.showSubredditsTab) return;
+    final currentFilter = widget.isScoped
+        ? widget.scopedFilter!
+        : ref.read(searchFilterViewModelProvider);
+    final currentSubs = currentFilter.selectedSubreddits;
+    if (currentSubs.isEmpty) return;
+
+    final repo = ref.read(savedItemRepositoryProvider);
+    final allowed = await repo.filterSfwSubreddits(currentSubs);
+    if (!mounted || _activeIsNsfw != false) return;
+    if (allowed.length == currentSubs.length) return;
+
+    if (widget.isScoped) {
+      final latest = widget.scopedFilter!;
+      if (latest.selectedSubreddits.length == currentSubs.length &&
+          latest.selectedSubreddits.containsAll(currentSubs)) {
+        widget.onScopedFilterChanged!(
+          latest.copyWith(selectedSubreddits: allowed),
+        );
+      }
+    } else {
+      final latest = ref.read(searchFilterViewModelProvider);
+      if (latest.selectedSubreddits.length == currentSubs.length &&
+          latest.selectedSubreddits.containsAll(currentSubs)) {
+        ref
+            .read(searchFilterViewModelProvider.notifier)
+            .setSelectedSubreddits(allowed);
+      }
+    }
+  }
+
+  void _handleEffectiveNsfwChanged(bool? nextIsNsfw) {
+    if (_activeIsNsfw == nextIsNsfw) return;
+    _activeIsNsfw = nextIsNsfw;
+    _subResults = null;
+    _loadedSubQuery = null;
+    _authorResults = null;
+    _loadedAuthorQuery = null;
+    _flairResults = null;
+    _loadedFlairQuery = null;
+    if (nextIsNsfw != null) {
+      unawaited(
+        ref
+            .read(savedItemRepositoryProvider)
+            .ensureSubredditsEnrichedInBackground(),
+      );
+      if (nextIsNsfw == false) {
+        _pruneSelectedSubredditsForSfw();
+      }
+    }
+    _loadCurrentEntity(force: true);
   }
 
   void _loadCurrentEntity({bool force = false, bool silent = false}) {
@@ -145,8 +222,16 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     }
   }
 
-  void _onDbTableUpdated() {
+  void _onDbTableUpdated(Set<TableUpdate> updates) {
     if (!mounted) return;
+    if (ref
+        .read(savedItemRepositoryProvider)
+        .shouldIgnoreSubredditTableUpdate(
+          updates,
+          effectiveIsNsfw: _activeIsNsfw,
+        )) {
+      return;
+    }
     final isBackgroundEnriching =
         ref.read(enrichmentViewModelProvider).isRunning ||
         ref.read(archiveRecoveryStateProvider).isRunning;
@@ -165,6 +250,9 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
       _loadedAuthorQuery = null;
       _loadedFlairQuery = null;
       _loadCurrentEntity(force: true, silent: true);
+      if (_activeIsNsfw == false) {
+        _pruneSelectedSubredditsForSfw();
+      }
     });
   }
 
@@ -175,7 +263,13 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         oldWidget.scopedCollectionId != widget.scopedCollectionId ||
         oldWidget.scopedSubreddit != widget.scopedSubreddit ||
         oldWidget.scopedAuthor != widget.scopedAuthor;
+    final nextScopedIsNsfw = widget.isScoped
+        ? widget.scopedFilter!.isNsfw
+        : null;
     if (scopeChanged) {
+      if (widget.isScoped) {
+        _activeIsNsfw = nextScopedIsNsfw;
+      }
       _subResults = null;
       _loadedSubQuery = null;
       _authorResults = null;
@@ -196,6 +290,11 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
       }
 
       _loadCurrentEntity(force: true);
+      if (_activeIsNsfw == false) {
+        _pruneSelectedSubredditsForSfw();
+      }
+    } else if (widget.isScoped && nextScopedIsNsfw != _activeIsNsfw) {
+      _handleEffectiveNsfwChanged(nextScopedIsNsfw);
     }
   }
 
@@ -240,6 +339,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     bool silent = false,
   }) async {
     final query = _subSearchQuery.trim();
+    final isNsfw = _activeIsNsfw;
     if (!force && _subResults != null && _loadedSubQuery == query) return;
     if (!silent || _subResults == null) {
       setState(() => _isLoadingSubs = true);
@@ -251,21 +351,31 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         limit: _kMaxFilterResults,
         collectionId: widget.scopedCollectionId,
         author: widget.scopedAuthor,
+        isNsfw: isNsfw,
       );
-      if (!mounted || _subSearchQuery.trim() != query) return;
+      if (!mounted ||
+          _subSearchQuery.trim() != query ||
+          _activeIsNsfw != isNsfw) {
+        return;
+      }
       setState(() {
         _subResults = results;
         _loadedSubQuery = query;
         _isLoadingSubs = false;
       });
     } catch (_) {
-      if (!mounted || _subSearchQuery.trim() != query) return;
+      if (!mounted ||
+          _subSearchQuery.trim() != query ||
+          _activeIsNsfw != isNsfw) {
+        return;
+      }
       setState(() => _isLoadingSubs = false);
     }
   }
 
   Future<void> _loadAuthors({bool force = false, bool silent = false}) async {
     final query = _authorSearchQuery.trim();
+    final isNsfw = _activeIsNsfw;
     if (!force && _authorResults != null && _loadedAuthorQuery == query) return;
     if (!silent || _authorResults == null) {
       setState(() => _isLoadingAuthors = true);
@@ -277,21 +387,31 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         limit: _kMaxFilterResults,
         collectionId: widget.scopedCollectionId,
         subreddit: widget.scopedSubreddit,
+        isNsfw: isNsfw,
       );
-      if (!mounted || _authorSearchQuery.trim() != query) return;
+      if (!mounted ||
+          _authorSearchQuery.trim() != query ||
+          _activeIsNsfw != isNsfw) {
+        return;
+      }
       setState(() {
         _authorResults = results;
         _loadedAuthorQuery = query;
         _isLoadingAuthors = false;
       });
     } catch (_) {
-      if (!mounted || _authorSearchQuery.trim() != query) return;
+      if (!mounted ||
+          _authorSearchQuery.trim() != query ||
+          _activeIsNsfw != isNsfw) {
+        return;
+      }
       setState(() => _isLoadingAuthors = false);
     }
   }
 
   Future<void> _loadFlairs({bool force = false, bool silent = false}) async {
     final query = _flairSearchQuery.trim();
+    final isNsfw = _activeIsNsfw;
     if (!force && _flairResults != null && _loadedFlairQuery == query) return;
     if (!silent || _flairResults == null) {
       setState(() => _isLoadingFlairs = true);
@@ -304,15 +424,24 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         collectionId: widget.scopedCollectionId,
         subreddit: widget.scopedSubreddit,
         author: widget.scopedAuthor,
+        isNsfw: isNsfw,
       );
-      if (!mounted || _flairSearchQuery.trim() != query) return;
+      if (!mounted ||
+          _flairSearchQuery.trim() != query ||
+          _activeIsNsfw != isNsfw) {
+        return;
+      }
       setState(() {
         _flairResults = results;
         _loadedFlairQuery = query;
         _isLoadingFlairs = false;
       });
     } catch (_) {
-      if (!mounted || _flairSearchQuery.trim() != query) return;
+      if (!mounted ||
+          _flairSearchQuery.trim() != query ||
+          _activeIsNsfw != isNsfw) {
+        return;
+      }
       setState(() => _isLoadingFlairs = false);
     }
   }
@@ -441,9 +570,33 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     }
   }
 
+  void _selectAllQuickFilters(
+    FilterCriteria filter,
+    SearchFilterViewModel? viewModel,
+    bool hideNsfwInFeed,
+  ) {
+    if (widget.isScoped) {
+      widget.onScopedFilterChanged!(
+        filter.copyWith(
+          clearItemType: true,
+          clearStarred: true,
+          clearNsfw: true,
+        ),
+      );
+    } else {
+      if (hideNsfwInFeed) {
+        ref
+            .read(settingsViewModelProvider.notifier)
+            .toggleHideNsfwInFeed(false);
+      }
+      viewModel?.clearQuickFilters();
+    }
+  }
+
   void _setNsfwFilter(
     FilterCriteria filter,
     SearchFilterViewModel? viewModel,
+    bool hideNsfwInFeed,
     bool? isNsfw,
   ) {
     if (widget.isScoped) {
@@ -451,6 +604,11 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         filter.copyWith(isNsfw: isNsfw, clearNsfw: isNsfw == null),
       );
     } else {
+      if ((isNsfw == null || isNsfw == true) && hideNsfwInFeed) {
+        ref
+            .read(settingsViewModelProvider.notifier)
+            .toggleHideNsfwInFeed(false);
+      }
       viewModel?.setNsfwFilter(isNsfw);
     }
   }
@@ -551,9 +709,26 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.isScoped) {
+      ref.listen<bool?>(
+        searchFilterViewModelProvider.select((f) => f.isNsfw),
+        (_, _) => _handleEffectiveNsfwChanged(_computeEffectiveIsNsfw()),
+      );
+      ref.listen<bool>(
+        settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
+        (_, _) => _handleEffectiveNsfwChanged(_computeEffectiveIsNsfw()),
+      );
+    }
+
     final filter = widget.isScoped
         ? widget.scopedFilter!
         : ref.watch(searchFilterViewModelProvider);
+    final hideNsfwInFeed = widget.isScoped
+        ? false
+        : ref.watch(settingsViewModelProvider.select((s) => s.hideNsfwInFeed));
+    final effectiveIsNsfw = widget.isScoped
+        ? filter.isNsfw
+        : (filter.isNsfw ?? (hideNsfwInFeed ? false : null));
     final viewModel = widget.isScoped
         ? null
         : ref.read(searchFilterViewModelProvider.notifier);
@@ -569,6 +744,8 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         theme,
         viewModel,
         filter,
+        hideNsfwInFeed,
+        effectiveIsNsfw,
       );
     }
 
@@ -585,6 +762,8 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
           theme,
           viewModel,
           filter,
+          hideNsfwInFeed,
+          effectiveIsNsfw,
         );
       },
     );
@@ -597,8 +776,14 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     ThemeData theme,
     SearchFilterViewModel? viewModel,
     FilterCriteria filter,
+    bool hideNsfwInFeed,
+    bool? effectiveIsNsfw,
   ) {
     final isFloating = widget.isFloatingCard;
+    final isAllSelected =
+        filter.itemType == null &&
+        filter.isStarred != true &&
+        effectiveIsNsfw == null;
 
     return Container(
       decoration: BoxDecoration(
@@ -698,9 +883,12 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                         children: [
                           _buildCompactChoiceChip(
                             label: 'All',
-                            isSelected: filter.itemType == null,
-                            onSelected: () =>
-                                _setItemType(filter, viewModel, null),
+                            isSelected: isAllSelected,
+                            onSelected: () => _selectAllQuickFilters(
+                              filter,
+                              viewModel,
+                              hideNsfwInFeed,
+                            ),
                             colorScheme: colorScheme,
                           ),
                           _buildCompactChoiceChip(
@@ -739,21 +927,23 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                           ),
                           _buildCompactChoiceChip(
                             label: 'NSFW',
-                            isSelected: filter.isNsfw == true,
+                            isSelected: effectiveIsNsfw == true,
                             onSelected: () => _setNsfwFilter(
                               filter,
                               viewModel,
-                              filter.isNsfw == true ? null : true,
+                              hideNsfwInFeed,
+                              effectiveIsNsfw == true ? null : true,
                             ),
                             colorScheme: colorScheme,
                           ),
                           _buildCompactChoiceChip(
                             label: 'SFW',
-                            isSelected: filter.isNsfw == false,
+                            isSelected: effectiveIsNsfw == false,
                             onSelected: () => _setNsfwFilter(
                               filter,
                               viewModel,
-                              filter.isNsfw == false ? null : false,
+                              hideNsfwInFeed,
+                              effectiveIsNsfw == false ? null : false,
                             ),
                             colorScheme: colorScheme,
                           ),
