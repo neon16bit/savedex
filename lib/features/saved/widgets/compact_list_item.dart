@@ -5,6 +5,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_view.dart';
+import 'package:savedex/features/library/scoped_feed_view.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 
 class CompactListItem extends ConsumerWidget {
@@ -112,23 +113,18 @@ class CompactListItem extends ConsumerWidget {
                     const SizedBox(height: 5),
                     Row(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.secondaryContainer.withValues(
-                              alpha: 0.8,
-                            ),
-                            borderRadius: BorderRadius.circular(100),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => ScopedFeedView.openSubreddit(
+                            context,
+                            item.subreddit,
                           ),
                           child: Text(
                             item.displaySubreddit,
                             style: TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 11,
                               fontWeight: FontWeight.w800,
-                              color: colorScheme.onSecondaryContainer,
+                              color: colorScheme.primary,
                             ),
                           ),
                         ),
