@@ -13,11 +13,12 @@ import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/data/services/reddit_auth_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_view.dart';
-import 'package:savedex/features/import_export/import_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:extended_image/extended_image.dart' hide MediaType;
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
+import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
+import 'package:savedex/features/shell/app_shell.dart';
 
 class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
@@ -39,34 +40,53 @@ class SettingsView extends ConsumerWidget {
         primary: false,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
         children: [
-          _buildSectionHeader('Data & Takeout', colorScheme),
+          _buildSectionHeader('Account & Sync', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
                 ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.file_upload_outlined,
-                      color: colorScheme.onPrimaryContainer,
-                    ),
+                  leading: Icon(
+                    settings.isAuthenticatedWithOAuth
+                        ? Icons.verified_user_outlined
+                        : Icons.vpn_key_outlined,
+                    color: settings.isAuthenticatedWithOAuth
+                        ? colorScheme.primary
+                        : null,
                   ),
                   title: const Text(
-                    'Import & Export Data',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                    'Reddit Account',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: Text(
+                    settings.isAuthenticatedWithOAuth
+                        ? (settings.redditUsername != null
+                              ? 'Connected as u/${settings.redditUsername}'
+                              : 'Connected via OAuth')
+                        : (settings.redditClientId != null &&
+                              settings.redditClientId!.isNotEmpty)
+                        ? 'Client ID configured (tap to authorize)'
+                        : 'Connect OAuth to sync saved items',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _showApiCredentialsDialog(context),
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.swap_vert_rounded),
+                  title: const Text(
+                    'Import, Export & Sync',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
                   ),
                   subtitle: const Text(
-                    'Reddit Takeout, API sync, backups, and exports',
+                    'Reddit API pull, Takeout CSV/ZIP, and backups',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () {
@@ -75,161 +95,25 @@ class SettingsView extends ConsumerWidget {
                     );
                   },
                 ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                const _ImageCacheTile(),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: colorScheme.errorContainer.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.delete_sweep_rounded,
-                      color: colorScheme.error,
-                    ),
-                  ),
-                  title: Text(
-                    'Clear Saved Database',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.error,
-                    ),
-                  ),
-                  subtitle: const Text(
-                    'Delete all saved posts, comments, collections, and search index',
-                  ),
-                  trailing: OutlinedButton(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colorScheme.error,
-                      side: BorderSide(
-                        color: colorScheme.error.withValues(alpha: 0.5),
-                      ),
-                    ),
-                    onPressed: () => _confirmClearDatabase(context, ref),
-                    child: const Text('Clear All'),
-                  ),
-                ),
               ],
             ),
           ),
 
-          _buildSectionHeader('Media Playback', colorScheme),
+          _buildSectionHeader('Appearance & Playback', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
+            clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
-                SwitchListTile(
-                  secondary: const Icon(Icons.volume_off_outlined),
-                  title: const Text('Start Videos Muted'),
-                  subtitle: const Text('Videos start muted by default.'),
-                  value: settings.startVideosMuted,
-                  onChanged: (val) => viewModel.toggleStartVideosMuted(val),
-                ),
-              ],
-            ),
-          ),
-
-          _buildSectionHeader('Appearance & Theme', colorScheme),
-          Card(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.palette_outlined),
-                  title: const Text('Material You (Dynamic Color)'),
-                  subtitle: const Text(
-                    'Use system wallpaper palette when available',
-                  ),
-                  trailing: Switch(
-                    value: settings.useDynamicColor,
-                    onChanged: (val) => viewModel.toggleDynamicColor(val),
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Theme Accent Color',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: List.generate(AppTheme.presets.length, (
-                            index,
-                          ) {
-                            final presetColor = AppTheme.presets[index];
-                            final isSelected =
-                                !settings.useDynamicColor &&
-                                settings.seedColorIndex == index;
-
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 12),
-                              child: GestureDetector(
-                                onTap: () {
-                                  if (settings.useDynamicColor) {
-                                    viewModel.toggleDynamicColor(false);
-                                  }
-                                  viewModel.setSeedColorIndex(index);
-                                },
-                                child: Container(
-                                  width: 42,
-                                  height: 42,
-                                  decoration: BoxDecoration(
-                                    color: presetColor,
-                                    shape: BoxShape.circle,
-                                    border: isSelected
-                                        ? Border.all(
-                                            color: colorScheme.primary,
-                                            width: 3.5,
-                                          )
-                                        : null,
-                                    boxShadow: isSelected
-                                        ? [
-                                            BoxShadow(
-                                              color: presetColor.withValues(
-                                                alpha: 0.4,
-                                              ),
-                                              blurRadius: 8,
-                                              spreadRadius: 2,
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                  child: isSelected
-                                      ? const Icon(
-                                          Icons.check,
-                                          color: Colors.white,
-                                          size: 20,
-                                        )
-                                      : null,
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(
                   leading: const Icon(Icons.brightness_6_outlined),
-                  title: const Text('Theme Mode'),
+                  title: const Text(
+                    'Theme Mode',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
                   subtitle: Text(
                     settings.themeMode == ThemeMode.system
                         ? 'System Default'
@@ -258,39 +142,128 @@ class SettingsView extends ConsumerWidget {
                     showSelectedIcon: false,
                   ),
                 ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                ListTile(
-                  leading: const Icon(Icons.dark_mode_outlined),
-                  title: const Text('Pure Black'),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                SwitchListTile(
+                  secondary: const Icon(Icons.dark_mode_outlined),
+                  title: const Text(
+                    'Pure Black',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
                   subtitle: const Text(
                     'Use deep pitch black for dark theme surfaces',
                   ),
-                  trailing: Switch(
-                    value: settings.isAmoled,
-                    onChanged: (val) => viewModel.toggleAmoled(val),
+                  value: settings.isAmoled,
+                  onChanged: (val) => viewModel.toggleAmoled(val),
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                SwitchListTile(
+                  secondary: const Icon(Icons.palette_outlined),
+                  title: const Text(
+                    'Dynamic Color',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
                   ),
+                  subtitle: const Text(
+                    'Use system Material You wallpaper palette',
+                  ),
+                  value: settings.useDynamicColor,
+                  onChanged: (val) => viewModel.toggleDynamicColor(val),
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeInOut,
+                  child: settings.useDynamicColor
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(56, 0, 16, 14),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: List.generate(AppTheme.presets.length, (
+                                index,
+                              ) {
+                                final presetColor = AppTheme.presets[index];
+                                final isSelected =
+                                    settings.seedColorIndex == index;
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: GestureDetector(
+                                    onTap: () =>
+                                        viewModel.setSeedColorIndex(index),
+                                    child: Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: presetColor,
+                                        shape: BoxShape.circle,
+                                        border: isSelected
+                                            ? Border.all(
+                                                color: colorScheme.onSurface,
+                                                width: 2.5,
+                                              )
+                                            : null,
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(
+                                              Icons.check,
+                                              color: Colors.white,
+                                              size: 18,
+                                            )
+                                          : null,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                        ),
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                SwitchListTile(
+                  secondary: const Icon(Icons.volume_off_outlined),
+                  title: const Text(
+                    'Start Videos Muted',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: const Text('Mute video playback by default'),
+                  value: settings.startVideosMuted,
+                  onChanged: (val) => viewModel.toggleStartVideosMuted(val),
                 ),
               ],
             ),
           ),
 
-          _buildSectionHeader('Reddit API', colorScheme),
+          _buildSectionHeader('Metadata & Recovery', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
+            clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.sync_outlined),
-                  title: const Text('Auto-Fetch Metadata on Import'),
+                SwitchListTile(
+                  secondary: const Icon(Icons.sync_outlined),
+                  title: const Text(
+                    'Auto-Fetch on Import',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
                   subtitle: const Text(
-                    'Download post metadata & flairs right after CSV import',
+                    'Download post metadata right after CSV import',
                   ),
-                  trailing: Switch(
-                    value: settings.autoEnrichOnImport,
-                    onChanged: (val) => viewModel.toggleAutoEnrich(val),
-                  ),
+                  value: settings.autoEnrichOnImport,
+                  onChanged: (val) => viewModel.toggleAutoEnrich(val),
                 ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
+                const Divider(height: 1, indent: 56, endIndent: 16),
                 Consumer(
                   builder: (context, ref, _) {
                     final pendingCount =
@@ -325,37 +298,31 @@ class SettingsView extends ConsumerWidget {
                                 .clamp(0, 100)
                           : 0;
                       subtitle = enrichState.isPaused
-                          ? 'Metadata download paused (${enrichState.processedCount}/$total · $percent%)'
-                          : 'Downloading metadata (${enrichState.processedCount}/$total · $percent%)';
+                          ? 'Paused (${enrichState.processedCount}/$total · $percent%)'
+                          : 'Downloading (${enrichState.processedCount}/$total · $percent%)';
                     } else if (pendingCount > 0) {
                       subtitle =
-                          '$formattedCount ${pendingCount == 1 ? "item needs" : "items need"} metadata & images';
+                          '$formattedCount ${pendingCount == 1 ? "item needs" : "items need"} metadata';
                     } else {
-                      subtitle = 'All items in library have complete metadata';
+                      subtitle = 'All items have complete metadata';
                     }
 
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: pendingCount > 0 || isEnriching
-                                  ? colorScheme.primaryContainer
-                                  : colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.auto_awesome_rounded,
-                              color: pendingCount > 0 || isEnriching
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant,
-                            ),
+                          leading: Icon(
+                            Icons.auto_awesome_outlined,
+                            color: pendingCount > 0 || isEnriching
+                                ? colorScheme.primary
+                                : null,
                           ),
                           title: const Text(
-                            'Download Library Metadata',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                            'Post & Comment Metadata',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14.5,
+                            ),
                           ),
                           subtitle: Text(subtitle),
                           trailing: FilledButton.tonal(
@@ -364,13 +331,16 @@ class SettingsView extends ConsumerWidget {
                                 : () => enrichVm.startEnrichment(),
                             style: FilledButton.styleFrom(
                               visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                              ),
                             ),
                             child: Text(
                               isEnriching
                                   ? (enrichState.isPaused
                                         ? 'Paused'
                                         : 'Running...')
-                                  : 'Fetch Metadata',
+                                  : 'Fetch',
                             ),
                           ),
                         ),
@@ -380,7 +350,7 @@ class SettingsView extends ConsumerWidget {
                           child: isEnriching
                               ? Padding(
                                   padding: const EdgeInsets.fromLTRB(
-                                    16,
+                                    56,
                                     0,
                                     16,
                                     10,
@@ -492,7 +462,7 @@ class SettingsView extends ConsumerWidget {
                     );
                   },
                 ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
+                const Divider(height: 1, indent: 56, endIndent: 16),
                 Consumer(
                   builder: (context, ref, _) {
                     final recoveryState = ref.watch(
@@ -532,38 +502,30 @@ class SettingsView extends ConsumerWidget {
                           '${recoveryState.completed} recovered, ${recoveryState.failed} unavailable';
                     } else if (count == 0 && unavailableCount > 0) {
                       subtitle =
-                          'All eligible items checked ($unavailableCount unavailable in archive)';
+                          'All checked ($unavailableCount unavailable in archive)';
                     } else if (count == 0 && unavailableCount == 0) {
-                      subtitle = 'No failed or removed items available';
+                      subtitle = 'No failed or removed items need recovery';
                     } else if (unavailableCount > 0) {
                       subtitle =
-                          '$count items available ($unavailableCount unavailable in archive)';
+                          '$count available ($unavailableCount unavailable in archive)';
                     } else {
-                      subtitle = '$count items available for archive recovery';
+                      subtitle = '$count items eligible for archive recovery';
                     }
 
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         ListTile(
-                          leading: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: isStarting || isRunning
-                                  ? colorScheme.primaryContainer
-                                  : colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.archive_rounded,
-                              color: isRunning
-                                  ? colorScheme.primary
-                                  : colorScheme.onSurfaceVariant,
-                            ),
+                          leading: Icon(
+                            Icons.archive_outlined,
+                            color: isRunning ? colorScheme.primary : null,
                           ),
                           title: const Text(
                             'Recover Removed Content',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14.5,
+                            ),
                           ),
                           subtitle: Text(subtitle),
                           trailing: Row(
@@ -618,13 +580,16 @@ class SettingsView extends ConsumerWidget {
                                     : recoveryVm.start,
                                 style: FilledButton.styleFrom(
                                   visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                  ),
                                 ),
                                 child: Text(
                                   isStarting
                                       ? 'Preparing...'
                                       : isRunning
                                       ? 'Running...'
-                                      : 'Recover Now',
+                                      : 'Recover',
                                 ),
                               ),
                             ],
@@ -632,7 +597,7 @@ class SettingsView extends ConsumerWidget {
                         ),
                         if (isRunning)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
                             child: Row(
                               children: [
                                 Expanded(
@@ -662,278 +627,164 @@ class SettingsView extends ConsumerWidget {
                     );
                   },
                 ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.archive_outlined,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Archive Recovery Backend',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                SizedBox(height: 3),
-                                Text(
-                                  'Choose where recovered metadata is looked up.',
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<ArchiveBackend>(
-                        initialValue: settings.archiveBackend,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: 'Backend',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                        ),
-                        onChanged: (backend) {
-                          if (backend != null) {
-                            viewModel.setArchiveBackend(backend);
-                          }
-                        },
-                        items: [
-                          for (final backend in ArchiveBackend.values)
-                            DropdownMenuItem(
-                              value: backend,
-                              child: Text(
-                                backend.label,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
+                const Divider(height: 1, indent: 56, endIndent: 16),
                 ListTile(
-                  leading: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: settings.isAuthenticatedWithOAuth
-                          ? colorScheme.primaryContainer
-                          : (settings.redditClientId != null &&
-                                settings.redditClientId!.isNotEmpty)
-                          ? colorScheme.secondaryContainer
-                          : colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      settings.isAuthenticatedWithOAuth
-                          ? Icons.verified_user_rounded
-                          : (settings.redditClientId != null &&
-                                settings.redditClientId!.isNotEmpty)
-                          ? Icons.vpn_key_rounded
-                          : Icons.key_off_outlined,
-                      color: settings.isAuthenticatedWithOAuth
-                          ? colorScheme.primary
-                          : (settings.redditClientId != null &&
-                                settings.redditClientId!.isNotEmpty)
-                          ? colorScheme.onSecondaryContainer
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                  leading: const Icon(Icons.cloud_sync_outlined),
                   title: const Text(
-                    'Reddit API & OAuth',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                    'Archive Source',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
                   ),
-                  subtitle: Text(
-                    settings.isAuthenticatedWithOAuth
-                        ? (settings.redditUsername != null
-                              ? 'Authenticated as u/${settings.redditUsername}'
-                              : 'Authenticated via OAuth')
-                        : (settings.redditClientId != null &&
-                              settings.redditClientId!.isNotEmpty)
-                        ? 'Client ID configured'
-                        : 'Not configured (Client ID required)',
-                  ),
+                  subtitle: Text(settings.archiveBackend.label),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _showApiCredentialsDialog(context),
+                  onTap: () => _showArchiveBackendDialog(
+                    context,
+                    settings.archiveBackend,
+                    viewModel,
+                  ),
                 ),
-                if (settings.isAuthenticatedWithOAuth) ...[
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  Consumer(
-                    builder: (context, ref, _) {
-                      final importState = ref.watch(
-                        importExportViewModelProvider,
-                      );
-                      final importVm = ref.read(
-                        importExportViewModelProvider.notifier,
-                      );
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF4500)
-                                    .withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(
-                                Icons.cloud_download_rounded,
-                                color: Color(0xFFFF4500),
-                              ),
-                            ),
-                            title: const Text(
-                              'Pull Saved from Reddit',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: Text(
-                              settings.redditUsername != null
-                                  ? 'Pull last 1,000 saves for u/${settings.redditUsername}'
-                                  : 'Pull up to 1,000 saved posts & comments',
-                            ),
-                            trailing: importState.isImporting
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                    ),
-                                  )
-                                : FilledButton.tonal(
-                                    onPressed: () async {
-                                      final summary = await importVm
-                                          .pullSavedFromReddit();
-                                      if (context.mounted) {
-                                        if (summary != null) {
-                                          final totalInDb =
-                                              summary.totalInDatabase;
-                                          final dbSuffix = totalInDb != null
-                                              ? ' ($totalInDb in library)'
-                                              : '';
-                                          final msg =
-                                              summary.newItemsImported > 0
-                                              ? 'Reddit sync: ${summary.newItemsImported} new items added$dbSuffix!'
-                                              : 'Library is up to date$dbSuffix!';
-                                          ScaffoldMessenger.of(context)
-                                            ..clearSnackBars()
-                                            ..showSnackBar(
-                                              SnackBar(
-                                                content: Text(msg),
-                                                behavior:
-                                                    SnackBarBehavior.floating,
-                                                duration: const Duration(
-                                                  seconds: 2,
-                                                ),
-                                              ),
-                                            );
-                                        } else if (importState.errorMessage !=
-                                            null) {
-                                          ScaffoldMessenger.of(context)
-                                            ..clearSnackBars()
-                                            ..showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  importState.errorMessage!,
-                                                ),
-                                                backgroundColor:
-                                                    colorScheme.error,
-                                                behavior:
-                                                    SnackBarBehavior.floating,
-                                                duration: const Duration(
-                                                  seconds: 2,
-                                                ),
-                                              ),
-                                            );
-                                        }
-                                      }
-                                    },
-                                    child: const Text('Pull Now'),
-                                  ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final isBusy = ref.watch(
+                      subredditUserMetadataProvider.select((s) => s.isAnyBusy),
+                    );
+                    return ListTile(
+                      leading: Icon(
+                        Icons.tune_rounded,
+                        color: isBusy ? colorScheme.primary : null,
+                      ),
+                      title: const Text(
+                        'Subreddit & User Metadata',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14.5,
+                        ),
+                      ),
+                      subtitle: Text(
+                        isBusy
+                            ? 'Refreshing subreddit & user metadata...'
+                            : 'Missing icons, info, and force refresh',
+                      ),
+                      trailing: isBusy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.chevron_right_rounded),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SubredditUserMetadataView(),
                           ),
-                          if (importState.isImporting &&
-                              importState.statusMessage != null)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                left: 16,
-                                right: 16,
-                                bottom: 12,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const LinearProgressIndicator(),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    importState.statusMessage!,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: colorScheme.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // About Section
-          _buildSectionHeader('About', colorScheme),
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.info_outline_rounded),
-                  title: const Text('Savedex'),
-                  subtitle: const Text(
-                    'Version 0.0.1 • Reddit Saved Library Manager',
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                ListTile(
-                  leading: const Icon(Icons.help_outline_rounded),
-                  title: const Text('How to get Reddit Takeout CSV'),
-                  subtitle: const Text(
-                    'Request your data from reddit.com/settings/data-request',
-                  ),
-                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ImportView()),
+                        );
+                      },
                     );
                   },
                 ),
               ],
             ),
+          ),
+
+          _buildSectionHeader('Storage & Data', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                const _ImageCacheTile(),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_sweep_outlined,
+                    color: colorScheme.error,
+                  ),
+                  title: Text(
+                    'Clear Saved Database',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                      color: colorScheme.error,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Delete all saved posts, comments, collections, and index',
+                  ),
+                  trailing: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      side: BorderSide(
+                        color: colorScheme.error.withValues(alpha: 0.5),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                    ),
+                    onPressed: () => _confirmClearDatabase(context, ref),
+                    child: const Text('Clear All'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 5. About
+          _buildSectionHeader('About', colorScheme),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: const ListTile(
+              leading: Icon(Icons.info_outline_rounded),
+              title: Text(
+                'Savedex',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+              ),
+              subtitle: Text('Version 0.0.1 • Reddit Saved Library Manager'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showArchiveBackendDialog(
+    BuildContext context,
+    ArchiveBackend current,
+    SettingsViewModel viewModel,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Archive Source'),
+        contentPadding: const EdgeInsets.only(top: 12, bottom: 8),
+        content: RadioGroup<ArchiveBackend>(
+          groupValue: current,
+          onChanged: (val) {
+            if (val != null) {
+              viewModel.setArchiveBackend(val);
+            }
+            Navigator.pop(ctx);
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final backend in ArchiveBackend.values)
+                RadioListTile<ArchiveBackend>(
+                  value: backend,
+                  title: Text(
+                    backend.label,
+                    style: const TextStyle(fontSize: 14.5),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
           ),
         ],
       ),
@@ -975,7 +826,7 @@ class SettingsView extends ConsumerWidget {
           ],
         ),
         content: const Text(
-          'This will permanently delete all saved posts, comments, collections, user notes, and the search index from your local library.\n\nThis is useful for resetting and testing imports from scratch.',
+          'This will permanently delete all saved posts, comments, collections, user notes, and the search index from your local library.',
         ),
         actions: [
           TextButton(
@@ -992,12 +843,17 @@ class SettingsView extends ConsumerWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
+              ref.read(enrichmentViewModelProvider.notifier).stopEnrichment();
+              ref.read(archiveRecoveryStateProvider.notifier).stop();
               await ref.read(savedItemRepositoryProvider).clearAllData();
               ref
                   .read(searchFilterViewModelProvider.notifier)
                   .clearAllFilters();
               ref.read(savedFeedPaginationProvider.notifier).clearFeed();
               ref.invalidate(savedFeedPaginationProvider);
+              ref.invalidate(enrichmentViewModelProvider);
+              ref.invalidate(archiveRecoveryStateProvider);
+              ref.invalidate(subredditUserMetadataProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context)
                   ..clearSnackBars()
@@ -1036,7 +892,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
   bool _isConnecting = false;
   String? _errorMessage;
-  String? _successMessage;
 
   @override
   void initState() {
@@ -1084,7 +939,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       setState(() {
         _errorMessage =
             'Please enter both OAuth Client ID and Redirect URI first.';
-        _successMessage = null;
       });
       return;
     }
@@ -1105,7 +959,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     setState(() {
       _isConnecting = true;
       _errorMessage = null;
-      _successMessage = null;
     });
 
     try {
@@ -1123,7 +976,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       final code = RedditApiService.parseCodeFromRedirectUrl(callbackUrl);
       if (code != null && code.isNotEmpty) {
         if (mounted) {
-          await _exchangeCode(code, isInternal: true);
+          await _exchangeCode(code);
         }
       } else {
         if (mounted) {
@@ -1192,9 +1045,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     }
   }
 
-  Future<void> _exchangeCode(String code, {bool isInternal = false}) async {
-    if (!isInternal && _isConnecting) return;
-
+  Future<void> _exchangeCode(String code) async {
     final clientId = _clientIdController.text.trim();
     final redirectUri = _redirectUriController.text.trim();
     final userAgent = _userAgentController.text.trim();
@@ -1203,7 +1054,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       if (mounted) {
         setState(() {
           _errorMessage = 'OAuth Client ID, Redirect URI, and User Agent must all be provided.';
-          _successMessage = null;
           _isConnecting = false;
         });
       }
@@ -1214,7 +1064,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       setState(() {
         _isConnecting = true;
         _errorMessage = null;
-        _successMessage = null;
       });
     }
 
@@ -1247,23 +1096,14 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
             );
 
         // Fetch and persist username
-        String usernameInfo = '';
         try {
           final userResult = await apiService.fetchMyUsername();
           if (userResult.username != null) {
             ref
                 .read(settingsViewModelProvider.notifier)
                 .setRedditUsername(userResult.username);
-            usernameInfo = ' as u/${userResult.username}';
           }
         } catch (_) {}
-
-        if (mounted) {
-          setState(() {
-            _successMessage =
-                'Successfully authenticated with Reddit OAuth$usernameInfo!';
-          });
-        }
       } else {
         if (mounted) {
           setState(() {
@@ -1479,7 +1319,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
                               .read(settingsViewModelProvider.notifier)
                               .clearOAuthAuth();
                           setState(() {
-                            _successMessage = null;
                             _errorMessage = null;
                           });
                         },
@@ -1651,36 +1490,6 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
                   ),
                 ),
               ],
-              if (_successMessage != null && !isConnected) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle_outline_rounded,
-                        color: Colors.green,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _successMessage!,
-                          style: const TextStyle(
-                            color: Colors.green,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1700,14 +1509,14 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
   }
 }
 
-class _ImageCacheTile extends StatefulWidget {
+class _ImageCacheTile extends ConsumerStatefulWidget {
   const _ImageCacheTile();
 
   @override
-  State<_ImageCacheTile> createState() => _ImageCacheTileState();
+  ConsumerState<_ImageCacheTile> createState() => _ImageCacheTileState();
 }
 
-class _ImageCacheTileState extends State<_ImageCacheTile> {
+class _ImageCacheTileState extends ConsumerState<_ImageCacheTile> {
   int? _cacheSizeBytes;
   bool _isLoading = true;
   bool _isClearing = false;
@@ -1732,13 +1541,19 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
     return size;
   }
 
+  static Future<int> _computeDirectorySizeInIsolate(String dirPath) async {
+    try {
+      return await Isolate.run(() => _computeDirectorySizeSync(dirPath));
+    } catch (_) {
+      return _computeDirectorySizeSync(dirPath);
+    }
+  }
+
   Future<void> _loadCacheSize() async {
     try {
       final tempDir = await getTemporaryDirectory();
       final cacheDirPath = p.join(tempDir.path, cacheImageFolderName);
-      final size = await Isolate.run(
-        () => _computeDirectorySizeSync(cacheDirPath),
-      );
+      final size = await _computeDirectorySizeInIsolate(cacheDirPath);
       if (mounted) {
         setState(() {
           _cacheSizeBytes = size;
@@ -1814,6 +1629,11 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
 
     try {
       await clearDiskCachedImages();
+      final tempDir = await getTemporaryDirectory();
+      final cacheDir = Directory(p.join(tempDir.path, cacheImageFolderName));
+      if (!cacheDir.existsSync()) {
+        cacheDir.createSync(recursive: true);
+      }
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
       await _loadCacheSize();
@@ -1843,26 +1663,20 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    ref.listen<int>(selectedShellTabProvider, (previous, next) {
+      if (next == 2 && previous != 2) {
+        _loadCacheSize();
+      }
+    });
+
     final size = _cacheSizeBytes ?? 0;
     final hasCache = size > 0;
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(
-          Icons.image_outlined,
-          color: colorScheme.onSecondaryContainer,
-        ),
-      ),
+      leading: const Icon(Icons.image_outlined),
       title: const Text(
         'Image Cache',
-        style: TextStyle(fontWeight: FontWeight.w700),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
       ),
       subtitle: Text(
         _isLoading
@@ -1876,6 +1690,10 @@ class _ImageCacheTileState extends State<_ImageCacheTile> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
               onPressed: hasCache ? _confirmClearCache : null,
               child: const Text('Clear'),
             ),

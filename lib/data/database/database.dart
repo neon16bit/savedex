@@ -1601,13 +1601,6 @@ class AppDatabase extends _$AppDatabase {
       TableUpdate.onTable(subredditsTable, kind: UpdateKind.delete),
     });
   }
-
-  Future<void> clearMetadataCache() async {
-    await delete(subredditsTable).go();
-    notifyUpdates({
-      TableUpdate.onTable(subredditsTable, kind: UpdateKind.delete),
-    });
-  }
 }
 
 extension SavedItemEntryExtension on SavedItemEntry {

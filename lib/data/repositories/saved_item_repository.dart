@@ -1749,9 +1749,26 @@ class SavedItemRepository {
 
   final Set<String> _inFlightSubredditEnrichments = {};
   final Set<String> _attemptedSubredditEnrichments = {};
+  final Map<String, int> _enrichmentFailureCounts = {};
+  final Set<String> _failedSubredditEnrichments = {};
   bool _subredditsCheckedForDataset = false;
   bool _isCheckingUnverifiedSubreddits = false;
   bool _pendingSubredditNsfwNotify = false;
+
+  static const int maxEnrichmentFailures = 3;
+  static const int maxConsecutiveBatchFailures = 3;
+
+  bool isSubredditFailing(String name) => _failedSubredditEnrichments.contains(
+    SavedItem.normalizeSubredditKey(name),
+  );
+
+  bool isAuthorFailing(String name) {
+    final clean = name.trim().toLowerCase().replaceFirst(
+      RegExp(r'^(?:[ru]/|u_)'),
+      '',
+    );
+    return _failedSubredditEnrichments.contains('u_$clean');
+  }
 
   bool shouldIgnoreSubredditTableUpdate(
     Set<TableUpdate> updates, {
@@ -1808,6 +1825,7 @@ class SavedItemRepository {
     List<String> names, {
     bool forceRefetch = false,
     bool includeMissingIcons = false,
+    bool isRetry = false,
   }) {
     final keys = names
         .where((n) => !SavedItem.isUserSubreddit(n))
@@ -1818,6 +1836,7 @@ class SavedItemRepository {
       keys,
       forceRefetch: forceRefetch,
       includeMissingIcons: includeMissingIcons,
+      isRetry: isRetry,
     );
   }
 
@@ -1825,6 +1844,7 @@ class SavedItemRepository {
     List<String> authors, {
     bool forceRefetch = false,
     bool includeMissingIcons = false,
+    bool isRetry = false,
   }) {
     final keys = authors
         .map(
@@ -1838,6 +1858,7 @@ class SavedItemRepository {
       keys,
       forceRefetch: forceRefetch,
       includeMissingIcons: includeMissingIcons,
+      isRetry: isRetry,
     );
   }
 
@@ -1845,12 +1866,14 @@ class SavedItemRepository {
     Set<String> candidateKeys, {
     required bool forceRefetch,
     required bool includeMissingIcons,
+    bool isRetry = false,
   }) async {
     final keys = candidateKeys
         .where(
           (k) =>
               !_inFlightSubredditEnrichments.contains(k) &&
               (forceRefetch ||
+                  isRetry ||
                   includeMissingIcons ||
                   !_attemptedSubredditEnrichments.contains(k)),
         )
@@ -1862,9 +1885,14 @@ class SavedItemRepository {
     final toFetch = <String>[];
     for (final k in keys) {
       if (_inFlightSubredditEnrichments.contains(k)) continue;
-      _attemptedSubredditEnrichments.add(k);
       if (forceRefetch) {
+        _attemptedSubredditEnrichments.remove(k);
+        _enrichmentFailureCounts.remove(k);
+        _failedSubredditEnrichments.remove(k);
         toFetch.add(k);
+        continue;
+      }
+      if (_failedSubredditEnrichments.contains(k)) {
         continue;
       }
       final entry = cached[k];
@@ -1882,14 +1910,29 @@ class SavedItemRepository {
 
     final pendingBatch = <SubredditsTableCompanion>[];
     var batchHasNsfw = false;
+    var consecutiveBatchFailures = 0;
     const int flushBatchSize = 40;
 
     try {
       for (var i = 0; i < toFetch.length; i++) {
         final key = toFetch[i];
+        _attemptedSubredditEnrichments.add(key);
         try {
           final about = await _redditApi.fetchSubredditAbout(key);
           if (about != null) {
+            consecutiveBatchFailures = 0;
+            final hasIcon = about.iconUrl != null && about.iconUrl!.isNotEmpty;
+            if (!includeMissingIcons || hasIcon || forceRefetch) {
+              _enrichmentFailureCounts.remove(key);
+              _failedSubredditEnrichments.remove(key);
+            } else {
+              final count = (_enrichmentFailureCounts[key] ?? 0) + 1;
+              _enrichmentFailureCounts[key] = count;
+              if (count >= maxEnrichmentFailures) {
+                _failedSubredditEnrichments.add(key);
+              }
+            }
+
             if (about.isNsfw == true) {
               batchHasNsfw = true;
             }
@@ -1899,13 +1942,21 @@ class SavedItemRepository {
                 isNsfw: about.isNsfw != null
                     ? Value(about.isNsfw)
                     : const Value.absent(),
-                iconUrl: about.isNsfw != null || about.iconUrl != null
+                iconUrl: hasIcon || forceRefetch
                     ? Value(about.iconUrl)
                     : const Value.absent(),
                 lastChecked: Value(DateTime.now()),
               ),
             );
+          } else {
+            consecutiveBatchFailures++;
+            final count = (_enrichmentFailureCounts[key] ?? 0) + 1;
+            _enrichmentFailureCounts[key] = count;
+            if (count >= maxEnrichmentFailures) {
+              _failedSubredditEnrichments.add(key);
+            }
           }
+
           if (pendingBatch.length >= flushBatchSize) {
             if (batchHasNsfw) {
               _pendingSubredditNsfwNotify = true;
@@ -1914,7 +1965,19 @@ class SavedItemRepository {
             await db.upsertSubredditsBatch(List.of(pendingBatch));
             pendingBatch.clear();
           }
-        } catch (_) {}
+        } catch (_) {
+          consecutiveBatchFailures++;
+          final count = (_enrichmentFailureCounts[key] ?? 0) + 1;
+          _enrichmentFailureCounts[key] = count;
+          if (count >= maxEnrichmentFailures) {
+            _failedSubredditEnrichments.add(key);
+          }
+        }
+
+        if (consecutiveBatchFailures >= maxConsecutiveBatchFailures) {
+          break;
+        }
+
         if (i + 1 < toFetch.length) {
           await Future.delayed(const Duration(milliseconds: 250));
         }
@@ -1992,14 +2055,10 @@ class SavedItemRepository {
 
   Future<int> getTotalCount() => db.getTotalCount();
 
-  Future<void> clearMetadataCache() async {
-    _attemptedSubredditEnrichments.clear();
-    _subredditsCheckedForDataset = false;
-    await db.clearMetadataCache();
-  }
-
   Future<void> clearAllData() async {
     _attemptedSubredditEnrichments.clear();
+    _enrichmentFailureCounts.clear();
+    _failedSubredditEnrichments.clear();
     _subredditsCheckedForDataset = false;
     await db.clearAllData();
   }
