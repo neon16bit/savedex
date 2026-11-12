@@ -3408,10 +3408,11 @@ class $$SavedItemsTableTableTableManager
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (itemCollectionsTableRefs)
-                    await $_getPrefetchedData<
+                    await $_getPrefetchedDataByColumns<
                       SavedItemEntry,
                       $SavedItemsTableTable,
-                      ItemCollectionEntry
+                      ItemCollectionEntry,
+                      $ItemCollectionsTableTable
                     >(
                       currentTable: table,
                       referencedTable: $$SavedItemsTableTableReferences
@@ -3422,8 +3423,8 @@ class $$SavedItemsTableTableTableManager
                             table,
                             p0,
                           ).itemCollectionsTableRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.itemId == item.id),
+                      currentColumn: 'id',
+                      referencedColumn: 'item_id',
                       typedResults: items,
                     ),
                 ];
@@ -3727,10 +3728,11 @@ class $$CollectionsTableTableTableManager
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (itemCollectionsTableRefs)
-                    await $_getPrefetchedData<
+                    await $_getPrefetchedDataByColumns<
                       CollectionEntry,
                       $CollectionsTableTable,
-                      ItemCollectionEntry
+                      ItemCollectionEntry,
+                      $ItemCollectionsTableTable
                     >(
                       currentTable: table,
                       referencedTable: $$CollectionsTableTableReferences
@@ -3741,10 +3743,8 @@ class $$CollectionsTableTableTableManager
                             table,
                             p0,
                           ).itemCollectionsTableRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where(
-                            (e) => e.collectionId == item.id,
-                          ),
+                      currentColumn: 'id',
+                      referencedColumn: 'collection_id',
                       typedResults: items,
                     ),
                 ];
