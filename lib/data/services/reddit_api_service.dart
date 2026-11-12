@@ -1063,19 +1063,17 @@ class RedditApiService {
     );
   }
 
-  Future<({bool isNsfw, String? iconUrl})?> fetchSubredditAbout(
+  Future<({bool? isNsfw, String? iconUrl})?> fetchSubredditAbout(
     String subredditName,
   ) async {
-    final clean = subredditName.trim().toLowerCase().replaceFirst(
-      RegExp(r'^[ru]/'),
-      '',
-    );
-    if (clean.isEmpty) return null;
+    final normalized = SavedItem.normalizeSubredditKey(subredditName);
+    if (normalized.isEmpty) return null;
 
-    final isUser = clean.startsWith('u_');
-    final String path = isUser
-        ? 'user/${clean.substring(2)}/about'
-        : 'r/$clean/about';
+    final isUser = normalized.startsWith('u_');
+    final targetName = isUser ? normalized.substring(2) : normalized;
+    if (targetName.isEmpty) return null;
+
+    final path = isUser ? 'user/$targetName/about' : 'r/$targetName/about';
 
     http.Response? response;
 
@@ -1086,7 +1084,10 @@ class RedditApiService {
       response = authResult.response;
     }
 
-    if (response == null || response.statusCode != 200) {
+    if (response == null ||
+        (response.statusCode != 200 &&
+            response.statusCode != 403 &&
+            response.statusCode != 404)) {
       try {
         final publicUri = Uri.parse(
           'https://www.reddit.com/$path.json?raw_json=1',
@@ -1110,6 +1111,9 @@ class RedditApiService {
         final json = jsonDecode(response.body);
         if (json is Map && json['data'] is Map) {
           final data = json['data'] as Map;
+          if (data['is_suspended'] == true) {
+            return (isNsfw: null, iconUrl: null);
+          }
           final userSub = data['subreddit'] is Map
               ? data['subreddit'] as Map
               : null;
@@ -1118,15 +1122,25 @@ class RedditApiService {
               (userSub?['over_18'] as bool?) ??
               (userSub?['over18'] as bool?) ??
               false;
-          String? icon =
-              (data['community_icon'] as String?) ??
-              (data['icon_img'] as String?) ??
-              (userSub?['community_icon'] as String?) ??
-              (userSub?['icon_img'] as String?);
-          if (icon != null) {
-            icon = icon.replaceAll('&amp;', '&').trim();
-            if (icon.isEmpty) icon = null;
+
+          String? cleanIcon(dynamic candidate) {
+            if (candidate is String) {
+              final cleaned = candidate.replaceAll('&amp;', '&').trim();
+              if (cleaned.isNotEmpty && cleaned.startsWith('http')) {
+                return cleaned;
+              }
+            }
+            return null;
           }
+
+          final icon =
+              cleanIcon(data['community_icon']) ??
+              cleanIcon(data['icon_img']) ??
+              cleanIcon(userSub?['community_icon']) ??
+              cleanIcon(userSub?['icon_img']) ??
+              cleanIcon(data['snoovatar_img']) ??
+              (isUser ? null : cleanIcon(data['header_img']));
+
           return (isNsfw: isNsfw, iconUrl: icon);
         }
       } catch (_) {}
@@ -1134,6 +1148,9 @@ class RedditApiService {
       if (response.body.contains('quarantined')) {
         return (isNsfw: true, iconUrl: null);
       }
+      return (isNsfw: null, iconUrl: null);
+    } else if (response.statusCode == 404) {
+      return (isNsfw: null, iconUrl: null);
     }
 
     return null;

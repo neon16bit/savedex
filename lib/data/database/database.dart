@@ -10,6 +10,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/tables/collections_table.dart';
 import 'package:savedex/data/database/tables/saved_items_table.dart';
 import 'package:savedex/data/database/tables/subreddits_table.dart';
+import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -140,7 +141,7 @@ class AppDatabase extends _$AppDatabase {
   );
 
   static String _cleanSubSql(String colExpr) =>
-      "LOWER(CASE WHEN $colExpr LIKE 'r/%' OR $colExpr LIKE 'u/%' THEN SUBSTR($colExpr, 3) ELSE $colExpr END)";
+      "LOWER(CASE WHEN $colExpr LIKE 'r/%' THEN SUBSTR($colExpr, 3) WHEN $colExpr LIKE 'u/%' THEN 'u_' || SUBSTR($colExpr, 3) ELSE $colExpr END)";
 
   static String _buildEffectiveNsfwSql(String alias) =>
       "($alias.is_nsfw = 1 OR EXISTS (SELECT 1 FROM subreddits_table sub WHERE sub.name = ${_cleanSubSql('$alias.subreddit')} AND sub.is_nsfw = 1))";
@@ -885,10 +886,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<bool> isSubredditNsfw(String subreddit) async {
-    final clean = subreddit.trim().toLowerCase().replaceFirst(
-      RegExp(r'^[ru]/'),
-      '',
-    );
+    final clean = SavedItem.normalizeSubredditKey(subreddit);
     if (clean.isEmpty) return false;
     final entry = await (select(
       subredditsTable,
@@ -926,13 +924,7 @@ class AppDatabase extends _$AppDatabase {
           subreddit,
           COUNT(id) AS item_count,
           SUM(CASE WHEN is_nsfw = 1 THEN 1 ELSE 0 END) AS nsfw_count,
-          LOWER(
-            CASE
-              WHEN subreddit LIKE 'r/%' OR subreddit LIKE 'u/%'
-              THEN SUBSTR(subreddit, 3)
-              ELSE subreddit
-            END
-          ) AS clean_sub
+          ${_cleanSubSql('subreddit')} AS clean_sub
         FROM saved_items_table
         GROUP BY subreddit
       )
@@ -944,7 +936,7 @@ class AppDatabase extends _$AppDatabase {
         s.icon_url,
         s.last_checked
       FROM grouped_subs g
-      LEFT JOIN subreddits_table s ON LOWER(s.name) = g.clean_sub
+      LEFT JOIN subreddits_table s ON s.name = g.clean_sub
       ORDER BY g.item_count DESC
       ''',
       readsFrom: {savedItemsTable, subredditsTable},
@@ -979,7 +971,25 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Stream<List<SubredditInfo>> watchSubredditsWithCounts() {
-    late final StreamController<List<SubredditInfo>> controller;
+    return _watchThrottled(
+      fetch: getSubredditsWithCounts,
+      tables: [savedItemsTable, subredditsTable],
+      shouldRefetch: (updates) => updates.any(
+        (u) =>
+            u.table == subredditsTable.actualTableName ||
+            u.kind == UpdateKind.insert ||
+            u.kind == UpdateKind.delete ||
+            u.kind == null,
+      ),
+    ).distinct(listEquals);
+  }
+
+  Stream<T> _watchThrottled<T>({
+    required Future<T> Function() fetch,
+    required List<TableInfo> tables,
+    bool Function(Set<TableUpdate> updates)? shouldRefetch,
+  }) {
+    late final StreamController<T> controller;
     StreamSubscription<Set<TableUpdate>>? sub;
     Timer? debounceTimer;
     var isFetching = false;
@@ -994,13 +1004,15 @@ class AppDatabase extends _$AppDatabase {
       try {
         do {
           needsRefetch = false;
-          final data = await getSubredditsWithCounts();
-          if (!controller.isClosed) {
+          final data = await fetch();
+          if (controller.hasListener && !controller.isClosed) {
             controller.add(data);
           }
-        } while (needsRefetch && !controller.isClosed);
+        } while (needsRefetch &&
+            controller.hasListener &&
+            !controller.isClosed);
       } catch (e, st) {
-        if (!controller.isClosed) {
+        if (controller.hasListener && !controller.isClosed) {
           controller.addError(e, st);
         }
       } finally {
@@ -1008,26 +1020,12 @@ class AppDatabase extends _$AppDatabase {
       }
     }
 
-    controller = StreamController<List<SubredditInfo>>(
+    controller = StreamController<T>(
       onListen: () {
         fetchAndEmit();
-        sub =
-            tableUpdates(
-              TableUpdateQuery.onAllTables([savedItemsTable, subredditsTable]),
-            ).listen((updates) {
-              // starring, archiving, note edits, or post metadata updates
-              // emit UpdateKind.update on saved_items_table without changing subreddit counts.
-              // Only re-query when rows are inserted/deleted in saved_items_table
-              // or when subreddits_table is updated
-              final affectsSubredditList = updates.any(
-                (u) =>
-                    u.table == subredditsTable.actualTableName ||
-                    u.kind == UpdateKind.insert ||
-                    u.kind == UpdateKind.delete ||
-                    u.kind == null,
-              );
-              if (!affectsSubredditList) return;
-
+        sub = tableUpdates(TableUpdateQuery.onAllTables(tables))
+            .listen((updates) {
+              if (shouldRefetch != null && !shouldRefetch(updates)) return;
               if (debounceTimer?.isActive ?? false) return;
               debounceTimer = Timer(
                 const Duration(milliseconds: 800),
@@ -1142,6 +1140,64 @@ class AppDatabase extends _$AppDatabase {
       return (row.read(savedItemsTable.subreddit)!, row.read(countExp) ?? 0);
     }).toList();
   }
+
+  Future<List<AuthorInfo>> getAuthorsWithCounts() async {
+    final rows = await customSelect(
+      '''
+      WITH cleaned_authors AS (
+        SELECT
+          TRIM(
+            CASE
+              WHEN SUBSTR(author, 1, 2) COLLATE NOCASE IN ('u/', 'r/', 'u_')
+              THEN SUBSTR(author, 3)
+              ELSE author
+            END
+          ) AS clean_author,
+          id
+        FROM saved_items_table
+        WHERE author IS NOT NULL AND author != ''
+      ),
+      author_counts AS (
+        SELECT
+          clean_author,
+          COUNT(id) AS item_count
+        FROM cleaned_authors
+        WHERE clean_author != ''
+          AND clean_author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
+        GROUP BY clean_author COLLATE NOCASE
+      )
+      SELECT
+        c.clean_author,
+        c.item_count,
+        sub.icon_url,
+        sub.is_nsfw,
+        sub.last_checked
+      FROM author_counts c
+      LEFT JOIN subreddits_table sub
+        ON sub.name = 'u_' || LOWER(c.clean_author)
+      ORDER BY c.item_count DESC, c.clean_author COLLATE NOCASE ASC
+      ''',
+      readsFrom: {savedItemsTable, subredditsTable},
+    ).get();
+
+    return [
+      for (final r in rows)
+        AuthorInfo(
+          name: r.read<String>('clean_author'),
+          count: r.read<int>('item_count'),
+          iconUrl: r.read<String?>('icon_url'),
+          isNsfw: r.read<bool?>('is_nsfw') ?? false,
+          isVerified:
+              r.read<bool?>('is_nsfw') != null ||
+              r.read<DateTime?>('last_checked') != null,
+        ),
+    ];
+  }
+
+  Stream<List<AuthorInfo>> watchAuthorsWithCounts() => _watchThrottled(
+    fetch: getAuthorsWithCounts,
+    tables: [savedItemsTable, subredditsTable],
+  ).distinct(listEquals);
 
   Future<List<(String, int)>> searchAuthorsWithCounts({
     String query = '',
@@ -1519,6 +1575,7 @@ class AppDatabase extends _$AppDatabase {
       await delete(itemCollectionsTable).go();
       await delete(collectionsTable).go();
       await delete(savedItemsTable).go();
+      await delete(subredditsTable).go();
 
       try {
         await customStatement(
@@ -1541,6 +1598,14 @@ class AppDatabase extends _$AppDatabase {
       TableUpdate.onTable(savedItemsTable, kind: UpdateKind.delete),
       TableUpdate.onTable(collectionsTable, kind: UpdateKind.delete),
       TableUpdate.onTable(itemCollectionsTable, kind: UpdateKind.delete),
+      TableUpdate.onTable(subredditsTable, kind: UpdateKind.delete),
+    });
+  }
+
+  Future<void> clearMetadataCache() async {
+    await delete(subredditsTable).go();
+    notifyUpdates({
+      TableUpdate.onTable(subredditsTable, kind: UpdateKind.delete),
     });
   }
 }

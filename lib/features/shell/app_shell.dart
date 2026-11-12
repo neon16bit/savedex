@@ -10,7 +10,9 @@ class ShellTabViewModel extends Notifier<int> {
   @override
   int build() => 0;
 
-  void setTab(int index) => state = index;
+  void setTab(int index) {
+    if (state != index) state = index;
+  }
 }
 
 final selectedShellTabProvider = NotifierProvider<ShellTabViewModel, int>(
@@ -21,7 +23,10 @@ class SavedSearchExpandedNotifier extends Notifier<bool> {
   @override
   bool build() => false;
 
-  void setExpanded(bool value) => state = value;
+  void setExpanded(bool value) {
+    if (state != value) state = value;
+  }
+
   void toggle() => state = !state;
 }
 
@@ -34,7 +39,10 @@ class SavedFilterExpandedNotifier extends Notifier<bool> {
   @override
   bool build() => false;
 
-  void setExpanded(bool value) => state = value;
+  void setExpanded(bool value) {
+    if (state != value) state = value;
+  }
+
   void toggle() => state = !state;
 }
 
@@ -47,7 +55,9 @@ class SavedSearchOpenedViaFilterNotifier extends Notifier<bool> {
   @override
   bool build() => false;
 
-  void setOpened(bool value) => state = value;
+  void setOpened(bool value) {
+    if (state != value) state = value;
+  }
 }
 
 final isSavedSearchOpenedViaFilterProvider =
@@ -65,8 +75,10 @@ class TriggerCounterNotifier extends Notifier<int> {
 final savedScrollToTopTriggerProvider =
     NotifierProvider<TriggerCounterNotifier, int>(TriggerCounterNotifier.new);
 
-final subredditSearchFocusTriggerProvider =
-    NotifierProvider<TriggerCounterNotifier, int>(TriggerCounterNotifier.new);
+final isLibrarySearchExpandedProvider =
+    NotifierProvider<SavedSearchExpandedNotifier, bool>(
+      SavedSearchExpandedNotifier.new,
+    );
 
 class LibrarySubTabNotifier extends Notifier<int> {
   @override

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
 
@@ -75,19 +76,23 @@ final sortedCollectionsProvider = Provider<AsyncValue<List<Collection>>>((ref) {
   });
 });
 
-final rawSubredditsWithCountsProvider = StreamProvider<List<SubredditInfo>>((
-  ref,
-) {
-  final repo = ref.watch(savedItemRepositoryProvider);
-  return repo.watchSubredditsWithCounts();
-});
+final rawSubredditsWithCountsProvider =
+    StreamProvider.autoDispose<List<SubredditInfo>>((ref) {
+      final repo = ref.watch(savedItemRepositoryProvider);
+      return repo.watchSubredditsWithCounts();
+    });
 
 class SubredditSearchNotifier extends Notifier<String> {
   @override
   String build() => '';
 
-  void setQuery(String q) => state = q;
-  void clear() => state = '';
+  void setQuery(String q) {
+    if (state != q) state = q;
+  }
+
+  void clear() {
+    if (state.isNotEmpty) state = '';
+  }
 }
 
 final subredditSearchQueryProvider =
@@ -99,7 +104,9 @@ class SubredditSortNotifier extends Notifier<SubredditSortOption> {
   @override
   SubredditSortOption build() => SubredditSortOption.mostSaved;
 
-  void setSort(SubredditSortOption sort) => state = sort;
+  void setSort(SubredditSortOption sort) {
+    if (state != sort) state = sort;
+  }
 }
 
 final subredditSortOptionProvider =
@@ -107,54 +114,85 @@ final subredditSortOptionProvider =
       SubredditSortNotifier.new,
     );
 
-final filteredSubredditsProvider = Provider<AsyncValue<List<SubredditInfo>>>((
-  ref,
-) {
-  final rawAsync = ref.watch(rawSubredditsWithCountsProvider);
-  final query = ref.watch(subredditSearchQueryProvider).trim().toLowerCase();
-  final sort = ref.watch(subredditSortOptionProvider);
+final filteredSubredditsProvider =
+    Provider.autoDispose<AsyncValue<List<SubredditInfo>>>((ref) {
+      final rawAsync = ref.watch(rawSubredditsWithCountsProvider);
+      final query = ref
+          .watch(subredditSearchQueryProvider)
+          .trim()
+          .toLowerCase()
+          .replaceFirst(RegExp(r'^/?r/'), '');
+      final sort = ref.watch(subredditSortOptionProvider);
 
-  return rawAsync.whenData((subreddits) {
-    final unverified = subreddits
-        .where((s) => !s.isVerified && !SavedItem.isUserSubreddit(s.name))
-        .map((s) => s.name)
-        .toList();
-    if (unverified.isNotEmpty) {
-      Future.microtask(() {
-        ref.read(savedItemRepositoryProvider).enrichSubreddits(unverified);
+      return rawAsync.whenData((subreddits) {
+        final filtered = query.isEmpty
+            ? List.of(subreddits)
+            : subreddits.where((s) => s.lowerName.contains(query)).toList();
+
+        filtered.sort((a, b) {
+          switch (sort) {
+            case SubredditSortOption.mostSaved:
+              final c = b.count.compareTo(a.count);
+              return c != 0 ? c : a.lowerName.compareTo(b.lowerName);
+            case SubredditSortOption.leastSaved:
+              final c = a.count.compareTo(b.count);
+              return c != 0 ? c : a.lowerName.compareTo(b.lowerName);
+            case SubredditSortOption.alphabeticalAZ:
+              return a.lowerName.compareTo(b.lowerName);
+            case SubredditSortOption.alphabeticalZA:
+              return b.lowerName.compareTo(a.lowerName);
+          }
+        });
+
+        return filtered;
       });
-    }
-
-    final lowerNames = <String, String>{
-      for (final sub in subreddits) sub.name: sub.name.toLowerCase(),
-    };
-
-    var filtered = subreddits;
-    if (query.isNotEmpty) {
-      filtered = filtered.where((sub) {
-        return lowerNames[sub.name]!.contains(query);
-      }).toList();
-    } else {
-      filtered = List.of(filtered);
-    }
-
-    filtered.sort((a, b) {
-      switch (sort) {
-        case SubredditSortOption.mostSaved:
-          final countComp = b.count.compareTo(a.count);
-          if (countComp != 0) return countComp;
-          return lowerNames[a.name]!.compareTo(lowerNames[b.name]!);
-        case SubredditSortOption.leastSaved:
-          final countComp = a.count.compareTo(b.count);
-          if (countComp != 0) return countComp;
-          return lowerNames[a.name]!.compareTo(lowerNames[b.name]!);
-        case SubredditSortOption.alphabeticalAZ:
-          return lowerNames[a.name]!.compareTo(lowerNames[b.name]!);
-        case SubredditSortOption.alphabeticalZA:
-          return lowerNames[b.name]!.compareTo(lowerNames[a.name]!);
-      }
     });
 
-    return filtered;
-  });
-});
+final rawAuthorsWithCountsProvider =
+    StreamProvider.autoDispose<List<AuthorInfo>>((ref) {
+      return ref.watch(savedItemRepositoryProvider).watchAuthorsWithCounts();
+    });
+
+final userSearchQueryProvider =
+    NotifierProvider<SubredditSearchNotifier, String>(
+      SubredditSearchNotifier.new,
+    );
+
+final userSortOptionProvider =
+    NotifierProvider<SubredditSortNotifier, SubredditSortOption>(
+      SubredditSortNotifier.new,
+    );
+
+final filteredAuthorsProvider =
+    Provider.autoDispose<AsyncValue<List<AuthorInfo>>>((ref) {
+      final rawAsync = ref.watch(rawAuthorsWithCountsProvider);
+      final query = ref
+          .watch(userSearchQueryProvider)
+          .trim()
+          .toLowerCase()
+          .replaceFirst(RegExp(r'^/?u[/_]'), '');
+      final sort = ref.watch(userSortOptionProvider);
+
+      return rawAsync.whenData((authors) {
+        final filtered = query.isEmpty
+            ? List.of(authors)
+            : authors.where((a) => a.lowerName.contains(query)).toList();
+
+        filtered.sort((a, b) {
+          switch (sort) {
+            case SubredditSortOption.mostSaved:
+              final c = b.count.compareTo(a.count);
+              return c != 0 ? c : a.lowerName.compareTo(b.lowerName);
+            case SubredditSortOption.leastSaved:
+              final c = a.count.compareTo(b.count);
+              return c != 0 ? c : a.lowerName.compareTo(b.lowerName);
+            case SubredditSortOption.alphabeticalAZ:
+              return a.lowerName.compareTo(b.lowerName);
+            case SubredditSortOption.alphabeticalZA:
+              return b.lowerName.compareTo(a.lowerName);
+          }
+        });
+
+        return filtered;
+      });
+    });

@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/database.dart';
+import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/enriched_reddit_data.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
@@ -1743,6 +1744,9 @@ class SavedItemRepository {
   Stream<List<SubredditInfo>> watchSubredditsWithCounts() =>
       db.watchSubredditsWithCounts();
 
+  Stream<List<AuthorInfo>> watchAuthorsWithCounts() =>
+      db.watchAuthorsWithCounts();
+
   final Set<String> _inFlightSubredditEnrichments = {};
   final Set<String> _attemptedSubredditEnrichments = {};
   bool _subredditsCheckedForDataset = false;
@@ -1764,7 +1768,7 @@ class SavedItemRepository {
     required bool isNsfw,
     String? iconUrl,
   }) async {
-    final clean = name.trim().toLowerCase().replaceFirst(RegExp(r'^[ru]/'), '');
+    final clean = SavedItem.normalizeSubredditKey(name);
     if (clean.isEmpty) return;
 
     await db.upsertSubreddit(
@@ -1800,57 +1804,104 @@ class SavedItemRepository {
     }
   }
 
-  Future<void> enrichSubreddits(List<String> names) async {
-    final cleanNames = names
+  Future<void> enrichSubreddits(
+    List<String> names, {
+    bool forceRefetch = false,
+    bool includeMissingIcons = false,
+  }) {
+    final keys = names
         .where((n) => !SavedItem.isUserSubreddit(n))
-        .map((n) => n.trim().toLowerCase().replaceFirst(RegExp(r'^[ru]/'), ''))
-        .where(
-          (n) =>
-              n.isNotEmpty &&
-              n != 'reddit' &&
-              !_inFlightSubredditEnrichments.contains(n) &&
-              !_attemptedSubredditEnrichments.contains(n),
-        )
+        .map(SavedItem.normalizeSubredditKey)
+        .where((n) => n.isNotEmpty && n != 'reddit')
         .toSet();
+    return _enrichSubredditTableEntries(
+      keys,
+      forceRefetch: forceRefetch,
+      includeMissingIcons: includeMissingIcons,
+    );
+  }
 
-    if (cleanNames.isEmpty) return;
+  Future<void> enrichAuthors(
+    List<String> authors, {
+    bool forceRefetch = false,
+    bool includeMissingIcons = false,
+  }) {
+    final keys = authors
+        .map(
+          (a) =>
+              a.trim().toLowerCase().replaceFirst(RegExp(r'^(?:[ru]/|u_)'), ''),
+        )
+        .where((a) => a.isNotEmpty && !SavedItem.isRemovedMarker(a))
+        .map((a) => 'u_$a')
+        .toSet();
+    return _enrichSubredditTableEntries(
+      keys,
+      forceRefetch: forceRefetch,
+      includeMissingIcons: includeMissingIcons,
+    );
+  }
+
+  Future<void> _enrichSubredditTableEntries(
+    Set<String> candidateKeys, {
+    required bool forceRefetch,
+    required bool includeMissingIcons,
+  }) async {
+    final keys = candidateKeys
+        .where(
+          (k) =>
+              !_inFlightSubredditEnrichments.contains(k) &&
+              (forceRefetch ||
+                  includeMissingIcons ||
+                  !_attemptedSubredditEnrichments.contains(k)),
+        )
+        .toList();
+
+    if (keys.isEmpty) return;
 
     final cached = await db.getAllSubredditsMap();
-    final toFetch = cleanNames.where((n) {
-      final entry = cached[n];
-      return entry == null ||
-          (entry.isNsfw == null && entry.lastChecked == null);
-    }).toList();
+    final toFetch = <String>[];
+    for (final k in keys) {
+      if (_inFlightSubredditEnrichments.contains(k)) continue;
+      _attemptedSubredditEnrichments.add(k);
+      if (forceRefetch) {
+        toFetch.add(k);
+        continue;
+      }
+      final entry = cached[k];
+      if (entry == null ||
+          (includeMissingIcons &&
+              (entry.iconUrl == null || entry.iconUrl!.isEmpty)) ||
+          (entry.isNsfw == null && entry.lastChecked == null)) {
+        toFetch.add(k);
+      }
+    }
 
     if (toFetch.isEmpty) return;
 
     _inFlightSubredditEnrichments.addAll(toFetch);
-    _attemptedSubredditEnrichments.addAll(toFetch);
 
     final pendingBatch = <SubredditsTableCompanion>[];
     var batchHasNsfw = false;
     const int flushBatchSize = 40;
 
     try {
-      for (final name in toFetch) {
+      for (var i = 0; i < toFetch.length; i++) {
+        final key = toFetch[i];
         try {
-          final about = await _redditApi.fetchSubredditAbout(name);
+          final about = await _redditApi.fetchSubredditAbout(key);
           if (about != null) {
-            if (about.isNsfw) {
+            if (about.isNsfw == true) {
               batchHasNsfw = true;
             }
             pendingBatch.add(
               SubredditsTableCompanion(
-                name: Value(name),
-                isNsfw: Value(about.isNsfw),
-                iconUrl: Value(about.iconUrl),
-                lastChecked: Value(DateTime.now()),
-              ),
-            );
-          } else {
-            pendingBatch.add(
-              SubredditsTableCompanion(
-                name: Value(name),
+                name: Value(key),
+                isNsfw: about.isNsfw != null
+                    ? Value(about.isNsfw)
+                    : const Value.absent(),
+                iconUrl: about.isNsfw != null || about.iconUrl != null
+                    ? Value(about.iconUrl)
+                    : const Value.absent(),
                 lastChecked: Value(DateTime.now()),
               ),
             );
@@ -1864,8 +1915,9 @@ class SavedItemRepository {
             pendingBatch.clear();
           }
         } catch (_) {}
-        // Pacing: 250ms between requests
-        await Future.delayed(const Duration(milliseconds: 250));
+        if (i + 1 < toFetch.length) {
+          await Future.delayed(const Duration(milliseconds: 250));
+        }
       }
       if (pendingBatch.isNotEmpty) {
         if (batchHasNsfw) {
@@ -1939,6 +1991,12 @@ class SavedItemRepository {
   );
 
   Future<int> getTotalCount() => db.getTotalCount();
+
+  Future<void> clearMetadataCache() async {
+    _attemptedSubredditEnrichments.clear();
+    _subredditsCheckedForDataset = false;
+    await db.clearMetadataCache();
+  }
 
   Future<void> clearAllData() async {
     _attemptedSubredditEnrichments.clear();

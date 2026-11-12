@@ -96,6 +96,8 @@ class FloatingNavBar extends ConsumerStatefulWidget {
 class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
+  late final TextEditingController _librarySearchController;
+  late final FocusNode _librarySearchFocusNode;
   Timer? _debounceTimer;
   bool _morphFromFilter = false;
 
@@ -104,6 +106,8 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     super.initState();
     _searchController = TextEditingController();
     _searchFocusNode = FocusNode()..addListener(_onSearchFocusChanged);
+    _librarySearchController = TextEditingController();
+    _librarySearchFocusNode = FocusNode();
   }
 
   void _onSearchFocusChanged() {
@@ -118,11 +122,14 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     _searchController.dispose();
     _searchFocusNode.removeListener(_onSearchFocusChanged);
     _searchFocusNode.dispose();
+    _librarySearchController.dispose();
+    _librarySearchFocusNode.dispose();
     super.dispose();
   }
 
   void _dismissKeyboard() {
     _searchFocusNode.unfocus();
+    _librarySearchFocusNode.unfocus();
     FocusScope.of(context).unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
     SystemChannels.textInput.invokeMethod('TextInput.hide');
@@ -136,6 +143,19 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     ref.read(searchFilterViewModelProvider.notifier).setSearchQuery(null);
     ref.read(isSavedFilterExpandedProvider.notifier).setExpanded(false);
     ref.read(isSavedSearchExpandedProvider.notifier).setExpanded(false);
+  }
+
+  void _closeLibrarySearch() {
+    if (ref.read(isLibrarySearchExpandedProvider)) {
+      ref.read(isLibrarySearchExpandedProvider.notifier).setExpanded(false);
+      return;
+    }
+    _dismissKeyboard();
+    if (_librarySearchController.text.isNotEmpty) {
+      _librarySearchController.clear();
+    }
+    ref.read(subredditSearchQueryProvider.notifier).clear();
+    ref.read(userSearchQueryProvider.notifier).clear();
   }
 
   Widget _buildDockTabs({
@@ -244,7 +264,16 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     required bool isDark,
     required bool hasActiveNonSearchFilters,
     required bool isFilterExpanded,
+    bool isLibraryMode = false,
+    int librarySubTab = 0,
   }) {
+    final controller = isLibraryMode
+        ? _librarySearchController
+        : _searchController;
+    final focusNode = isLibraryMode
+        ? _librarySearchFocusNode
+        : _searchFocusNode;
+
     return Row(
       children: [
         const SizedBox(width: 4),
@@ -252,13 +281,18 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
         const SizedBox(width: 8),
         Expanded(
           child: TextField(
-            controller: _searchController,
-            focusNode: _searchFocusNode,
-            onTap: () {
-              ref
-                  .read(isSavedSearchOpenedViaFilterProvider.notifier)
-                  .setOpened(false);
-            },
+            key: ValueKey(
+              isLibraryMode ? 'library_search_field' : 'saved_search_field',
+            ),
+            controller: controller,
+            focusNode: focusNode,
+            onTap: isLibraryMode
+                ? null
+                : () {
+                    ref
+                        .read(isSavedSearchOpenedViaFilterProvider.notifier)
+                        .setOpened(false);
+                  },
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -266,7 +300,11 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
             ),
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search saved items...',
+              hintText: isLibraryMode
+                  ? (librarySubTab == 2
+                        ? 'Search saved users...'
+                        : 'Search saved subreddits...')
+                  : 'Search saved items...',
               hintStyle: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -278,80 +316,105 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
               isDense: true,
               contentPadding: EdgeInsets.zero,
             ),
-            onChanged: (val) {
-              if (val.trim().isNotEmpty) {
+            onChanged: isLibraryMode
+                ? (val) {
+                    final queryProvider = librarySubTab == 2
+                        ? userSearchQueryProvider
+                        : subredditSearchQueryProvider;
+                    ref.read(queryProvider.notifier).setQuery(val);
+                  }
+                : (val) {
+                    if (val.trim().isNotEmpty) {
+                      ref
+                          .read(isSavedSearchOpenedViaFilterProvider.notifier)
+                          .setOpened(false);
+                    }
+                    _debounceTimer?.cancel();
+                    _debounceTimer = Timer(
+                      const Duration(milliseconds: 250),
+                      () {
+                        ref
+                            .read(searchFilterViewModelProvider.notifier)
+                            .setSearchQuery(val.trim().isEmpty ? null : val);
+                      },
+                    );
+                  },
+            onSubmitted: isLibraryMode
+                ? (val) {
+                    final queryProvider = librarySubTab == 2
+                        ? userSearchQueryProvider
+                        : subredditSearchQueryProvider;
+                    ref.read(queryProvider.notifier).setQuery(val);
+                    _librarySearchFocusNode.unfocus();
+                  }
+                : (val) {
+                    _debounceTimer?.cancel();
+                    ref
+                        .read(searchFilterViewModelProvider.notifier)
+                        .setSearchQuery(val.trim().isEmpty ? null : val);
+                    _searchFocusNode.unfocus();
+                  },
+          ),
+        ),
+        if (!isLibraryMode) ...[
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              if (isFilterExpanded) {
+                ref
+                    .read(isSavedFilterExpandedProvider.notifier)
+                    .setExpanded(false);
+              } else {
                 ref
                     .read(isSavedSearchOpenedViaFilterProvider.notifier)
                     .setOpened(false);
-              }
-              _debounceTimer?.cancel();
-              _debounceTimer = Timer(const Duration(milliseconds: 250), () {
                 ref
-                    .read(searchFilterViewModelProvider.notifier)
-                    .setSearchQuery(val.trim().isEmpty ? null : val);
-              });
+                    .read(isSavedFilterExpandedProvider.notifier)
+                    .setExpanded(true);
+              }
             },
-            onSubmitted: (val) {
-              _debounceTimer?.cancel();
-              ref
-                  .read(searchFilterViewModelProvider.notifier)
-                  .setSearchQuery(val.trim().isEmpty ? null : val);
-              _searchFocusNode.unfocus();
-            },
-          ),
-        ),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            HapticFeedback.lightImpact();
-            if (isFilterExpanded) {
-              ref
-                  .read(isSavedFilterExpandedProvider.notifier)
-                  .setExpanded(false);
-            } else {
-              ref
-                  .read(isSavedSearchOpenedViaFilterProvider.notifier)
-                  .setOpened(false);
-              ref
-                  .read(isSavedFilterExpandedProvider.notifier)
-                  .setExpanded(true);
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-            child: Stack(
-              alignment: Alignment.topRight,
-              children: [
-                Icon(
-                  Icons.tune_rounded,
-                  size: 19,
-                  color: (hasActiveNonSearchFilters || isFilterExpanded)
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                ),
-                if (hasActiveNonSearchFilters)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary,
-                        shape: BoxShape.circle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              child: Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 19,
+                    color: (hasActiveNonSearchFilters || isFilterExpanded)
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                  if (hasActiveNonSearchFilters)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 2),
+          const SizedBox(width: 2),
+        ] else
+          const SizedBox(width: 6),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () {
             HapticFeedback.lightImpact();
-            _closeSearch();
+            if (isLibraryMode) {
+              _closeLibrarySearch();
+            } else {
+              _closeSearch();
+            }
           },
           child: Container(
             width: 32,
@@ -381,6 +444,14 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
         selectedTab == 0 && ref.watch(isSavedSearchExpandedProvider);
     final isSavedFilterExpanded =
         selectedTab == 0 && ref.watch(isSavedFilterExpandedProvider);
+    final librarySubTab = selectedTab == 1
+        ? ref.watch(librarySubTabProvider)
+        : 0;
+    final isLibrarySearching =
+        selectedTab == 1 &&
+        librarySubTab >= 1 &&
+        ref.watch(isLibrarySearchExpandedProvider);
+    final isSearchMorphed = isSavedSearching || isLibrarySearching;
 
     ref.listen<bool>(isSavedSearchExpandedProvider, (prev, next) {
       if (next && (prev == null || !prev)) {
@@ -420,6 +491,60 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
         if (openedViaFilter) {
           _closeSearch();
         }
+      }
+    });
+
+    ref.listen<bool>(isLibrarySearchExpandedProvider, (prev, next) {
+      if (next && (prev == null || !prev)) {
+        final activeSubTab = ref.read(librarySubTabProvider);
+        final currentQuery = activeSubTab == 2
+            ? ref.read(userSearchQueryProvider)
+            : ref.read(subredditSearchQueryProvider);
+        if (_librarySearchController.text != currentQuery) {
+          _librarySearchController.text = currentQuery;
+        }
+      } else if (!next && prev == true) {
+        _dismissKeyboard();
+        if (_librarySearchController.text.isNotEmpty) {
+          _librarySearchController.clear();
+        }
+        ref.read(subredditSearchQueryProvider.notifier).clear();
+        ref.read(userSearchQueryProvider.notifier).clear();
+      }
+    });
+
+    ref.listen<String>(subredditSearchQueryProvider, (prev, next) {
+      if (ref.read(librarySubTabProvider) == 1 &&
+          next.isEmpty &&
+          _librarySearchController.text.isNotEmpty) {
+        _librarySearchController.clear();
+      }
+    });
+    ref.listen<String>(userSearchQueryProvider, (prev, next) {
+      if (ref.read(librarySubTabProvider) == 2 &&
+          next.isEmpty &&
+          _librarySearchController.text.isNotEmpty) {
+        _librarySearchController.clear();
+      }
+    });
+
+    // queries are per sub-tab; close library search on sub-tab or shell-tab
+    // switches so neither list keeps a hidden filter
+    ref.listen<int>(librarySubTabProvider, (prev, next) {
+      if (prev != next &&
+          (ref.read(isLibrarySearchExpandedProvider) ||
+              ref.read(subredditSearchQueryProvider).isNotEmpty ||
+              ref.read(userSearchQueryProvider).isNotEmpty)) {
+        _closeLibrarySearch();
+      }
+    });
+    ref.listen<int>(selectedShellTabProvider, (prev, next) {
+      if (prev == 1 &&
+          next != 1 &&
+          (ref.read(isLibrarySearchExpandedProvider) ||
+              ref.read(subredditSearchQueryProvider).isNotEmpty ||
+              ref.read(userSearchQueryProvider).isNotEmpty)) {
+        _closeLibrarySearch();
       }
     });
 
@@ -494,7 +619,6 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       ];
     } else if (selectedTab == 1) {
       hasActiveNonSearchFilters = false;
-      final librarySubTab = ref.watch(librarySubTabProvider);
       if (librarySubTab == 0) {
         final collectionSort = ref.watch(collectionSortOptionProvider);
         contextActions = [
@@ -521,30 +645,48 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
           ),
         ];
       } else {
-        final subredditSort = ref.watch(subredditSortOptionProvider);
-        final hasSubSearch = ref.watch(
-          subredditSearchQueryProvider.select((q) => q.trim().isNotEmpty),
+        final isUsers = librarySubTab == 2;
+        final sortProvider = isUsers
+            ? userSortOptionProvider
+            : subredditSortOptionProvider;
+        final listSort = ref.watch(sortProvider);
+        final hasListSearch = ref.watch(
+          (isUsers ? userSearchQueryProvider : subredditSearchQueryProvider)
+              .select((q) => q.trim().isNotEmpty),
         );
+        final noun = isUsers ? 'Users' : 'Subreddits';
         contextActions = [
           ContextActionSpec(
-            key: 'library_search_subreddits',
-            tooltip: 'Search Subreddits',
+            key: 'library_search_${isUsers ? 'users' : 'subreddits'}',
+            tooltip: 'Search $noun',
             icon: Icons.search_rounded,
-            isActive: hasSubSearch,
+            isActive: isLibrarySearching || hasListSearch,
             onTap: () {
               HapticFeedback.lightImpact();
-              ref.read(subredditSearchFocusTriggerProvider.notifier).trigger();
+              if (_morphFromFilter) {
+                setState(() {
+                  _morphFromFilter = false;
+                });
+              }
+              ref
+                  .read(isLibrarySearchExpandedProvider.notifier)
+                  .setExpanded(true);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _librarySearchFocusNode.canRequestFocus) {
+                  _librarySearchFocusNode.requestFocus();
+                }
+              });
             },
           ),
           ContextActionSpec(
-            key: 'library_sort_subreddits',
-            tooltip: 'Sort Subreddits: ${subredditSort.label}',
+            key: 'library_sort_${isUsers ? 'users' : 'subreddits'}',
+            tooltip: 'Sort $noun: ${listSort.label}',
             icon: Icons.sort_rounded,
-            isActive: subredditSort != SubredditSortOption.mostSaved,
-            hasBadge: subredditSort != SubredditSortOption.mostSaved,
+            isActive: listSort != SubredditSortOption.mostSaved,
+            hasBadge: listSort != SubredditSortOption.mostSaved,
             onTap: () {
               HapticFeedback.lightImpact();
-              _showSubredditSortSheet(context, ref);
+              _showLibraryListSortSheet(context, ref, sortProvider, noun);
             },
           ),
         ];
@@ -634,13 +776,15 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     final isKeyboardOpen = bottomInset > 0;
 
     return PopScope(
-      canPop: !isSavedSearching && !isSavedFilterExpanded,
+      canPop: !isSearchMorphed && !isSavedFilterExpanded,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (isSavedFilterExpanded) {
           ref.read(isSavedFilterExpandedProvider.notifier).setExpanded(false);
         } else if (isSavedSearching) {
           _closeSearch();
+        } else if (isLibrarySearching) {
+          _closeLibrarySearch();
         }
       },
       child: SafeArea(
@@ -759,9 +903,9 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                               child: AnimatedOpacity(
                                 duration: kNavBarFadeDuration,
                                 curve: Curves.easeOut,
-                                opacity: isSavedSearching ? 0.0 : 1.0,
+                                opacity: isSearchMorphed ? 0.0 : 1.0,
                                 child: IgnorePointer(
-                                  ignoring: isSavedSearching,
+                                  ignoring: isSearchMorphed,
                                   child: FrostedNavBarIsland(
                                     width: dockWidth,
                                     height: dockHeight,
@@ -770,7 +914,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                     borderColor: dockBorder,
                                     isDark: isDark,
                                     enableBlur:
-                                        kEnableNavBarBlur && !isSavedSearching,
+                                        kEnableNavBarBlur && !isSearchMorphed,
                                     padding: EdgeInsets.symmetric(
                                       horizontal: mainIslandHorizontalPadding,
                                       vertical: kNavBarIslandPadding,
@@ -792,7 +936,8 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                               ),
                             ),
 
-                            if (_morphFromFilter &&
+                            if (selectedTab == 0 &&
+                                _morphFromFilter &&
                                 contextActions.length > 1) ...[
                               Positioned(
                                 key: const ValueKey('static_search_action'),
@@ -803,9 +948,9 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                 child: AnimatedOpacity(
                                   duration: const Duration(milliseconds: 180),
                                   curve: Curves.easeOut,
-                                  opacity: isSavedSearching ? 0.0 : 1.0,
+                                  opacity: isSearchMorphed ? 0.0 : 1.0,
                                   child: IgnorePointer(
-                                    ignoring: isSavedSearching,
+                                    ignoring: isSearchMorphed,
                                     child: StandaloneFloatingActionButton(
                                       spec: contextActions[0],
                                       dockSurface: dockSurface,
@@ -820,17 +965,17 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                 key: const ValueKey('morph_filter_action'),
                                 duration: kNavBarExpandDuration,
                                 curve: Curves.fastOutSlowIn,
-                                left: isSavedSearching ? 0.0 : filterLeftNormal,
-                                top: isSavedSearching
+                                left: isSearchMorphed ? 0.0 : filterLeftNormal,
+                                top: isSearchMorphed
                                     ? dockTop
                                     : actionButtonTop,
-                                width: isSavedSearching
+                                width: isSearchMorphed
                                     ? totalBarWidth
                                     : kNavBarActionButtonSize,
-                                height: isSavedSearching
+                                height: isSearchMorphed
                                     ? dockHeight
                                     : kNavBarActionButtonSize,
-                                child: isSavedSearching
+                                child: isSearchMorphed
                                     ? FrostedNavBarIsland(
                                         animate: true,
                                         animationDuration:
@@ -884,9 +1029,9 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                   child: AnimatedOpacity(
                                     duration: const Duration(milliseconds: 180),
                                     curve: Curves.easeOut,
-                                    opacity: isSavedSearching ? 0.0 : 1.0,
+                                    opacity: isSearchMorphed ? 0.0 : 1.0,
                                     child: IgnorePointer(
-                                      ignoring: isSavedSearching,
+                                      ignoring: isSearchMorphed,
                                       child: StandaloneFloatingActionButton(
                                         spec: contextActions[1],
                                         dockSurface: dockSurface,
@@ -902,19 +1047,19 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                   key: const ValueKey('morph_search_action'),
                                   duration: kNavBarExpandDuration,
                                   curve: Curves.fastOutSlowIn,
-                                  left: isSavedSearching
+                                  left: isSearchMorphed
                                       ? 0.0
                                       : searchLeftNormal,
-                                  top: isSavedSearching
+                                  top: isSearchMorphed
                                       ? dockTop
                                       : actionButtonTop,
-                                  width: isSavedSearching
+                                  width: isSearchMorphed
                                       ? totalBarWidth
                                       : kNavBarActionButtonSize,
-                                  height: isSavedSearching
+                                  height: isSearchMorphed
                                       ? dockHeight
                                       : kNavBarActionButtonSize,
-                                  child: isSavedSearching
+                                  child: isSearchMorphed
                                       ? FrostedNavBarIsland(
                                           animate: true,
                                           animationDuration:
@@ -945,6 +1090,9 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                                       hasActiveNonSearchFilters,
                                                   isFilterExpanded:
                                                       isSavedFilterExpanded,
+                                                  isLibraryMode:
+                                                      isLibrarySearching,
+                                                  librarySubTab: librarySubTab,
                                                 ),
                                               ),
                                             ),
@@ -1080,8 +1228,13 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     );
   }
 
-  void _showSubredditSortSheet(BuildContext context, WidgetRef ref) {
-    final currentSort = ref.read(subredditSortOptionProvider);
+  void _showLibraryListSortSheet(
+    BuildContext context,
+    WidgetRef ref,
+    NotifierProvider<SubredditSortNotifier, SubredditSortOption> sortProvider,
+    String noun,
+  ) {
+    final currentSort = ref.read(sortProvider);
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -1118,7 +1271,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        'Sort Subreddits',
+                        'Sort $noun',
                         style: textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.2,
@@ -1141,9 +1294,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: () {
-                          ref
-                              .read(subredditSortOptionProvider.notifier)
-                              .setSort(option);
+                          ref.read(sortProvider.notifier).setSort(option);
                           Navigator.pop(ctx);
                         },
                         child: Padding(

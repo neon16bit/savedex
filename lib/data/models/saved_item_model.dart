@@ -171,7 +171,16 @@ class SavedItem {
   static bool isUserSubreddit(String subreddit, {String? subredditType}) {
     return subredditType == 'user' ||
         subreddit.startsWith('u_') ||
-        subreddit.startsWith('u/');
+        subreddit.startsWith('u/') ||
+        subreddit.startsWith('U_') ||
+        subreddit.startsWith('U/');
+  }
+
+  static String normalizeSubredditKey(String subreddit) {
+    final s = subreddit.trim().toLowerCase();
+    if (s.startsWith('u/')) return 'u_${s.substring(2)}';
+    if (s.startsWith('r/')) return s.substring(2);
+    return s;
   }
 
   String get displaySubreddit =>

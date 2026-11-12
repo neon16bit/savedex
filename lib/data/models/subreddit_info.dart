@@ -1,26 +1,23 @@
 class SubredditInfo {
   final String name;
+  final String lowerName;
   final int count;
   final bool isNsfw;
   final String? iconUrl;
   final bool isVerified;
 
-  const SubredditInfo({
+  SubredditInfo({
     required this.name,
     required this.count,
     this.isNsfw = false,
     this.iconUrl,
     this.isVerified = false,
-  });
-
-  String get $1 => name;
-  int get $2 => count;
+  }) : lowerName = name.toLowerCase();
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is SubredditInfo &&
-          runtimeType == other.runtimeType &&
           name == other.name &&
           count == other.count &&
           isNsfw == other.isNsfw &&
@@ -28,12 +25,7 @@ class SubredditInfo {
           isVerified == other.isVerified;
 
   @override
-  int get hashCode =>
-      name.hashCode ^
-      count.hashCode ^
-      isNsfw.hashCode ^
-      iconUrl.hashCode ^
-      isVerified.hashCode;
+  int get hashCode => Object.hash(name, count, isNsfw, iconUrl, isVerified);
 
   @override
   String toString() =>
