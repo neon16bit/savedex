@@ -196,8 +196,9 @@ class CollectionPickerSheet extends ConsumerWidget {
                                             ?.copyWith(
                                               color:
                                                   colorScheme.onSurfaceVariant,
+                                              height: 1.3,
                                             ),
-                                        maxLines: 1,
+                                        maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ],

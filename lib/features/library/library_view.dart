@@ -86,23 +86,29 @@ class _LibraryViewState extends ConsumerState<LibraryView>
         bottom: TabBar(
           controller: _tabController,
           indicatorSize: TabBarIndicatorSize.tab,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+          labelStyle: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
           tabs: [
             _TabTitleWithCount(
               tabIndex: 0,
               label: 'Collections',
-              icon: Icons.bookmark_rounded,
               isVisited: _visitedSubTabs.contains(0),
             ),
             _TabTitleWithCount(
               tabIndex: 1,
               label: 'Subreddits',
-              icon: Icons.tag_rounded,
               isVisited: _visitedSubTabs.contains(1),
             ),
             _TabTitleWithCount(
               tabIndex: 2,
               label: 'Users',
-              icon: Icons.person_rounded,
               isVisited: _visitedSubTabs.contains(2),
             ),
           ],
@@ -129,13 +135,11 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 class _TabTitleWithCount extends ConsumerWidget {
   final int tabIndex;
   final String label;
-  final IconData icon;
   final bool isVisited;
 
   const _TabTitleWithCount({
     required this.tabIndex,
     required this.label,
-    required this.icon,
     required this.isVisited,
   });
 
@@ -160,16 +164,7 @@ class _TabTitleWithCount extends ConsumerWidget {
       }
     }
 
-    return Tab(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 6),
-          Flexible(child: Text(text, overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
+    return Tab(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis));
   }
 }
 
@@ -287,148 +282,150 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
         }
 
         return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 104),
+          padding: const EdgeInsets.only(top: 6, bottom: 104),
           itemCount: collections.length,
-          separatorBuilder: (context, _) => const SizedBox(height: 10),
+          separatorBuilder: (context, _) => Divider(
+            height: 1,
+            indent: 68,
+            endIndent: 14,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          ),
           itemBuilder: (context, index) {
             final col = collections[index];
             final colColor = Color(col.colorValue);
+            final hasDescription =
+                col.description != null && col.description!.trim().isNotEmpty;
 
-            return Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-                  width: 0.8,
-                ),
-              ),
-              color: colorScheme.surfaceContainerLowest,
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (ctx) =>
-                          ScopedFeedView(args: ScopedFeedArgs.collection(col)),
-                    ),
-                  );
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: colColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colColor.withValues(alpha: 0.35),
-                            width: 0.8,
-                          ),
+            return InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (ctx) =>
+                        ScopedFeedView(args: ScopedFeedArgs.collection(col)),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  crossAxisAlignment: hasDescription
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      margin: EdgeInsets.only(top: hasDescription ? 2 : 0),
+                      decoration: BoxDecoration(
+                        color: colColor.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: colColor.withValues(alpha: 0.45),
+                          width: 1.5,
                         ),
+                      ),
+                      child: Center(
                         child: Icon(
                           Icons.bookmark_rounded,
                           color: colColor,
-                          size: 22,
+                          size: 18,
                         ),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              col.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            if (col.description != null &&
-                                col.description!.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                col.description!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  col.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ],
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2.5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHigh,
-                                borderRadius: BorderRadius.circular(100),
-                              ),
-                              child: Text(
-                                '${col.itemCount} ${col.itemCount == 1 ? 'saved item' : 'saved items'}',
+                              const SizedBox(width: 6),
+                              Text(
+                                '• ${col.itemCount} saved',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                   color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                            ],
+                          ),
+                          if (hasDescription) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              col.description!.trim(),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                height: 1.35,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ],
-                        ),
-                      ),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert_rounded),
-                        tooltip: 'Collection options',
-                        onSelected: (val) {
-                          if (val == 'edit') {
-                            showCollectionFormDialog(
-                              context,
-                              initialCollection: col,
-                            );
-                          } else if (val == 'delete') {
-                            _deleteCollection(context, col);
-                          }
-                        },
-                        itemBuilder: (ctx) => [
-                          const PopupMenuItem(
-                            value: 'edit',
-                            child: Row(
-                              children: [
-                                Icon(Icons.edit_note_rounded, size: 20),
-                                SizedBox(width: 10),
-                                Text('Edit Collection'),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.delete_outline_rounded,
-                                  size: 20,
-                                  color: colorScheme.error,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  'Delete Collection',
-                                  style: TextStyle(color: colorScheme.error),
-                                ),
-                              ],
-                            ),
-                          ),
                         ],
                       ),
-                    ],
-                  ),
+                    ),
+                    PopupMenuButton<String>(
+                      icon: Icon(
+                        Icons.more_vert_rounded,
+                        size: 20,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      tooltip: 'Collection options',
+                      onSelected: (val) {
+                        if (val == 'edit') {
+                          showCollectionFormDialog(
+                            context,
+                            initialCollection: col,
+                          );
+                        } else if (val == 'delete') {
+                          _deleteCollection(context, col);
+                        }
+                      },
+                      itemBuilder: (ctx) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_note_rounded, size: 20),
+                              SizedBox(width: 10),
+                              Text('Edit Collection'),
+                            ],
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                size: 20,
+                                color: colorScheme.error,
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Delete Collection',
+                                style: TextStyle(color: colorScheme.error),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             );

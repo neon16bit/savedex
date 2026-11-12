@@ -195,11 +195,16 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
             const SizedBox(height: 14),
             TextField(
               controller: _descController,
+              minLines: 2,
+              maxLines: 4,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
                 labelText: 'Description (optional)',
+                alignLabelWithHint: true,
                 border: OutlineInputBorder(),
               ),
-              onSubmitted: (_) => _save(),
             ),
             const SizedBox(height: 16),
             Text(
