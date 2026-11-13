@@ -177,9 +177,43 @@ class SavedItem {
   }
 
   static String normalizeSubredditKey(String subreddit) {
-    final s = subreddit.trim().toLowerCase();
+    var s = subreddit.trim().toLowerCase();
+    if (s.startsWith('/')) s = s.substring(1).trim();
     if (s.startsWith('u/')) return 'u_${s.substring(2)}';
     if (s.startsWith('r/')) return s.substring(2);
+    return s;
+  }
+
+  // normalizes subreddit string for DB storage while preserving display casing
+  static String normalizeSubredditForStorage(String? subreddit) {
+    if (subreddit == null) return 'reddit';
+    var s = subreddit.trim();
+    if (s.startsWith('/')) s = s.substring(1).trim();
+    if (s.isEmpty) return 'reddit';
+    if (s.startsWith('u/') || s.startsWith('U/')) {
+      final rest = s.substring(2).trim();
+      return rest.isEmpty ? 'reddit' : 'u_$rest';
+    }
+    if (s.startsWith('r/') || s.startsWith('R/')) {
+      final rest = s.substring(2).trim();
+      return rest.isEmpty ? 'reddit' : rest;
+    }
+    return s;
+  }
+
+  // normalizes username for DB
+  static String? normalizeAuthorForStorage(String? author) {
+    if (author == null) return null;
+    var s = author.trim();
+    if (s.startsWith('/')) s = s.substring(1).trim();
+    if (s.isEmpty) return null;
+    if (s.startsWith('u/') ||
+        s.startsWith('U/') ||
+        s.startsWith('r/') ||
+        s.startsWith('R/')) {
+      s = s.substring(2).trim();
+      if (s.isEmpty) return null;
+    }
     return s;
   }
 
@@ -760,4 +794,14 @@ class PagedRows<T> {
     required this.nextCursor,
     required this.hasMore,
   });
+}
+
+enum SubredditSortOption {
+  mostSaved('Most Saved'),
+  leastSaved('Least Saved'),
+  alphabeticalAZ('A → Z'),
+  alphabeticalZA('Z → A');
+
+  final String label;
+  const SubredditSortOption(this.label);
 }

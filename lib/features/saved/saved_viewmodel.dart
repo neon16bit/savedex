@@ -150,12 +150,14 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       return state.value ?? const SavedFeedState();
     }
 
-    _loadTotalCountInBackground(effectiveFilter, currentGen);
+    if (page.hasMore) {
+      _loadTotalCountInBackground(effectiveFilter, currentGen);
+    }
 
     return SavedFeedState(
       items: page.items,
       nextCursor: page.nextCursor,
-      totalCount: 0,
+      totalCount: page.hasMore ? 0 : page.items.length,
       hasMore: page.hasMore,
       isLoadingMore: false,
     );

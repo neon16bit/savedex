@@ -99,6 +99,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
   late final TextEditingController _librarySearchController;
   late final FocusNode _librarySearchFocusNode;
   Timer? _debounceTimer;
+  Timer? _libraryDebounceTimer;
   bool _morphFromFilter = false;
 
   @override
@@ -119,6 +120,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _libraryDebounceTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.removeListener(_onSearchFocusChanged);
     _searchFocusNode.dispose();
@@ -146,6 +148,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
   }
 
   void _closeLibrarySearch() {
+    _libraryDebounceTimer?.cancel();
     if (ref.read(isLibrarySearchExpandedProvider)) {
       ref.read(isLibrarySearchExpandedProvider.notifier).setExpanded(false);
       return;
@@ -318,10 +321,21 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
             ),
             onChanged: isLibraryMode
                 ? (val) {
+                    _libraryDebounceTimer?.cancel();
                     final queryProvider = librarySubTab == 2
                         ? userSearchQueryProvider
                         : subredditSearchQueryProvider;
-                    ref.read(queryProvider.notifier).setQuery(val);
+                    if (val.trim().isEmpty) {
+                      ref.read(queryProvider.notifier).clear();
+                      return;
+                    }
+                    _libraryDebounceTimer = Timer(
+                      const Duration(milliseconds: 250),
+                      () {
+                        if (!mounted) return;
+                        ref.read(queryProvider.notifier).setQuery(val);
+                      },
+                    );
                   }
                 : (val) {
                     if (val.trim().isNotEmpty) {
@@ -341,6 +355,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                   },
             onSubmitted: isLibraryMode
                 ? (val) {
+                    _libraryDebounceTimer?.cancel();
                     final queryProvider = librarySubTab == 2
                         ? userSearchQueryProvider
                         : subredditSearchQueryProvider;
@@ -504,6 +519,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
           _librarySearchController.text = currentQuery;
         }
       } else if (!next && prev == true) {
+        _libraryDebounceTimer?.cancel();
         _dismissKeyboard();
         if (_librarySearchController.text.isNotEmpty) {
           _librarySearchController.clear();
@@ -517,6 +533,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       if (ref.read(librarySubTabProvider) == 1 &&
           next.isEmpty &&
           _librarySearchController.text.isNotEmpty) {
+        _libraryDebounceTimer?.cancel();
         _librarySearchController.clear();
       }
     });
@@ -524,6 +541,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       if (ref.read(librarySubTabProvider) == 2 &&
           next.isEmpty &&
           _librarySearchController.text.isNotEmpty) {
+        _libraryDebounceTimer?.cancel();
         _librarySearchController.clear();
       }
     });

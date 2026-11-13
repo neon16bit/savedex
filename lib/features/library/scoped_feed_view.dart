@@ -131,6 +131,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   List<SavedItem> _items = [];
   FeedCursor? _nextCursor;
   int _totalCount = 0;
+  bool _isTotalCountPending = false;
   bool _hasMore = true;
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -308,17 +309,30 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
     try {
       final repo = ref.read(savedItemRepositoryProvider);
-      final db = ref.read(databaseProvider);
       final filter = _buildFilter();
 
-      final results = await Future.wait([
-        repo.getSavedItemsPage(filter: filter, cursor: null, limit: _pageSize),
-        db.countFilteredSavedItems(filter),
-      ]);
+      final page = await repo.getSavedItemsPage(
+        filter: filter,
+        cursor: null,
+        limit: _pageSize,
+      );
 
       if (!mounted || currentGen != _generation) return;
-      final page = results[0] as PagedRows<SavedItem>;
-      final count = results[1] as int;
+
+      final knownCollectionCount =
+          widget.args.isCollection && !_scopedFilter.hasActiveFilters
+          ? widget.args.collection!.itemCount
+          : 0;
+      final useOptimisticCollectionCount =
+          page.hasMore &&
+          showFullScreenLoader &&
+          knownCollectionCount >= page.items.length;
+      final initialCount = !page.hasMore
+          ? page.items.length
+          : (useOptimisticCollectionCount
+                ? knownCollectionCount
+                : page.items.length);
+      final countPending = page.hasMore && !useOptimisticCollectionCount;
 
       final shouldResetEpoch =
           resetScroll &&
@@ -328,7 +342,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       setState(() {
         _items = page.items;
         _nextCursor = page.nextCursor;
-        _totalCount = count;
+        _totalCount = initialCount;
+        _isTotalCountPending = countPending;
         _hasMore = page.hasMore;
         _isLoading = false;
         _isLoadingMore = false;
@@ -337,6 +352,10 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
           _sliverResetEpoch++;
         }
       });
+
+      if (page.hasMore) {
+        _refreshTotalCountInBackground(filter, currentGen);
+      }
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || currentGen != _generation) return;
@@ -357,9 +376,32 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       if (!mounted || currentGen != _generation) return;
       setState(() {
         _isLoading = false;
+        _isTotalCountPending = false;
         _errorMessage = e.toString();
       });
     }
+  }
+
+  void _refreshTotalCountInBackground(FilterCriteria filter, int targetGen) {
+    unawaited(() async {
+      try {
+        final db = ref.read(databaseProvider);
+        final count = await db.countFilteredSavedItems(filter);
+        if (!mounted || targetGen != _generation) return;
+        setState(() {
+          _totalCount = count;
+          _isTotalCountPending = false;
+          _hasMore = _items.length < count;
+        });
+      } catch (_) {
+        if (!mounted || targetGen != _generation) return;
+        if (_isTotalCountPending) {
+          setState(() {
+            _isTotalCountPending = false;
+          });
+        }
+      }
+    }());
   }
 
   Future<void> _reloadInBackground() async {
@@ -368,30 +410,30 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
     try {
       final repo = ref.read(savedItemRepositoryProvider);
-      final db = ref.read(databaseProvider);
       final filter = _buildFilter();
 
       final targetLimit = _items.length <= _pageSize
           ? _pageSize
           : _items.length;
 
-      final results = await Future.wait([
-        repo.getSavedItemsPage(
-          filter: filter,
-          cursor: null,
-          limit: targetLimit,
-        ),
-        db.countFilteredSavedItems(filter),
-      ]);
+      final page = await repo.getSavedItemsPage(
+        filter: filter,
+        cursor: null,
+        limit: targetLimit,
+      );
+      if (!mounted || currentGen != _generation || _isLoading) return;
+
+      final count = page.hasMore
+          ? await ref.read(databaseProvider).countFilteredSavedItems(filter)
+          : page.items.length;
 
       if (!mounted || currentGen != _generation || _isLoading) return;
-      final page = results[0] as PagedRows<SavedItem>;
-      final count = results[1] as int;
 
       setState(() {
         _items = page.items;
         _nextCursor = page.nextCursor;
         _totalCount = count;
+        _isTotalCountPending = false;
         _hasMore = page.items.length < count;
       });
     } catch (_) {
@@ -1131,6 +1173,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                 Text(
                   _isLoading && _items.isEmpty
                       ? 'Loading...'
+                      : _isTotalCountPending
+                      ? '$_totalCount+ saved items'
                       : '$_totalCount saved ${_totalCount == 1 ? 'item' : 'items'}',
                   style: TextStyle(
                     fontSize: 12,

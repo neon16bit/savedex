@@ -549,8 +549,8 @@ class BackupExportService {
                 : null,
           ),
           title: Value(title.isNotEmpty ? title : 'Untitled Post'),
-          subreddit: Value(subreddit.isNotEmpty ? subreddit : 'reddit'),
-          author: Value(author != null && author.isNotEmpty ? author : null),
+          subreddit: Value(SavedItem.normalizeSubredditForStorage(subreddit)),
+          author: Value(SavedItem.normalizeAuthorForStorage(author)),
           body: Value(body != null && body.isNotEmpty ? body : null),
           url: Value(url != null && url.isNotEmpty ? url : null),
           thumbnailUrl: Value(
@@ -781,8 +781,12 @@ class BackupExportService {
       parentPostId: Value(map['parentPostId'] as String?),
       parentPostTitle: Value(map['parentPostTitle'] as String?),
       title: Value((map['title'] as String?) ?? 'Untitled Post'),
-      subreddit: Value((map['subreddit'] as String?) ?? 'reddit'),
-      author: Value(map['author'] as String?),
+      subreddit: Value(
+        SavedItem.normalizeSubredditForStorage(map['subreddit'] as String?),
+      ),
+      author: Value(
+        SavedItem.normalizeAuthorForStorage(map['author'] as String?),
+      ),
       body: Value(map['body'] as String?),
       url: Value(map['url'] as String?),
       thumbnailUrl: Value(map['thumbnailUrl'] as String?),

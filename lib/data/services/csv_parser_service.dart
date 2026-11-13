@@ -7,6 +7,7 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/csv_helper.dart';
 import 'package:savedex/core/utils/permalink_parser.dart';
 import 'package:savedex/data/database/database.dart';
+import 'package:savedex/data/models/saved_item_model.dart';
 
 class CsvParseResult {
   final List<SavedItemsTableCompanion> items;
@@ -112,7 +113,9 @@ class CsvParserService {
             parsed.isComment ? parsed.extractedTitle : null,
           ),
           title: Value(parsed.extractedTitle),
-          subreddit: Value(parsed.subreddit ?? 'reddit'),
+          subreddit: Value(
+            SavedItem.normalizeSubredditForStorage(parsed.subreddit),
+          ),
           mediaType: Value(mediaType),
           csvSource: Value(sourceName),
           importOrder: Value(orderCounter++),

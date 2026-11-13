@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/data/database/database.dart';
+import 'package:savedex/data/models/saved_item_model.dart';
 
 typedef GalleryMedia = ({List<String> images, List<String> previews});
 
@@ -105,8 +106,8 @@ class EnrichedRedditData {
       title: Value(
         title ?? (itemType == ItemType.comment ? 'Comment' : 'Untitled Post'),
       ),
-      subreddit: Value(subreddit),
-      author: Value(author),
+      subreddit: Value(SavedItem.normalizeSubredditForStorage(subreddit)),
+      author: Value(SavedItem.normalizeAuthorForStorage(author)),
       body: Value(body),
       url: Value(url),
       thumbnailUrl: Value(thumbnailUrl),

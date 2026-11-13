@@ -67,7 +67,7 @@ class CollectionRepository {
       return existing.id;
     }
 
-    return await _db
+    final id = await _db
         .into(_db.collectionsTable)
         .insert(
           CollectionsTableCompanion.insert(
@@ -78,6 +78,8 @@ class CollectionRepository {
           ),
           mode: InsertMode.insertOrIgnore,
         );
+    _db.invalidateCollectionsCache();
+    return id;
   }
 
   Future<void> updateCollection(
@@ -95,12 +97,14 @@ class CollectionRepository {
         colorValue: Value(colorValue),
       ),
     );
+    _db.invalidateCollectionsCache();
   }
 
   Future<void> deleteCollection(int id) async {
     await (_db.delete(
       _db.collectionsTable,
     )..where((t) => t.id.equals(id))).go();
+    _db.invalidateCollectionsCache();
   }
 
   Future<void> addToCollection(String itemId, int collectionId) async {

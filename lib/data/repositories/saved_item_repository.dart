@@ -90,22 +90,11 @@ class SavedItemRepository {
     required FilterCriteria filter,
     FeedCursor? cursor,
     int limit = 100,
-  }) async {
-    final page = await db.getSavedItemsKeysetPage(
+  }) {
+    return db.getSavedItemsPageWithCollections(
       filter: filter,
       cursor: cursor,
       limit: limit,
-    );
-
-    if (page.items.isEmpty) {
-      return const PagedRows(items: [], nextCursor: null, hasMore: false);
-    }
-
-    final items = await _attachCollectionsToEntries(page.items);
-    return PagedRows(
-      items: items,
-      nextCursor: page.nextCursor,
-      hasMore: page.hasMore,
     );
   }
 
@@ -465,6 +454,7 @@ class SavedItemRepository {
     int newCount = 0;
     int updatedCount = 0;
     int skippedCount = 0;
+    int restoredLinkCount = 0;
     int processed = 0;
 
     const chunkSize = 200;
@@ -524,7 +514,7 @@ class SavedItemRepository {
                 ? companion.body.value
                 : null;
             final companionAuthor = companion.author.present
-                ? companion.author.value
+                ? SavedItem.normalizeAuthorForStorage(companion.author.value)
                 : null;
             final companionMediaUrl = companion.mediaUrl.present
                 ? companion.mediaUrl.value
@@ -704,7 +694,7 @@ class SavedItemRepository {
         }
 
         if (toUpsert.isNotEmpty) {
-          await db.upsertBatch(toUpsert);
+          await db.upsertBatch(toUpsert, runAnalyze: false);
           if (newCount > 0) {
             _subredditsCheckedForDataset = false;
           }
@@ -753,6 +743,7 @@ class SavedItemRepository {
             }
           }
         }
+        db.invalidateCollectionsCache();
 
         final linkCompanions = <ItemCollectionsTableCompanion>[];
         for (final entry in payload.itemCollections.entries) {
@@ -771,6 +762,7 @@ class SavedItemRepository {
         }
 
         if (linkCompanions.isNotEmpty) {
+          restoredLinkCount = linkCompanions.length;
           const linkChunkSize = 200;
           for (var i = 0; i < linkCompanions.length; i += linkChunkSize) {
             final chunk = linkCompanions.sublist(
@@ -817,6 +809,10 @@ class SavedItemRepository {
         if (toUpsert.isNotEmpty) {
           await db.upsertSubredditsBatch(toUpsert);
         }
+      }
+
+      if ((newCount + updatedCount) >= 200 || restoredLinkCount >= 100) {
+        await db.runAnalyzeIfNonEmpty();
       }
     });
 
@@ -878,11 +874,16 @@ class SavedItemRepository {
         result.items,
         totalFound: result.totalRows,
         sourceName: result.sourceName,
+        runAnalyze: false,
       );
       totalFound += summary.totalFound;
       newImported += summary.newItemsImported;
       updated += summary.updatedItems;
       skipped += summary.skippedItems;
+    }
+
+    if ((newImported + updated) >= 200) {
+      await db.runAnalyzeIfNonEmpty();
     }
 
     final totalInDb = await getTotalCount();
@@ -903,6 +904,7 @@ class SavedItemRepository {
     required int totalFound,
     required String sourceName,
     bool reconcileOrder = false,
+    bool runAnalyze = true,
   }) async {
     final stopwatch = Stopwatch()..start();
     if (companions.isEmpty) {
@@ -1098,6 +1100,8 @@ class SavedItemRepository {
             needsSubredditTypeUpdate ||
             needsOrderReconciliation) {
           updatedCount++;
+          final normalizedExistingAuthor =
+              SavedItem.normalizeAuthorForStorage(existing.author);
           // preserve user modifications and flags
           toUpsert.add(
             companion.copyWith(
@@ -1149,12 +1153,15 @@ class SavedItemRepository {
                         ? companion.isNsfw
                         : const Value(false)),
               author:
-                  (existing.author != null &&
-                      existing.author!.isNotEmpty &&
-                      !SavedItem.isRemovedMarker(existing.author))
-                  ? Value(existing.author)
+                  (normalizedExistingAuthor != null &&
+                      !SavedItem.isRemovedMarker(normalizedExistingAuthor))
+                  ? Value(normalizedExistingAuthor)
                   : (companion.author.present
-                        ? companion.author
+                        ? Value(
+                            SavedItem.normalizeAuthorForStorage(
+                              companion.author.value,
+                            ),
+                          )
                         : const Value.absent()),
               body: needsBodyUpdate
                   ? Value(companionBody)
@@ -1199,7 +1206,7 @@ class SavedItemRepository {
     }
 
     if (toUpsert.isNotEmpty) {
-      await db.upsertBatch(toUpsert);
+      await db.upsertBatch(toUpsert, runAnalyze: runAnalyze);
       if (newCount > 0) {
         _subredditsCheckedForDataset = false;
       }
@@ -1547,43 +1554,55 @@ class SavedItemRepository {
   Future<int> _writeRecoveredMetadata(
     SavedItem current,
     EnrichedRedditData meta,
-  ) {
-    return (db.update(
-      db.savedItemsTable,
-    )..where((t) => t.id.equals(current.id))).write(
-      SavedItemsTableCompanion(
-        title: Value(meta.title ?? current.title),
-        parentPostTitle: Value(meta.parentPostTitle ?? current.parentPostTitle),
-        parentPostId: Value(meta.parentPostId ?? current.parentPostId),
-        author: Value(meta.author ?? current.author),
-        body: Value(meta.body ?? current.body),
-        url: Value(meta.url ?? current.url),
-        thumbnailUrl: Value(meta.thumbnailUrl ?? current.thumbnailUrl),
-        mediaUrl: Value(meta.mediaUrl ?? current.mediaUrl),
-        galleryImages: Value(
-          meta.galleryImages.isEmpty
-              ? current.galleryImagesJson
-              : meta.galleryImagesJson,
-        ),
-        galleryPreviewImages: Value(
-          meta.galleryPreviewImages.isEmpty
-              ? current.galleryPreviewImagesJson
-              : meta.galleryPreviewImagesJson,
-        ),
-        mediaType: Value(
-          meta.mediaType != MediaType.text ? meta.mediaType : current.mediaType,
-        ),
-        score: Value(meta.score),
-        numComments: Value(meta.numComments),
-        isNsfw: Value(meta.isNsfw),
-        postFlair: Value(meta.postFlair ?? current.postFlair),
-        subredditType: Value(meta.subredditType),
-        createdAtUtc: Value(meta.createdAtUtc ?? current.createdAtUtc),
-        enrichmentStatus: const Value(EnrichmentStatus.enriched),
-        isArchiveRecovered: const Value(true),
-        isArchiveUnavailable: const Value(false),
-      ),
-    );
+  ) async {
+    final prevAuthor = SavedItem.normalizeAuthorForStorage(current.author);
+    final nextAuthor =
+        SavedItem.normalizeAuthorForStorage(meta.author) ?? prevAuthor;
+    final rows =
+        await (db.update(
+          db.savedItemsTable,
+        )..where((t) => t.id.equals(current.id))).write(
+          SavedItemsTableCompanion(
+            title: Value(meta.title ?? current.title),
+            parentPostTitle: Value(
+              meta.parentPostTitle ?? current.parentPostTitle,
+            ),
+            parentPostId: Value(meta.parentPostId ?? current.parentPostId),
+            author: Value(nextAuthor),
+            body: Value(meta.body ?? current.body),
+            url: Value(meta.url ?? current.url),
+            thumbnailUrl: Value(meta.thumbnailUrl ?? current.thumbnailUrl),
+            mediaUrl: Value(meta.mediaUrl ?? current.mediaUrl),
+            galleryImages: Value(
+              meta.galleryImages.isEmpty
+                  ? current.galleryImagesJson
+                  : meta.galleryImagesJson,
+            ),
+            galleryPreviewImages: Value(
+              meta.galleryPreviewImages.isEmpty
+                  ? current.galleryPreviewImagesJson
+                  : meta.galleryPreviewImagesJson,
+            ),
+            mediaType: Value(
+              meta.mediaType != MediaType.text
+                  ? meta.mediaType
+                  : current.mediaType,
+            ),
+            score: Value(meta.score),
+            numComments: Value(meta.numComments),
+            isNsfw: Value(meta.isNsfw),
+            postFlair: Value(meta.postFlair ?? current.postFlair),
+            subredditType: Value(meta.subredditType),
+            createdAtUtc: Value(meta.createdAtUtc ?? current.createdAtUtc),
+            enrichmentStatus: const Value(EnrichmentStatus.enriched),
+            isArchiveRecovered: const Value(true),
+            isArchiveUnavailable: const Value(false),
+          ),
+        );
+    if (rows > 0 && nextAuthor?.toLowerCase() != prevAuthor?.toLowerCase()) {
+      db.notifyAuthorItemsChanged();
+    }
+    return rows;
   }
 
   Future<({bool success, String? error, bool willRetry})> _executeEnrichItem(
@@ -1633,8 +1652,11 @@ class SavedItemRepository {
 
       _rateLimitRetries.remove(item.id);
 
+      final prevAuthor = SavedItem.normalizeAuthorForStorage(item.author);
+      final nextAuthor =
+          SavedItem.normalizeAuthorForStorage(meta.author) ?? prevAuthor;
       final refreshedHasRemovedContent = _hasRemovedContent(
-        meta.author,
+        nextAuthor,
         meta.body,
         meta.title,
       );
@@ -1645,7 +1667,7 @@ class SavedItemRepository {
           title: Value(meta.title ?? item.title),
           parentPostTitle: Value(meta.parentPostTitle ?? item.parentPostTitle),
           parentPostId: Value(meta.parentPostId ?? item.parentPostId),
-          author: Value(meta.author ?? item.author),
+          author: Value(nextAuthor),
           body: Value(meta.body ?? item.body),
           url: Value(meta.url ?? item.url),
           thumbnailUrl: Value(meta.thumbnailUrl ?? item.thumbnailUrl),
@@ -1674,6 +1696,9 @@ class SavedItemRepository {
           isArchiveUnavailable: const Value(false),
         ),
       );
+      if (nextAuthor?.toLowerCase() != prevAuthor?.toLowerCase()) {
+        db.notifyAuthorItemsChanged();
+      }
       return (success: true, error: null, willRetry: false);
     } catch (e) {
       _rateLimitRetries.remove(item.id);
@@ -1741,11 +1766,39 @@ class SavedItemRepository {
   Future<List<SubredditInfo>> getSubredditsWithCounts() =>
       db.getSubredditsWithCounts();
 
+  Future<PagedRows<SubredditInfo>> getSubredditsPage({
+    String query = '',
+    SubredditSortOption sort = SubredditSortOption.mostSaved,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) => db.getSubredditsPage(
+    query: query,
+    sort: sort,
+    cursor: cursor,
+    limit: limit,
+  );
+
   Stream<List<SubredditInfo>> watchSubredditsWithCounts() =>
       db.watchSubredditsWithCounts();
 
+  Stream<int> watchSubredditCount() => db.watchSubredditCount();
+
+  Future<PagedRows<AuthorInfo>> getAuthorsPage({
+    String query = '',
+    SubredditSortOption sort = SubredditSortOption.mostSaved,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) =>
+      db.getAuthorsPage(query: query, sort: sort, cursor: cursor, limit: limit);
+
   Stream<List<AuthorInfo>> watchAuthorsWithCounts() =>
       db.watchAuthorsWithCounts();
+
+  Stream<int> watchAuthorCount() => db.watchAuthorCount();
+
+  Future<Map<String, SubredditEntry>> getSubredditsByNames(
+    Iterable<String> names,
+  ) => db.getSubredditsByNames(names);
 
   final Set<String> _inFlightSubredditEnrichments = {};
   final Set<String> _attemptedSubredditEnrichments = {};
@@ -1764,7 +1817,7 @@ class SavedItemRepository {
 
   bool isAuthorFailing(String name) {
     final clean = name.trim().toLowerCase().replaceFirst(
-      RegExp(r'^(?:[ru]/|u_)'),
+      RegExp(r'^/?[ru]/'),
       '',
     );
     return _failedSubredditEnrichments.contains('u_$clean');
@@ -1848,8 +1901,7 @@ class SavedItemRepository {
   }) {
     final keys = authors
         .map(
-          (a) =>
-              a.trim().toLowerCase().replaceFirst(RegExp(r'^(?:[ru]/|u_)'), ''),
+          (a) => a.trim().toLowerCase().replaceFirst(RegExp(r'^/?[ru]/'), ''),
         )
         .where((a) => a.isNotEmpty && !SavedItem.isRemovedMarker(a))
         .map((a) => 'u_$a')
@@ -1881,7 +1933,7 @@ class SavedItemRepository {
 
     if (keys.isEmpty) return;
 
-    final cached = await db.getAllSubredditsMap();
+    final cached = await db.getSubredditsByNames(keys);
     final toFetch = <String>[];
     for (final k in keys) {
       if (_inFlightSubredditEnrichments.contains(k)) continue;
@@ -1911,7 +1963,7 @@ class SavedItemRepository {
     final pendingBatch = <SubredditsTableCompanion>[];
     var batchHasNsfw = false;
     var consecutiveBatchFailures = 0;
-    const int flushBatchSize = 40;
+    const int flushBatchSize = 60;
 
     try {
       for (var i = 0; i < toFetch.length; i++) {

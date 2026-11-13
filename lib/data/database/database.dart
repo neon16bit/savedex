@@ -56,13 +56,97 @@ class AppDatabase extends _$AppDatabase {
           rawDb.execute('PRAGMA temp_store = MEMORY;');
           rawDb.execute('PRAGMA foreign_keys = ON;');
           rawDb.execute('PRAGMA busy_timeout = 5000;');
+          rawDb.execute('PRAGMA analysis_limit = 1000;');
         },
       );
     });
   }
 
+  bool _dbOpened = false;
+  int _collectionsCacheEpoch = 0;
+  Map<int, Collection>? _collectionsByIdCache;
+  StreamSubscription<Set<TableUpdate>>? _collectionsCacheSub;
+
+  void invalidateCollectionsCache() {
+    _collectionsCacheEpoch++;
+    _collectionsByIdCache = null;
+  }
+
+  Future<Map<int, Collection>> _getCollectionsByIdMap() async {
+    final cached = _collectionsByIdCache;
+    if (cached != null) return cached;
+
+    late Map<int, Collection> map;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final epoch = _collectionsCacheEpoch;
+      final entries = await select(collectionsTable).get();
+      map = <int, Collection>{
+        for (final e in entries)
+          e.id: Collection(
+            id: e.id,
+            name: e.name,
+            description: e.description,
+            colorValue: e.colorValue,
+            createdAtUtc: e.createdAtUtc,
+          ),
+      };
+      if (epoch == _collectionsCacheEpoch) {
+        _collectionsByIdCache = map;
+        return map;
+      }
+    }
+    return map;
+  }
+
+  Future<void> runAnalyzeIfNonEmpty() async {
+    try {
+      final hasRows = await customSelect(
+        'SELECT 1 FROM saved_items_table LIMIT 1',
+      ).getSingleOrNull();
+      if (hasRows == null) return;
+      await customStatement('PRAGMA analysis_limit = 1000;');
+      await customStatement('ANALYZE;');
+    } catch (e) {
+      debugPrint('[Database] Analyze note: $e');
+    }
+  }
+
+  final StreamController<void> _subredditMetadataChanges =
+      StreamController<void>.broadcast();
+  final StreamController<void> _authorMetadataChanges =
+      StreamController<void>.broadcast();
+  final StreamController<void> _authorItemsChanged =
+      StreamController<void>.broadcast();
+
+  Stream<void> get subredditMetadataChanges => _subredditMetadataChanges.stream;
+  Stream<void> get authorMetadataChanges => _authorMetadataChanges.stream;
+  Stream<void> get authorItemsChanged => _authorItemsChanged.stream;
+
+  void notifyAuthorItemsChanged() {
+    if (!_authorItemsChanged.isClosed) {
+      _authorItemsChanged.add(null);
+    }
+  }
+
   @override
-  int get schemaVersion => 13;
+  Future<void> close() async {
+    await _collectionsCacheSub?.cancel();
+    _collectionsCacheSub = null;
+    invalidateCollectionsCache();
+    if (_dbOpened) {
+      try {
+        await customStatement('PRAGMA analysis_limit = 1000;');
+        await customStatement('PRAGMA optimize;');
+      } catch (_) {}
+    }
+    await _subredditMetadataChanges.close();
+    await _authorMetadataChanges.close();
+    await _authorItemsChanged.close();
+    await super.close();
+  }
+
+  @override
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -135,8 +219,65 @@ class AppDatabase extends _$AppDatabase {
           'DROP INDEX IF EXISTS idx_saved_archive_recovery;',
         );
       }
+      if (from < 14) {
+        await customStatement('''
+          UPDATE saved_items_table
+          SET subreddit = CASE
+            WHEN SUBSTR(TRIM(subreddit), 1, 2) COLLATE NOCASE = 'u/' THEN
+              CASE
+                WHEN LENGTH(TRIM(SUBSTR(TRIM(subreddit), 3))) > 0
+                  THEN 'u_' || TRIM(SUBSTR(TRIM(subreddit), 3))
+                ELSE 'reddit'
+              END
+            WHEN SUBSTR(TRIM(subreddit), 1, 3) COLLATE NOCASE = '/u/' THEN
+              CASE
+                WHEN LENGTH(TRIM(SUBSTR(TRIM(subreddit), 4))) > 0
+                  THEN 'u_' || TRIM(SUBSTR(TRIM(subreddit), 4))
+                ELSE 'reddit'
+              END
+            WHEN SUBSTR(TRIM(subreddit), 1, 2) COLLATE NOCASE = 'r/' THEN
+              COALESCE(NULLIF(TRIM(SUBSTR(TRIM(subreddit), 3)), ''), 'reddit')
+            WHEN SUBSTR(TRIM(subreddit), 1, 3) COLLATE NOCASE = '/r/' THEN
+              COALESCE(NULLIF(TRIM(SUBSTR(TRIM(subreddit), 4)), ''), 'reddit')
+            ELSE COALESCE(NULLIF(TRIM(subreddit), ''), 'reddit')
+          END
+          WHERE subreddit != TRIM(subreddit)
+             OR SUBSTR(TRIM(subreddit), 1, 2) COLLATE NOCASE IN ('u/', 'r/')
+             OR SUBSTR(TRIM(subreddit), 1, 3) COLLATE NOCASE IN ('/u/', '/r/')
+             OR TRIM(subreddit) = '';
+        ''');
+        await customStatement('''
+          UPDATE saved_items_table
+          SET author = NULLIF(
+            TRIM(
+              CASE
+                WHEN SUBSTR(TRIM(author), 1, 2) COLLATE NOCASE IN ('u/', 'r/')
+                  THEN TRIM(SUBSTR(TRIM(author), 3))
+                WHEN SUBSTR(TRIM(author), 1, 3) COLLATE NOCASE IN ('/u/', '/r/')
+                  THEN TRIM(SUBSTR(TRIM(author), 4))
+                ELSE TRIM(author)
+              END
+            ),
+            ''
+          )
+          WHERE author IS NOT NULL
+            AND (
+              author = ''
+              OR author != TRIM(author)
+              OR SUBSTR(TRIM(author), 1, 2) COLLATE NOCASE IN ('u/', 'r/')
+              OR SUBSTR(TRIM(author), 1, 3) COLLATE NOCASE IN ('/u/', '/r/')
+            );
+        ''');
+      }
       await _createIndexes(this);
+      await runAnalyzeIfNonEmpty();
       _ftsInitFuture = Future.value();
+    },
+    beforeOpen: (details) async {
+      _dbOpened = true;
+      _collectionsCacheSub ??= tableUpdates(
+        TableUpdateQuery.onAllTables([collectionsTable]),
+      ).listen((_) => invalidateCollectionsCache());
     },
   );
 
@@ -205,6 +346,17 @@ class AppDatabase extends _$AppDatabase {
         CREATE INDEX IF NOT EXISTS idx_saved_archive_recovery
         ON saved_items_table (import_order ASC)
         WHERE is_archive_recovered = 0 AND is_archive_unavailable = 0;
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_sub_counts
+        ON saved_items_table (subreddit COLLATE NOCASE, is_nsfw);
+      ''');
+      await db.customStatement('''
+        CREATE INDEX IF NOT EXISTS idx_saved_author_counts
+        ON saved_items_table (author COLLATE NOCASE)
+        WHERE author IS NOT NULL
+          AND author != ''
+          AND author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed');
       ''');
     } catch (e, stack) {
       debugPrint('[Database] Create indexes note: $e\n$stack');
@@ -707,7 +859,9 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  (List<String>, List<Variable>) _buildFilterClauses(FilterCriteria filter) {
+  ({String joinSql, List<String> where, List<Variable> vars})
+  _buildFilterQueryParts(FilterCriteria filter) {
+    var joinSql = '';
     final where = <String>[];
     final vars = <Variable>[];
 
@@ -773,9 +927,15 @@ class AppDatabase extends _$AppDatabase {
       where.add('s.created_at_utc <= ?');
       vars.add(Variable.withDateTime(inclusiveEnd));
     }
-    if (filter.selectedCollectionIds.isNotEmpty) {
+    if (filter.selectedCollectionIds.length == 1) {
+      // Single-collection scoping avoids ephemeral IN subqueries and lets
+      // SQLite choose between idx_item_collections_col_item and order index.
+      joinSql = 'INNER JOIN item_collections_table ic ON ic.item_id = s.id';
+      where.add('ic.collection_id = ?');
+      vars.add(Variable.withInt(filter.selectedCollectionIds.first));
+    } else if (filter.selectedCollectionIds.length > 1) {
       where.add(
-        's.id IN (SELECT item_id FROM item_collections_table WHERE collection_id IN (${List.filled(filter.selectedCollectionIds.length, '?').join(',')}))',
+        'EXISTS (SELECT 1 FROM item_collections_table ic WHERE ic.item_id = s.id AND ic.collection_id IN (${List.filled(filter.selectedCollectionIds.length, '?').join(',')}))',
       );
       vars.addAll(filter.selectedCollectionIds.map(Variable.withInt));
     }
@@ -789,18 +949,21 @@ class AppDatabase extends _$AppDatabase {
       }
     }
 
-    return (where, vars);
+    return (joinSql: joinSql, where: where, vars: vars);
   }
 
-  Future<PagedRows<SavedItemEntry>> getSavedItemsKeysetPage({
+  Future<({List<QueryRow> rows, bool hasMore})> _querySavedItemsKeysetPage({
     required FilterCriteria filter,
     FeedCursor? cursor,
     int limit = 100,
+    bool includeCollectionIds = false,
   }) async {
     if (filter.searchQuery != null && filter.searchQuery!.trim().isNotEmpty) {
       await ensureFtsSchema();
     }
-    final (where, vars) = _buildFilterClauses(filter);
+    final parts = _buildFilterQueryParts(filter);
+    final where = parts.where;
+    final vars = parts.vars;
 
     if (cursor != null) {
       final (clause, cursorVars) = _buildKeysetRowValue(
@@ -813,12 +976,16 @@ class AppDatabase extends _$AppDatabase {
 
     final whereClause = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
     final orderBy = 'ORDER BY ${_buildOrderBySql(filter.sortOption)}';
+    final collectionIdsExpr = includeCollectionIds
+        ? ', (SELECT GROUP_CONCAT(ic2.collection_id) FROM item_collections_table ic2 WHERE ic2.item_id = s.id) AS _collection_ids'
+        : '';
 
     vars.add(Variable.withInt(limit + 1));
     final sql =
         '''
-      SELECT s.*
+      SELECT s.*$collectionIdsExpr
       FROM saved_items_table s
+      ${parts.joinSql}
       $whereClause
       $orderBy
       LIMIT ?
@@ -827,58 +994,246 @@ class AppDatabase extends _$AppDatabase {
     final rows = await customSelect(
       sql,
       variables: vars,
-      readsFrom: {savedItemsTable, if (filter.isNsfw != null) subredditsTable},
+      readsFrom: {
+        savedItemsTable,
+        if (filter.isNsfw != null) subredditsTable,
+        if (filter.selectedCollectionIds.isNotEmpty || includeCollectionIds)
+          itemCollectionsTable,
+      },
     ).get();
 
-    final entries = rows.map((r) => savedItemsTable.map(r.data)).toList();
-    final hasMore = entries.length > limit;
-    final pageRows = hasMore ? entries.sublist(0, limit) : entries;
+    final hasMore = rows.length > limit;
+    final pageRawRows = hasMore ? rows.sublist(0, limit) : rows;
+    return (rows: pageRawRows, hasMore: hasMore);
+  }
+
+  Future<PagedRows<SavedItemEntry>> getSavedItemsKeysetPage({
+    required FilterCriteria filter,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) async {
+    final result = await _querySavedItemsKeysetPage(
+      filter: filter,
+      cursor: cursor,
+      limit: limit,
+    );
+    final pageRows = result.rows
+        .map((r) => savedItemsTable.map(r.data))
+        .toList();
 
     FeedCursor? nextCursor;
-    if (hasMore && pageRows.isNotEmpty) {
+    if (result.hasMore && pageRows.isNotEmpty) {
       nextCursor = _extractCursor(pageRows.last, filter.sortOption);
     }
 
-    return PagedRows(items: pageRows, nextCursor: nextCursor, hasMore: hasMore);
+    return PagedRows(
+      items: pageRows,
+      nextCursor: nextCursor,
+      hasMore: result.hasMore,
+    );
+  }
+
+  Future<PagedRows<SavedItem>> getSavedItemsPageWithCollections({
+    required FilterCriteria filter,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) async {
+    final result = await _querySavedItemsKeysetPage(
+      filter: filter,
+      cursor: cursor,
+      limit: limit,
+      includeCollectionIds: true,
+    );
+    if (result.rows.isEmpty) {
+      return const PagedRows(items: [], nextCursor: null, hasMore: false);
+    }
+
+    var hasAnyCollectionIds = false;
+    final parsedIdsPerRow = <List<int>>[];
+    for (final row in result.rows) {
+      final raw = row.data['_collection_ids'];
+      final rawStr = raw is String ? raw : raw?.toString();
+      if (rawStr == null || rawStr.isEmpty) {
+        parsedIdsPerRow.add(const []);
+      } else {
+        hasAnyCollectionIds = true;
+        final ids = <int>[];
+        for (final part in rawStr.split(',')) {
+          final cid = int.tryParse(part);
+          if (cid != null) ids.add(cid);
+        }
+        parsedIdsPerRow.add(ids);
+      }
+    }
+
+    Map<int, Collection> collectionsMap = const {};
+    if (hasAnyCollectionIds) {
+      collectionsMap = await _getCollectionsByIdMap();
+      var needsRefresh = false;
+      for (final ids in parsedIdsPerRow) {
+        for (final cid in ids) {
+          if (!collectionsMap.containsKey(cid)) {
+            needsRefresh = true;
+            break;
+          }
+        }
+        if (needsRefresh) break;
+      }
+      if (needsRefresh) {
+        invalidateCollectionsCache();
+        collectionsMap = await _getCollectionsByIdMap();
+      }
+    }
+
+    final entries = <SavedItemEntry>[];
+    final items = <SavedItem>[];
+    for (var i = 0; i < result.rows.length; i++) {
+      final entry = savedItemsTable.map(result.rows[i].data);
+      entries.add(entry);
+      final ids = parsedIdsPerRow[i];
+      final itemCollections = ids.isEmpty
+          ? const <Collection>[]
+          : [
+              for (final cid in ids)
+                if (collectionsMap[cid] != null) collectionsMap[cid]!,
+            ];
+      items.add(entry.toDomain(collections: itemCollections));
+    }
+
+    final nextCursor = result.hasMore && entries.isNotEmpty
+        ? _extractCursor(entries.last, filter.sortOption)
+        : null;
+
+    return PagedRows(
+      items: items,
+      nextCursor: nextCursor,
+      hasMore: result.hasMore,
+    );
   }
 
   Future<int> countFilteredSavedItems(FilterCriteria filter) async {
     if (filter.searchQuery != null && filter.searchQuery!.trim().isNotEmpty) {
       await ensureFtsSchema();
     }
-    final (where, vars) = _buildFilterClauses(filter);
-    final whereClause = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
-    final sql = 'SELECT COUNT(*) AS c FROM saved_items_table s $whereClause';
+    final parts = _buildFilterQueryParts(filter);
+    if (filter.isArchived == null &&
+        filter.selectedCollectionIds.length == 1 &&
+        parts.where.length == 1) {
+      final row = await customSelect(
+        'SELECT COUNT(*) AS c FROM item_collections_table WHERE collection_id = ?',
+        variables: [Variable.withInt(filter.selectedCollectionIds.first)],
+        readsFrom: {itemCollectionsTable},
+      ).getSingle();
+      return row.read<int>('c');
+    }
+
+    final whereClause = parts.where.isEmpty
+        ? ''
+        : 'WHERE ${parts.where.join(' AND ')}';
+    final sql =
+        'SELECT COUNT(*) AS c FROM saved_items_table s ${parts.joinSql} $whereClause';
 
     final row = await customSelect(
       sql,
-      variables: vars,
-      readsFrom: {savedItemsTable, if (filter.isNsfw != null) subredditsTable},
+      variables: parts.vars,
+      readsFrom: {
+        savedItemsTable,
+        if (filter.isNsfw != null) subredditsTable,
+        if (filter.selectedCollectionIds.isNotEmpty) itemCollectionsTable,
+      },
     ).getSingle();
 
     return row.read<int>('c');
   }
 
+  SavedItemsTableCompanion _normalizeCompanionForStorage(
+    SavedItemsTableCompanion entry,
+  ) {
+    final hasSub = entry.subreddit.present;
+    final hasAuthor = entry.author.present;
+    if (!hasSub && !hasAuthor) return entry;
+
+    final nextSub = hasSub
+        ? SavedItem.normalizeSubredditForStorage(entry.subreddit.value)
+        : null;
+    final nextAuthor = hasAuthor
+        ? SavedItem.normalizeAuthorForStorage(entry.author.value)
+        : null;
+
+    final subNeedsUpdate = hasSub && nextSub != entry.subreddit.value;
+    final authorNeedsUpdate = hasAuthor && nextAuthor != entry.author.value;
+    if (!subNeedsUpdate && !authorNeedsUpdate) return entry;
+
+    return entry.copyWith(
+      subreddit: subNeedsUpdate ? Value(nextSub!) : entry.subreddit,
+      author: authorNeedsUpdate ? Value(nextAuthor) : entry.author,
+    );
+  }
+
   // bulk upsert items nondestructively using ON CONFLICT DO UPDATE
-  Future<void> upsertBatch(List<SavedItemsTableCompanion> entries) async {
+  Future<void> upsertBatch(
+    List<SavedItemsTableCompanion> entries, {
+    bool runAnalyze = true,
+  }) async {
     if (entries.isEmpty) return;
+    List<SavedItemsTableCompanion>? normalizedEntries;
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final normalized = _normalizeCompanionForStorage(entry);
+      if (!identical(normalized, entry)) {
+        normalizedEntries ??= List<SavedItemsTableCompanion>.of(entries);
+        normalizedEntries[i] = normalized;
+      }
+    }
+    final effectiveEntries = normalizedEntries ?? entries;
     const chunkSize = 500;
     await transaction(() async {
-      for (var i = 0; i < entries.length; i += chunkSize) {
-        final chunk = entries.sublist(
+      for (var i = 0; i < effectiveEntries.length; i += chunkSize) {
+        final chunk = effectiveEntries.sublist(
           i,
-          i + chunkSize > entries.length ? entries.length : i + chunkSize,
+          i + chunkSize > effectiveEntries.length
+              ? effectiveEntries.length
+              : i + chunkSize,
         );
         await batch((batch) {
           batch.insertAllOnConflictUpdate(savedItemsTable, chunk);
         });
       }
     });
+    if (runAnalyze && effectiveEntries.length >= 200) {
+      await runAnalyzeIfNonEmpty();
+    }
   }
 
   Future<Map<String, SubredditEntry>> getAllSubredditsMap() async {
     final entries = await select(subredditsTable).get();
     return {for (final e in entries) e.name.toLowerCase(): e};
+  }
+
+  Future<Map<String, SubredditEntry>> getSubredditsByNames(
+    Iterable<String> names,
+  ) async {
+    final unique = {
+      for (final name in names)
+        if (name.isNotEmpty) name.toLowerCase(),
+    }.toList(growable: false);
+    if (unique.isEmpty) return const {};
+
+    const chunkSize = 500;
+    final map = <String, SubredditEntry>{};
+    for (var i = 0; i < unique.length; i += chunkSize) {
+      final end = (i + chunkSize > unique.length)
+          ? unique.length
+          : i + chunkSize;
+      final chunk = unique.sublist(i, end);
+      final entries = await (select(
+        subredditsTable,
+      )..where((t) => t.name.isIn(chunk))).get();
+      for (final e in entries) {
+        map[e.name.toLowerCase()] = e;
+      }
+    }
+    return map;
   }
 
   Future<List<SubredditEntry>> getAllSubreddits() async {
@@ -896,6 +1251,9 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> upsertSubreddit(SubredditsTableCompanion entry) async {
     await into(subredditsTable).insertOnConflictUpdate(entry);
+    if (entry.name.present) {
+      _emitSubredditMetadataChange([entry.name.value]);
+    }
   }
 
   Future<void> upsertSubredditsBatch(
@@ -914,6 +1272,150 @@ class AppDatabase extends _$AppDatabase {
         });
       }
     });
+    _emitSubredditMetadataChange([
+      for (final e in entries)
+        if (e.name.present) e.name.value,
+    ]);
+  }
+
+  void _emitSubredditMetadataChange(Iterable<String> keys) {
+    var hasSubreddit = false;
+    var hasAuthor = false;
+    for (final rawKey in keys) {
+      final lower = rawKey.toLowerCase();
+      if (lower.startsWith('u_')) {
+        hasAuthor = true;
+      } else if (lower.isNotEmpty) {
+        hasSubreddit = true;
+      }
+      if (hasSubreddit && hasAuthor) break;
+    }
+    if (hasSubreddit && !_subredditMetadataChanges.isClosed) {
+      _subredditMetadataChanges.add(null);
+    }
+    if (hasAuthor && !_authorMetadataChanges.isClosed) {
+      _authorMetadataChanges.add(null);
+    }
+  }
+
+  static String _escapeLikePattern(String value) => value
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
+
+  static ({
+    String? cursorWhere,
+    List<Variable> whereVars,
+    String havingClause,
+    List<Variable> havingVars,
+    String innerOrderBy,
+    String outerOrderBy,
+  })
+  _buildDirectorySortParts({
+    required String rawColumn,
+    required SubredditSortOption sort,
+    FeedCursor? cursor,
+  }) {
+    switch (sort) {
+      case SubredditSortOption.mostSaved:
+        return (
+          cursorWhere: null,
+          whereVars: const [],
+          havingClause: cursor == null
+              ? ''
+              : 'HAVING (COUNT(*) < ?) OR (COUNT(*) = ? AND MIN($rawColumn) COLLATE NOCASE > ?)',
+          havingVars: cursor == null
+              ? const []
+              : [
+                  Variable.withInt(cursor.sortValue as int),
+                  Variable.withInt(cursor.sortValue as int),
+                  Variable.withString(cursor.id),
+                ],
+          innerOrderBy: 'item_count DESC, $rawColumn COLLATE NOCASE ASC',
+          outerOrderBy: 'p.item_count DESC, p.entry_name COLLATE NOCASE ASC',
+        );
+      case SubredditSortOption.leastSaved:
+        return (
+          cursorWhere: null,
+          whereVars: const [],
+          havingClause: cursor == null
+              ? ''
+              : 'HAVING (COUNT(*) > ?) OR (COUNT(*) = ? AND MIN($rawColumn) COLLATE NOCASE > ?)',
+          havingVars: cursor == null
+              ? const []
+              : [
+                  Variable.withInt(cursor.sortValue as int),
+                  Variable.withInt(cursor.sortValue as int),
+                  Variable.withString(cursor.id),
+                ],
+          innerOrderBy: 'item_count ASC, $rawColumn COLLATE NOCASE ASC',
+          outerOrderBy: 'p.item_count ASC, p.entry_name COLLATE NOCASE ASC',
+        );
+      case SubredditSortOption.alphabeticalAZ:
+        return (
+          cursorWhere: cursor == null ? null : '$rawColumn COLLATE NOCASE > ?',
+          whereVars: cursor == null
+              ? const []
+              : [Variable.withString(cursor.id)],
+          havingClause: '',
+          havingVars: const [],
+          innerOrderBy: '$rawColumn COLLATE NOCASE ASC',
+          outerOrderBy: 'p.entry_name COLLATE NOCASE ASC',
+        );
+      case SubredditSortOption.alphabeticalZA:
+        return (
+          cursorWhere: cursor == null ? null : '$rawColumn COLLATE NOCASE < ?',
+          whereVars: cursor == null
+              ? const []
+              : [Variable.withString(cursor.id)],
+          havingClause: '',
+          havingVars: const [],
+          innerOrderBy: '$rawColumn COLLATE NOCASE DESC',
+          outerOrderBy: 'p.entry_name COLLATE NOCASE DESC',
+        );
+    }
+  }
+
+  static FeedCursor _directoryCursorFor({
+    required SubredditSortOption sort,
+    required int count,
+    required String name,
+  }) {
+    switch (sort) {
+      case SubredditSortOption.mostSaved:
+      case SubredditSortOption.leastSaved:
+        return FeedCursor(sortValue: count, id: name);
+      case SubredditSortOption.alphabeticalAZ:
+      case SubredditSortOption.alphabeticalZA:
+        return FeedCursor(sortValue: name, id: name);
+    }
+  }
+
+  static SubredditInfo _subredditInfoFromRow(QueryRow row) {
+    final name = row.read<String>('subreddit');
+    final count = row.read<int>('item_count');
+    final nsfwCount = row.read<int?>('nsfw_count') ?? 0;
+    final verifiedNsfw = row.read<bool?>('verified_nsfw');
+    final iconUrl = row.read<String?>('icon_url');
+    final lastChecked = row.read<DateTime?>('last_checked');
+
+    final bool isNsfw;
+    final bool isVerified;
+    if (verifiedNsfw != null) {
+      isNsfw = verifiedNsfw;
+      isVerified = true;
+    } else {
+      isNsfw = count > 0 && nsfwCount == count;
+      isVerified = lastChecked != null;
+    }
+
+    return SubredditInfo(
+      name: name,
+      count: count,
+      isNsfw: isNsfw,
+      iconUrl: iconUrl,
+      isVerified: isVerified,
+    );
   }
 
   Future<List<SubredditInfo>> getSubredditsWithCounts() async {
@@ -921,12 +1423,11 @@ class AppDatabase extends _$AppDatabase {
       '''
       WITH grouped_subs AS (
         SELECT
-          subreddit,
-          COUNT(id) AS item_count,
-          SUM(CASE WHEN is_nsfw = 1 THEN 1 ELSE 0 END) AS nsfw_count,
-          ${_cleanSubSql('subreddit')} AS clean_sub
+          MIN(subreddit) AS subreddit,
+          COUNT(*) AS item_count,
+          SUM(CASE WHEN is_nsfw = 1 THEN 1 ELSE 0 END) AS nsfw_count
         FROM saved_items_table
-        GROUP BY subreddit
+        GROUP BY subreddit COLLATE NOCASE
       )
       SELECT
         g.subreddit,
@@ -936,47 +1437,96 @@ class AppDatabase extends _$AppDatabase {
         s.icon_url,
         s.last_checked
       FROM grouped_subs g
-      LEFT JOIN subreddits_table s ON s.name = g.clean_sub
-      ORDER BY g.item_count DESC
+      LEFT JOIN subreddits_table s ON s.name = ${_cleanSubSql('g.subreddit')}
+      ORDER BY g.item_count DESC, g.subreddit COLLATE NOCASE ASC
       ''',
       readsFrom: {savedItemsTable, subredditsTable},
     ).get();
 
-    return rows.map((row) {
-      final name = row.read<String>('subreddit');
-      final count = row.read<int>('item_count');
-      final nsfwCount = row.read<int?>('nsfw_count') ?? 0;
-      final verifiedNsfw = row.read<bool?>('verified_nsfw');
-      final iconUrl = row.read<String?>('icon_url');
-      final lastChecked = row.read<DateTime?>('last_checked');
+    return rows.map(_subredditInfoFromRow).toList();
+  }
 
-      final bool isNsfw;
-      final bool isVerified;
-      if (verifiedNsfw != null) {
-        isNsfw = verifiedNsfw;
-        isVerified = true;
-      } else {
-        isNsfw = count > 0 && nsfwCount == count;
-        isVerified = lastChecked != null;
-      }
+  Future<PagedRows<SubredditInfo>> getSubredditsPage({
+    String query = '',
+    SubredditSortOption sort = SubredditSortOption.mostSaved,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) async {
+    final cleanQuery = query
+        .trim()
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^/?r/'), '')
+        .replaceFirst(RegExp(r'^/?u/'), 'u_');
+    final where = <String>[];
+    final vars = <Variable>[];
+    if (cleanQuery.isNotEmpty) {
+      where.add("subreddit LIKE ? ESCAPE '\\'");
+      vars.add(Variable.withString('%${_escapeLikePattern(cleanQuery)}%'));
+    }
 
-      return SubredditInfo(
-        name: name,
-        count: count,
-        isNsfw: isNsfw,
-        iconUrl: iconUrl,
-        isVerified: isVerified,
-      );
-    }).toList();
+    final sortParts = _buildDirectorySortParts(
+      rawColumn: 'subreddit',
+      sort: sort,
+      cursor: cursor,
+    );
+    if (sortParts.cursorWhere != null) {
+      where.add(sortParts.cursorWhere!);
+      vars.addAll(sortParts.whereVars);
+    }
+    vars.addAll(sortParts.havingVars);
+    vars.add(Variable.withInt(limit + 1));
+
+    final whereClause = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
+    final rows = await customSelect(
+      '''
+      WITH page_rows AS (
+        SELECT
+          MIN(subreddit) AS entry_name,
+          COUNT(*) AS item_count,
+          SUM(CASE WHEN is_nsfw = 1 THEN 1 ELSE 0 END) AS nsfw_count
+        FROM saved_items_table
+        $whereClause
+        GROUP BY subreddit COLLATE NOCASE
+        ${sortParts.havingClause}
+        ORDER BY ${sortParts.innerOrderBy}
+        LIMIT ?
+      )
+      SELECT
+        p.entry_name AS subreddit,
+        p.item_count,
+        p.nsfw_count,
+        s.is_nsfw AS verified_nsfw,
+        s.icon_url,
+        s.last_checked
+      FROM page_rows p
+      LEFT JOIN subreddits_table s ON s.name = ${_cleanSubSql('p.entry_name')}
+      ORDER BY ${sortParts.outerOrderBy}
+      ''',
+      variables: vars,
+      readsFrom: {savedItemsTable, subredditsTable},
+    ).get();
+
+    final hasMore = rows.length > limit;
+    final pageRows = hasMore ? rows.sublist(0, limit) : rows;
+    final items = pageRows.map(_subredditInfoFromRow).toList();
+    final nextCursor = hasMore && items.isNotEmpty
+        ? _directoryCursorFor(
+            sort: sort,
+            count: items.last.count,
+            name: items.last.name,
+          )
+        : null;
+
+    return PagedRows(items: items, nextCursor: nextCursor, hasMore: hasMore);
   }
 
   Stream<List<SubredditInfo>> watchSubredditsWithCounts() {
     return _watchThrottled(
       fetch: getSubredditsWithCounts,
-      tables: [savedItemsTable, subredditsTable],
+      tables: [savedItemsTable],
+      extraTriggers: [_subredditMetadataChanges.stream],
       shouldRefetch: (updates) => updates.any(
         (u) =>
-            u.table == subredditsTable.actualTableName ||
             u.kind == UpdateKind.insert ||
             u.kind == UpdateKind.delete ||
             u.kind == null,
@@ -984,13 +1534,41 @@ class AppDatabase extends _$AppDatabase {
     ).distinct(listEquals);
   }
 
+  Future<int> getSubredditCount() async {
+    final row = await customSelect(
+      '''
+      SELECT COUNT(*) AS c
+      FROM (
+        SELECT 1
+        FROM saved_items_table
+        GROUP BY subreddit COLLATE NOCASE
+      )
+      ''',
+      readsFrom: {savedItemsTable},
+    ).getSingle();
+    return row.read<int>('c');
+  }
+
+  Stream<int> watchSubredditCount() => _watchThrottled(
+    fetch: getSubredditCount,
+    tables: [savedItemsTable],
+    shouldRefetch: (updates) => updates.any(
+      (u) =>
+          u.kind == UpdateKind.insert ||
+          u.kind == UpdateKind.delete ||
+          u.kind == null,
+    ),
+  ).distinct();
+
   Stream<T> _watchThrottled<T>({
     required Future<T> Function() fetch,
     required List<TableInfo> tables,
+    List<Stream<void>> extraTriggers = const [],
     bool Function(Set<TableUpdate> updates)? shouldRefetch,
   }) {
     late final StreamController<T> controller;
     StreamSubscription<Set<TableUpdate>>? sub;
+    final extraSubs = <StreamSubscription<void>>[];
     Timer? debounceTimer;
     var isFetching = false;
     var needsRefetch = false;
@@ -1020,22 +1598,30 @@ class AppDatabase extends _$AppDatabase {
       }
     }
 
+    void scheduleFetch() {
+      if (debounceTimer?.isActive ?? false) return;
+      debounceTimer = Timer(const Duration(milliseconds: 800), fetchAndEmit);
+    }
+
     controller = StreamController<T>(
       onListen: () {
         fetchAndEmit();
         sub = tableUpdates(TableUpdateQuery.onAllTables(tables))
             .listen((updates) {
               if (shouldRefetch != null && !shouldRefetch(updates)) return;
-              if (debounceTimer?.isActive ?? false) return;
-              debounceTimer = Timer(
-                const Duration(milliseconds: 800),
-                fetchAndEmit,
-              );
+              scheduleFetch();
             });
+        for (final trigger in extraTriggers) {
+          extraSubs.add(trigger.listen((_) => scheduleFetch()));
+        }
       },
       onCancel: () async {
         debounceTimer?.cancel();
         await sub?.cancel();
+        for (final extraSub in extraSubs) {
+          await extraSub.cancel();
+        }
+        extraSubs.clear();
       },
     );
 
@@ -1141,30 +1727,30 @@ class AppDatabase extends _$AppDatabase {
     }).toList();
   }
 
+  static AuthorInfo _authorInfoFromRow(QueryRow r) {
+    return AuthorInfo(
+      name: r.read<String>('clean_author'),
+      count: r.read<int>('item_count'),
+      iconUrl: r.read<String?>('icon_url'),
+      isNsfw: r.read<bool?>('is_nsfw') ?? false,
+      isVerified:
+          r.read<bool?>('is_nsfw') != null ||
+          r.read<DateTime?>('last_checked') != null,
+    );
+  }
+
   Future<List<AuthorInfo>> getAuthorsWithCounts() async {
     final rows = await customSelect(
       '''
-      WITH cleaned_authors AS (
+      WITH author_counts AS (
         SELECT
-          TRIM(
-            CASE
-              WHEN SUBSTR(author, 1, 2) COLLATE NOCASE IN ('u/', 'r/', 'u_')
-              THEN SUBSTR(author, 3)
-              ELSE author
-            END
-          ) AS clean_author,
-          id
+          MIN(author) AS clean_author,
+          COUNT(*) AS item_count
         FROM saved_items_table
-        WHERE author IS NOT NULL AND author != ''
-      ),
-      author_counts AS (
-        SELECT
-          clean_author,
-          COUNT(id) AS item_count
-        FROM cleaned_authors
-        WHERE clean_author != ''
-          AND clean_author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
-        GROUP BY clean_author COLLATE NOCASE
+        WHERE author IS NOT NULL
+          AND author != ''
+          AND author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
+        GROUP BY author COLLATE NOCASE
       )
       SELECT
         c.clean_author,
@@ -1180,24 +1766,125 @@ class AppDatabase extends _$AppDatabase {
       readsFrom: {savedItemsTable, subredditsTable},
     ).get();
 
-    return [
-      for (final r in rows)
-        AuthorInfo(
-          name: r.read<String>('clean_author'),
-          count: r.read<int>('item_count'),
-          iconUrl: r.read<String?>('icon_url'),
-          isNsfw: r.read<bool?>('is_nsfw') ?? false,
-          isVerified:
-              r.read<bool?>('is_nsfw') != null ||
-              r.read<DateTime?>('last_checked') != null,
-        ),
+    return [for (final r in rows) _authorInfoFromRow(r)];
+  }
+
+  Future<PagedRows<AuthorInfo>> getAuthorsPage({
+    String query = '',
+    SubredditSortOption sort = SubredditSortOption.mostSaved,
+    FeedCursor? cursor,
+    int limit = 100,
+  }) async {
+    final cleanQuery = query.trim().toLowerCase().replaceFirst(
+      RegExp(r'^/?u/'),
+      '',
+    );
+    final where = <String>[
+      'author IS NOT NULL',
+      "author != ''",
+      "author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')",
     ];
+    final vars = <Variable>[];
+    if (cleanQuery.isNotEmpty) {
+      where.add("author LIKE ? ESCAPE '\\'");
+      vars.add(Variable.withString('%${_escapeLikePattern(cleanQuery)}%'));
+    }
+
+    final sortParts = _buildDirectorySortParts(
+      rawColumn: 'author',
+      sort: sort,
+      cursor: cursor,
+    );
+    if (sortParts.cursorWhere != null) {
+      where.add(sortParts.cursorWhere!);
+      vars.addAll(sortParts.whereVars);
+    }
+    vars.addAll(sortParts.havingVars);
+    vars.add(Variable.withInt(limit + 1));
+
+    final rows = await customSelect(
+      '''
+      WITH page_rows AS (
+        SELECT
+          MIN(author) AS entry_name,
+          COUNT(*) AS item_count
+        FROM saved_items_table
+        WHERE ${where.join(' AND ')}
+        GROUP BY author COLLATE NOCASE
+        ${sortParts.havingClause}
+        ORDER BY ${sortParts.innerOrderBy}
+        LIMIT ?
+      )
+      SELECT
+        p.entry_name AS clean_author,
+        p.item_count,
+        sub.icon_url,
+        sub.is_nsfw,
+        sub.last_checked
+      FROM page_rows p
+      LEFT JOIN subreddits_table sub
+        ON sub.name = 'u_' || LOWER(p.entry_name)
+      ORDER BY ${sortParts.outerOrderBy}
+      ''',
+      variables: vars,
+      readsFrom: {savedItemsTable, subredditsTable},
+    ).get();
+
+    final hasMore = rows.length > limit;
+    final pageRows = hasMore ? rows.sublist(0, limit) : rows;
+    final items = [for (final r in pageRows) _authorInfoFromRow(r)];
+    final nextCursor = hasMore && items.isNotEmpty
+        ? _directoryCursorFor(
+            sort: sort,
+            count: items.last.count,
+            name: items.last.name,
+          )
+        : null;
+
+    return PagedRows(items: items, nextCursor: nextCursor, hasMore: hasMore);
   }
 
   Stream<List<AuthorInfo>> watchAuthorsWithCounts() => _watchThrottled(
     fetch: getAuthorsWithCounts,
-    tables: [savedItemsTable, subredditsTable],
+    tables: [savedItemsTable],
+    extraTriggers: [_authorMetadataChanges.stream, _authorItemsChanged.stream],
+    shouldRefetch: (updates) => updates.any(
+      (u) =>
+          u.kind == UpdateKind.insert ||
+          u.kind == UpdateKind.delete ||
+          u.kind == null,
+    ),
   ).distinct(listEquals);
+
+  Future<int> getAuthorCount() async {
+    final row = await customSelect(
+      '''
+      SELECT COUNT(*) AS c
+      FROM (
+        SELECT 1
+        FROM saved_items_table
+        WHERE author IS NOT NULL
+          AND author != ''
+          AND author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
+        GROUP BY author COLLATE NOCASE
+      )
+      ''',
+      readsFrom: {savedItemsTable},
+    ).getSingle();
+    return row.read<int>('c');
+  }
+
+  Stream<int> watchAuthorCount() => _watchThrottled(
+    fetch: getAuthorCount,
+    tables: [savedItemsTable],
+    extraTriggers: [_authorItemsChanged.stream],
+    shouldRefetch: (updates) => updates.any(
+      (u) =>
+          u.kind == UpdateKind.insert ||
+          u.kind == UpdateKind.delete ||
+          u.kind == null,
+    ),
+  ).distinct();
 
   Future<List<(String, int)>> searchAuthorsWithCounts({
     String query = '',
@@ -1586,6 +2273,8 @@ class AppDatabase extends _$AppDatabase {
       await _createFts5(this);
       _ftsInitFuture = Future.value();
     });
+
+    invalidateCollectionsCache();
 
     try {
       await customStatement('PRAGMA wal_checkpoint(TRUNCATE);');
