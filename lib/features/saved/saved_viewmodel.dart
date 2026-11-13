@@ -655,40 +655,34 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
   }
 
   void updateItem(SavedItem updatedItem) {
+    if (state.isLoading) return;
     final prev = state.value;
     if (prev == null) return;
+    if (!prev.items.any((i) => i.id == updatedItem.id)) return;
+
     final filter = _getEffectiveFilter();
-    final inList = prev.items.any((i) => i.id == updatedItem.id);
     final matches = itemMatchesFilter(updatedItem, filter);
 
-    if (inList) {
-      if (matches) {
-        state = AsyncData(
-          prev.copyWith(
-            items: prev.items
-                .map((i) => i.id == updatedItem.id ? updatedItem : i)
-                .toList(),
-          ),
-        );
-      } else {
-        state = AsyncData(
-          prev.copyWith(
-            items: prev.items.where((i) => i.id != updatedItem.id).toList(),
-            totalCount: prev.totalCount > 0 ? prev.totalCount - 1 : 0,
-          ),
-        );
-      }
-    } else if (matches) {
+    if (matches) {
       state = AsyncData(
         prev.copyWith(
-          items: [updatedItem, ...prev.items],
-          totalCount: prev.totalCount + 1,
+          items: prev.items
+              .map((i) => i.id == updatedItem.id ? updatedItem : i)
+              .toList(),
+        ),
+      );
+    } else {
+      state = AsyncData(
+        prev.copyWith(
+          items: prev.items.where((i) => i.id != updatedItem.id).toList(),
+          totalCount: prev.totalCount > 0 ? prev.totalCount - 1 : 0,
         ),
       );
     }
   }
 
   Future<void> refreshItem(String id) async {
+    final gen = _generation;
     _suppressTableUpdates();
     final repo = ref.read(savedItemRepositoryProvider);
     final freshItem = await repo.getItemById(id);
@@ -704,59 +698,52 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
       ));
     }
 
+    if (gen != _generation || state.isLoading) return;
     final latest = state.value;
     if (latest == null) return;
-    final filter = _getEffectiveFilter();
 
-    final inList = latest.items.any((i) => i.id == id);
+    final existingIndex = latest.items.indexWhere((i) => i.id == id);
+    if (existingIndex == -1) return;
 
     if (freshItem == null) {
-      if (inList) {
-        state = AsyncData(
-          latest.copyWith(
-            items: latest.items.where((i) => i.id != id).toList(),
-            totalCount: latest.totalCount > 0 ? latest.totalCount - 1 : 0,
-          ),
-        );
-      }
+      state = AsyncData(
+        latest.copyWith(
+          items: latest.items.where((i) => i.id != id).toList(),
+          totalCount: latest.totalCount > 0 ? latest.totalCount - 1 : 0,
+        ),
+      );
       return;
     }
 
-    if (inList) {
-      final existingIndex = latest.items.indexWhere((i) => i.id == id);
-      if (existingIndex != -1 && latest.items[existingIndex] == freshItem) {
-        return;
-      }
+    if (latest.items[existingIndex] == freshItem) {
+      return;
     }
 
+    final filter = _getEffectiveFilter();
     final subNsfw = filter.isNsfw != null
         ? await repo.isSubredditNsfw(freshItem.subreddit)
         : null;
+
+    if (gen != _generation || state.isLoading) return;
+    final current = state.value;
+    if (current == null || !current.items.any((i) => i.id == id)) return;
+
     final matches = itemMatchesFilter(
       freshItem,
       filter,
       isSubredditNsfw: subNsfw,
     );
-    if (inList) {
-      if (matches) {
-        state = AsyncData(
-          latest.copyWith(
-            items: latest.items.map((i) => i.id == id ? freshItem : i).toList(),
-          ),
-        );
-      } else {
-        state = AsyncData(
-          latest.copyWith(
-            items: latest.items.where((i) => i.id != id).toList(),
-            totalCount: latest.totalCount > 0 ? latest.totalCount - 1 : 0,
-          ),
-        );
-      }
-    } else if (matches) {
+    if (matches) {
       state = AsyncData(
-        latest.copyWith(
-          items: [freshItem, ...latest.items],
-          totalCount: latest.totalCount + 1,
+        current.copyWith(
+          items: current.items.map((i) => i.id == id ? freshItem : i).toList(),
+        ),
+      );
+    } else {
+      state = AsyncData(
+        current.copyWith(
+          items: current.items.where((i) => i.id != id).toList(),
+          totalCount: current.totalCount > 0 ? current.totalCount - 1 : 0,
         ),
       );
     }
