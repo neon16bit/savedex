@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
@@ -17,7 +18,6 @@ import 'package:savedex/features/search/widgets/filter_sheet.dart';
 import 'package:savedex/features/search/widgets/sort_sheet.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ScopedFeedArgs {
   final Collection? collection;
@@ -1109,17 +1109,17 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   Future<void> _openInReddit(String subreddit) async {
     final cleanSub = subreddit.replaceAll(RegExp(r'^[ru]/'), '');
     final uri = Uri.parse('https://www.reddit.com/r/$cleanSub/');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    try {
+      await ExternalUrlLauncher.launch(uri);
+    } catch (_) {}
   }
 
   Future<void> _openUserInReddit(String author) async {
     final cleanUser = author.replaceAll(RegExp(r'^[ru]/'), '');
     final uri = Uri.parse('https://www.reddit.com/user/$cleanUser/');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    try {
+      await ExternalUrlLauncher.launch(uri);
+    } catch (_) {}
   }
 
   @override

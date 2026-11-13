@@ -9,9 +9,9 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/constants/constants.dart';
+import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/widgets/media_video_player.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ItemMediaView extends StatefulWidget {
   final SavedItem item;
@@ -374,8 +374,60 @@ class DetailMediaView extends StatelessWidget {
     this.onIndexChanged,
   });
 
+  static bool _isSelfThreadUrl(SavedItem item, String rawUrl) {
+    final trimmed = rawUrl.trim();
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null) return false;
+
+    final host = uri.host.toLowerCase();
+    final isRedditHost =
+        host == 'reddit.com' ||
+        host.endsWith('.reddit.com') ||
+        host == 'redd.it';
+    final isRelativeRedditPath = !uri.hasScheme && trimmed.startsWith('/');
+    if (!isRedditHost && !isRelativeRedditPath) return false;
+
+    final segments = uri.pathSegments
+        .map((s) => s.toLowerCase())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (segments.isEmpty) return false;
+
+    final cleanId = item.id.trim().toLowerCase().replaceFirst(
+      RegExp(r'^t[13]_'),
+      '',
+    );
+    final cleanParentId = item.parentPostId?.trim().toLowerCase().replaceFirst(
+      RegExp(r'^t[13]_'),
+      '',
+    );
+
+    if (host == 'redd.it') {
+      final target = segments.first;
+      return target == cleanId ||
+          (item.isCrosspost &&
+              cleanParentId != null &&
+              target == cleanParentId);
+    }
+
+    final commentsIdx = segments.indexOf('comments');
+    if (commentsIdx == -1 || commentsIdx + 1 >= segments.length) {
+      return false;
+    }
+
+    final postIdSegment = segments[commentsIdx + 1];
+    // preserve links pointing to a specific comment inside a thread
+    final targetsSpecificComment = commentsIdx + 3 < segments.length;
+    if (targetsSpecificComment) return false;
+
+    return postIdSegment == cleanId ||
+        (item.isCrosspost &&
+            cleanParentId != null &&
+            postIdSegment == cleanParentId);
+  }
+
   Future<void> _openExternalLink(BuildContext context, String url) async {
-    final uri = Uri.tryParse(url);
+    final uri = Uri.tryParse(url.trim());
     if (uri == null ||
         (uri.scheme != 'http' && uri.scheme != 'https') ||
         uri.host.isEmpty) {
@@ -385,8 +437,14 @@ class DetailMediaView extends StatelessWidget {
       return;
     }
 
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-        context.mounted) {
+    var launched = false;
+    try {
+      launched = await ExternalUrlLauncher.launch(uri);
+    } catch (_) {
+      launched = false;
+    }
+
+    if (!launched && context.mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Could not open this link')));
@@ -414,6 +472,7 @@ class DetailMediaView extends StatelessWidget {
             !item.url!.contains('v.redd.it') &&
             !item.url!.contains('i.redd.it') &&
             !item.url!.contains('reddit.com/gallery') &&
+            !_isSelfThreadUrl(item, item.url!) &&
             (item.mediaType == MediaType.link ||
                 !item.hasDisplayImage && !item.isPlayableMedia)) ...[
           const SizedBox(height: 14),

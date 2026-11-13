@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:savedex/core/utils/external_url_launcher.dart';
 
 class DetailMarkdownContent extends StatelessWidget {
   final String data;
@@ -26,10 +26,13 @@ class DetailMarkdownContent extends StatelessWidget {
     return SelectionArea(
       child: MarkdownBody(
         data: data,
-        onTapLink: (text, href, title) {
-          if (href != null) {
-            launchUrl(Uri.parse(href), mode: LaunchMode.externalApplication);
-          }
+        onTapLink: (text, href, title) async {
+          if (href == null) return;
+          final uri = Uri.tryParse(href.trim());
+          if (uri == null || !uri.hasScheme) return;
+          try {
+            await ExternalUrlLauncher.launch(uri);
+          } catch (_) {}
         },
         styleSheet: MarkdownStyleSheet(
           a: const TextStyle(color: Colors.blue),

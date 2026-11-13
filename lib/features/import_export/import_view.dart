@@ -2,12 +2,12 @@ import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
 import 'package:savedex/features/settings/settings_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ImportView extends ConsumerWidget {
   const ImportView({super.key});
@@ -531,12 +531,9 @@ class ImportView extends ConsumerWidget {
                       final uri = Uri.parse(
                         'https://www.reddit.com/settings/data-request',
                       );
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      }
+                      try {
+                        await ExternalUrlLauncher.launch(uri);
+                      } catch (_) {}
                     },
                     child: Text(
                       'reddit.com/settings/data-request',
