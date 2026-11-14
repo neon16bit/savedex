@@ -30,6 +30,7 @@ class UserSettings {
   final ArchiveBackend archiveBackend;
   final bool startVideosMuted;
   final bool hideNsfwInFeed;
+  final bool enableFrostedEffects;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -49,6 +50,7 @@ class UserSettings {
     this.archiveBackend = ArchiveBackend.automatic,
     this.startVideosMuted = false,
     this.hideNsfwInFeed = false,
+    this.enableFrostedEffects = true,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -79,6 +81,7 @@ class UserSettings {
     ArchiveBackend? archiveBackend,
     bool? startVideosMuted,
     bool? hideNsfwInFeed,
+    bool? enableFrostedEffects,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -107,6 +110,7 @@ class UserSettings {
       archiveBackend: archiveBackend ?? this.archiveBackend,
       startVideosMuted: startVideosMuted ?? this.startVideosMuted,
       hideNsfwInFeed: hideNsfwInFeed ?? this.hideNsfwInFeed,
+      enableFrostedEffects: enableFrostedEffects ?? this.enableFrostedEffects,
     );
   }
 }
@@ -159,6 +163,8 @@ class SettingsRepository {
         ArchiveBackend.automatic;
     final startVideosMuted = _prefs.getBool('start_videos_muted') ?? false;
     final hideNsfwInFeed = _prefs.getBool('hide_nsfw_in_feed') ?? false;
+    final enableFrostedEffects =
+        _prefs.getBool('enable_frosted_effects') ?? true;
 
     return UserSettings(
       themeMode: themeMode,
@@ -178,6 +184,7 @@ class SettingsRepository {
       archiveBackend: archiveBackend,
       startVideosMuted: startVideosMuted,
       hideNsfwInFeed: hideNsfwInFeed,
+      enableFrostedEffects: enableFrostedEffects,
     );
   }
 
@@ -278,6 +285,10 @@ class SettingsRepository {
     await prefs.setInt('archive_backend', newSettings.archiveBackend.index);
     await prefs.setBool('start_videos_muted', newSettings.startVideosMuted);
     await prefs.setBool('hide_nsfw_in_feed', newSettings.hideNsfwInFeed);
+    await prefs.setBool(
+      'enable_frosted_effects',
+      newSettings.enableFrostedEffects,
+    );
   }
 
   Future<void> updateOAuthTokens({

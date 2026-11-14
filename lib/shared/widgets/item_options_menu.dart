@@ -7,7 +7,9 @@ import 'package:savedex/features/detail/widgets/detail_dialogs.dart';
 import 'package:savedex/features/detail/widgets/detail_utils.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:savedex/shared/widgets/app_snackbar.dart';
 import 'package:savedex/shared/widgets/collection_picker_sheet.dart';
+import 'package:savedex/shared/widgets/frosted_surface.dart';
 import 'package:savedex/shared/widgets/item_reddit_button.dart';
 
 class ItemOptionsMenu extends ConsumerWidget {
@@ -22,7 +24,7 @@ class ItemOptionsMenu extends ConsumerWidget {
       enrichingItemsProvider.select((s) => s.contains(item.id)),
     );
 
-    return PopupMenuButton<String>(
+    return FrostedPopupMenuButton<String>(
       tooltip: 'More options',
       padding: const EdgeInsets.all(4),
       constraints: const BoxConstraints(),
@@ -50,18 +52,13 @@ class ItemOptionsMenu extends ConsumerWidget {
             if (!confirmed || !context.mounted) return;
           }
           final messenger = ScaffoldMessenger.of(context);
-          final errorColor = colorScheme.error;
 
           notifier.add(item.id);
-          messenger
-            ..clearSnackBars()
-            ..showSnackBar(
-              const SnackBar(
-                content: Text('Refreshing metadata...'),
-                behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: 1),
-              ),
-            );
+          showAppSnackBarOnMessenger(
+            messenger,
+            message: 'Refreshing metadata...',
+            duration: const Duration(seconds: 1),
+          );
           try {
             final result = await ref
                 .read(enrichmentViewModelProvider.notifier)
@@ -75,44 +72,30 @@ class ItemOptionsMenu extends ConsumerWidget {
 
             if (messenger.mounted) {
               if (result.success) {
-                messenger
-                  ..clearSnackBars()
-                  ..showSnackBar(
-                    const SnackBar(
-                      content: Text('Metadata refreshed successfully'),
-                      behavior: SnackBarBehavior.floating,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                showAppSnackBarOnMessenger(
+                  messenger,
+                  message: 'Metadata refreshed successfully',
+                  duration: const Duration(seconds: 2),
+                );
               } else {
-                messenger
-                  ..clearSnackBars()
-                  ..showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        result.error?.isNotEmpty == true
-                            ? result.error!
-                            : 'Failed to refresh metadata',
-                      ),
-                      backgroundColor: errorColor,
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 3),
-                    ),
-                  );
+                showAppSnackBarOnMessenger(
+                  messenger,
+                  message: result.error?.isNotEmpty == true
+                      ? result.error!
+                      : 'Failed to refresh metadata',
+                  isError: true,
+                  duration: const Duration(seconds: 3),
+                );
               }
             }
           } catch (e) {
             if (messenger.mounted) {
-              messenger
-                ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(
-                    content: Text('Failed to refresh metadata: $e'),
-                    backgroundColor: errorColor,
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+              showAppSnackBarOnMessenger(
+                messenger,
+                message: 'Failed to refresh metadata: $e',
+                isError: true,
+                duration: const Duration(seconds: 3),
+              );
             }
           } finally {
             notifier.remove(item.id);
@@ -121,18 +104,13 @@ class ItemOptionsMenu extends ConsumerWidget {
           final notifier = ref.read(enrichingItemsProvider.notifier);
           if (notifier.isEnriching(item.id)) return;
           final messenger = ScaffoldMessenger.of(context);
-          final errorColor = colorScheme.error;
 
           notifier.add(item.id);
-          messenger
-            ..clearSnackBars()
-            ..showSnackBar(
-              const SnackBar(
-                content: Text('Trying archive recovery...'),
-                behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: 1),
-              ),
-            );
+          showAppSnackBarOnMessenger(
+            messenger,
+            message: 'Trying archive recovery...',
+            duration: const Duration(seconds: 1),
+          );
           try {
             final result = await ref
                 .read(enrichmentViewModelProvider.notifier)
@@ -145,66 +123,41 @@ class ItemOptionsMenu extends ConsumerWidget {
             }
 
             if (messenger.mounted) {
-              messenger
-                ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      result.success
-                          ? 'Recovered metadata from archive'
-                          : (result.error?.isNotEmpty == true
-                                ? result.error!
-                                : 'Archive recovery failed'),
-                    ),
-                    backgroundColor: result.success ? null : errorColor,
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+              showAppSnackBarOnMessenger(
+                messenger,
+                message: result.success
+                    ? 'Recovered metadata from archive'
+                    : (result.error?.isNotEmpty == true
+                          ? result.error!
+                          : 'Archive recovery failed'),
+                isError: !result.success,
+                duration: const Duration(seconds: 3),
+              );
             }
           } catch (e) {
             if (messenger.mounted) {
-              messenger
-                ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(
-                    content: Text('Archive recovery failed: $e'),
-                    backgroundColor: errorColor,
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+              showAppSnackBarOnMessenger(
+                messenger,
+                message: 'Archive recovery failed: $e',
+                isError: true,
+                duration: const Duration(seconds: 3),
+              );
             }
           } finally {
             notifier.remove(item.id);
           }
         } else if (val == 'copy_link') {
           Clipboard.setData(ClipboardData(text: item.fullPermalink));
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(
-              const SnackBar(
-                content: Text('Permalink copied to clipboard'),
-                behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: 2),
-              ),
-            );
+          showAppSnackBar(context, 'Permalink copied to clipboard');
         } else if (val == 'copy_text') {
           if (item.body != null && item.body!.trim().isNotEmpty) {
             Clipboard.setData(ClipboardData(text: item.body!.trim()));
-            ScaffoldMessenger.of(context)
-              ..clearSnackBars()
-              ..showSnackBar(
-                SnackBar(
-                  content: Text(
-                    item.isComment
-                        ? 'Comment text copied to clipboard'
-                        : 'Post text copied to clipboard',
-                  ),
-                  behavior: SnackBarBehavior.floating,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+            showAppSnackBar(
+              context,
+              item.isComment
+                  ? 'Comment text copied to clipboard'
+                  : 'Post text copied to clipboard',
+            );
           }
         } else if (val == 'open_reddit') {
           openRedditUrl(context, item.fullPermalink);

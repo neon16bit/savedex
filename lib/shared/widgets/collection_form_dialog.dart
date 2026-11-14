@@ -3,14 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
+import 'package:savedex/shared/widgets/app_snackbar.dart';
 import 'package:savedex/shared/widgets/collection_picker_sheet.dart';
+import 'package:savedex/shared/widgets/frosted_surface.dart';
 
 Future<int?> showCollectionFormDialog(
   BuildContext context, {
   Collection? initialCollection,
   String? assignItemId,
 }) {
-  return showDialog<int>(
+  return showFrostedDialog<int>(
     context: context,
     builder: (ctx) => CollectionFormDialog(
       initialCollection: initialCollection,
@@ -91,15 +93,7 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
 
         if (mounted) {
           Navigator.of(context).pop(widget.initialCollection!.id);
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(
-              SnackBar(
-                content: Text('Updated collection "$name"'),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 2),
-              ),
-            );
+          showAppSnackBar(context, 'Updated collection "$name"');
         }
       } else {
         final id = await repo.createCollection(
@@ -128,19 +122,9 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
 
         if (mounted) {
           Navigator.of(context).pop(id);
-          ScaffoldMessenger.of(context)
-            ..clearSnackBars()
-            ..showSnackBar(
-              SnackBar(
-                content: Text(
-                  widget.assignItemId != null
-                      ? 'Added to collection "$name"'
-                      : 'Created collection "$name"',
-                ),
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 2),
-              ),
-            );
+          if (widget.assignItemId == null) {
+            showAppSnackBar(context, 'Created collection "$name"');
+          }
         }
       }
     } catch (e) {
@@ -150,10 +134,6 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
           _errorMessage = 'Error saving collection: $e';
         });
       }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
     }
   }
 
@@ -162,7 +142,7 @@ class _CollectionFormDialogState extends ConsumerState<CollectionFormDialog> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return AlertDialog(
+    return FrostedAlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: Row(
         children: [

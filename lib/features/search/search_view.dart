@@ -7,6 +7,7 @@ import 'package:savedex/features/saved/widgets/post_card.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/search/widgets/filter_sheet.dart';
 import 'package:savedex/features/search/widgets/sort_sheet.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class SearchView extends ConsumerStatefulWidget {
   const SearchView({super.key});
@@ -143,7 +144,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
   }
 
   void _openFilterSheet(BuildContext context) {
-    showModalBottomSheet(
+    showFrostedModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -152,6 +153,10 @@ class _SearchViewState extends ConsumerState<SearchView> {
   }
 
   void _openSortSheet(BuildContext context) {
-    showModalBottomSheet(context: context, builder: (ctx) => const SortSheet());
+    showFrostedModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => const SortSheet(),
+    );
   }
 }

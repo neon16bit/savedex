@@ -469,7 +469,7 @@ class DetailCommentCard extends StatelessWidget {
                       (s) => s.contains(comment.id),
                     ),
                   );
-                  return PopupMenuButton<String>(
+                  return FrostedPopupMenuButton<String>(
                     tooltip: 'More options',
                     iconSize: 18,
                     padding: EdgeInsets.zero,
@@ -506,31 +506,19 @@ class DetailCommentCard extends StatelessWidget {
                           Clipboard.setData(
                             ClipboardData(text: comment.body!.trim()),
                           );
-                          ScaffoldMessenger.of(context)
-                            ..clearSnackBars()
-                            ..showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Comment text copied to clipboard',
-                                ),
-                                behavior: SnackBarBehavior.floating,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
+                          showAppSnackBar(
+                            context,
+                            'Comment text copied to clipboard',
+                          );
                         }
                       } else if (val == 'copy_link') {
                         Clipboard.setData(
                           ClipboardData(text: comment.fullPermalink),
                         );
-                        ScaffoldMessenger.of(context)
-                          ..clearSnackBars()
-                          ..showSnackBar(
-                            const SnackBar(
-                              content: Text('Permalink copied to clipboard'),
-                              behavior: SnackBarBehavior.floating,
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
+                        showAppSnackBar(
+                          context,
+                          'Permalink copied to clipboard',
+                        );
                       } else if (val == 'open_reddit') {
                         openRedditUrl(context, comment.fullPermalink);
                       } else if (val == 'collections') {
@@ -624,19 +612,19 @@ class DetailCommentCard extends StatelessWidget {
                         ),
                       ),
                       const PopupMenuDivider(),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
                             Icon(
                               Icons.delete_outline_rounded,
                               size: 18,
-                              color: Colors.red,
+                              color: colorScheme.error,
                             ),
-                            SizedBox(width: 10),
+                            const SizedBox(width: 10),
                             Text(
                               'Delete Comment',
-                              style: TextStyle(color: Colors.red),
+                              style: TextStyle(color: colorScheme.error),
                             ),
                           ],
                         ),

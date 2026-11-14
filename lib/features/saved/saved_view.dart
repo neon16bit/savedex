@@ -15,6 +15,7 @@ import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/search/widgets/sort_sheet.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/shell/app_shell.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 typedef FeedView = SavedView;
 
@@ -40,8 +41,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
   late final ScrollController _scrollController;
   bool _isScrollingToTop = false;
   int _sliverResetEpoch = 0;
-  final GlobalKey<PopupMenuButtonState<_SavedViewMenuAction>> _moreMenuKey =
-      GlobalKey();
+  final GlobalKey<FrostedPopupMenuButtonState<_SavedViewMenuAction>>
+  _moreMenuKey = GlobalKey();
 
   @override
   void initState() {
@@ -87,30 +88,17 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
     if (summary != null) {
       final message = _formatSyncMessage(summary);
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(message),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+      showAppSnackBar(context, message);
     } else if (showErrorSnackbar) {
       final error =
           ref.read(importExportViewModelProvider).errorMessage ??
           'Sync from Reddit failed';
-      final colorScheme = Theme.of(context).colorScheme;
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(error, style: TextStyle(color: colorScheme.onError)),
-            backgroundColor: colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      showAppSnackBar(
+        context,
+        error,
+        isError: true,
+        duration: const Duration(seconds: 3),
+      );
     }
     return summary;
   }
@@ -277,10 +265,17 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final enableFrosted = watchFrostedEffects(ref);
 
     return Scaffold(
+      extendBodyBehindAppBar: enableFrosted,
       appBar: AppBar(
         titleSpacing: 12,
+        backgroundColor: enableFrosted ? Colors.transparent : null,
+        elevation: 0,
+        scrolledUnderElevation: enableFrosted ? 0 : null,
+        surfaceTintColor: enableFrosted ? Colors.transparent : null,
+        flexibleSpace: FrostedAppBarBackground(enableBlur: enableFrosted),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -334,10 +329,13 @@ class _SavedViewState extends ConsumerState<SavedView> {
           Stack(
             alignment: Alignment.center,
             children: [
-              PopupMenuButton<_SavedViewMenuAction>(
+              FrostedPopupMenuButton<_SavedViewMenuAction>(
                 key: _moreMenuKey,
                 icon: const Icon(Icons.more_vert_rounded),
                 tooltip: 'More options',
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 style: IconButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                 ),
@@ -441,7 +439,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: colorScheme.outline,
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           )
                         else if (filter.isNsfw == false)
@@ -476,14 +474,16 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             Icons.sync_rounded,
                             size: 20,
                             color: isSyncingReddit
-                                ? colorScheme.outline
+                                ? colorScheme.onSurfaceVariant
                                 : colorScheme.onSurface,
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            isSyncingReddit
-                                ? 'Syncing from Reddit...'
-                                : 'Sync from Reddit',
+                          Expanded(
+                            child: Text(
+                              isSyncingReddit
+                                  ? 'Syncing from Reddit...'
+                                  : 'Sync from Reddit',
+                            ),
                           ),
                         ],
                       ),
@@ -499,7 +499,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             color: colorScheme.onSurface,
                           ),
                           const SizedBox(width: 12),
-                          const Text('Pause Metadata Fetch'),
+                          const Expanded(child: Text('Pause Metadata Fetch')),
                         ],
                       ),
                     ),
@@ -513,9 +513,11 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             color: colorScheme.error,
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            'Stop Metadata Fetch',
-                            style: TextStyle(color: colorScheme.error),
+                          Expanded(
+                            child: Text(
+                              'Stop Metadata Fetch',
+                              style: TextStyle(color: colorScheme.error),
+                            ),
                           ),
                         ],
                       ),
@@ -531,7 +533,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             color: colorScheme.primary,
                           ),
                           const SizedBox(width: 12),
-                          const Text('Resume Metadata Fetch'),
+                          const Expanded(child: Text('Resume Metadata Fetch')),
                         ],
                       ),
                     ),
@@ -545,9 +547,11 @@ class _SavedViewState extends ConsumerState<SavedView> {
                             color: colorScheme.error,
                           ),
                           const SizedBox(width: 12),
-                          Text(
-                            'Stop Metadata Fetch',
-                            style: TextStyle(color: colorScheme.error),
+                          Expanded(
+                            child: Text(
+                              'Stop Metadata Fetch',
+                              style: TextStyle(color: colorScheme.error),
+                            ),
                           ),
                         ],
                       ),
@@ -570,17 +574,19 @@ class _SavedViewState extends ConsumerState<SavedView> {
                                 size: 20,
                                 color: pendingCount > 0
                                     ? colorScheme.primary
-                                    : colorScheme.outline,
+                                    : colorScheme.onSurfaceVariant,
                               ),
                               const SizedBox(width: 12),
-                              Text(
-                                pendingCount > 0
-                                    ? 'Fetch Metadata (${_formatNumber(pendingCount)})'
-                                    : 'All Metadata Downloaded',
-                                style: TextStyle(
-                                  color: pendingCount > 0
-                                      ? null
-                                      : colorScheme.outline,
+                              Expanded(
+                                child: Text(
+                                  pendingCount > 0
+                                      ? 'Fetch Metadata (${_formatNumber(pendingCount)})'
+                                      : 'All Metadata Downloaded',
+                                  style: TextStyle(
+                                    color: pendingCount > 0
+                                        ? null
+                                        : colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
                             ],
@@ -596,7 +602,7 @@ class _SavedViewState extends ConsumerState<SavedView> {
                       children: [
                         Icon(Icons.import_export_rounded, size: 20),
                         SizedBox(width: 12),
-                        Text('Import & Export'),
+                        Expanded(child: Text('Import & Export')),
                       ],
                     ),
                   ),
@@ -622,182 +628,205 @@ class _SavedViewState extends ConsumerState<SavedView> {
           const SizedBox(width: 4),
         ],
       ),
-      body: Column(
-        children: [
-          if ((feedStateAsync.isLoading && feedStateAsync.hasValue) ||
-              isSyncingReddit)
-            const LinearProgressIndicator(minHeight: 2),
+      body: Builder(
+        builder: (bodyContext) {
+          final appBarTopOffset = MediaQuery.paddingOf(bodyContext).top;
+          return Stack(
+            children: [
+              feedStateAsync.when(
+                skipLoadingOnReload: true,
+                data: (feedState) {
+                  final items = feedState.items;
+                  if (items.isEmpty) {
+                    return _buildEmptyState(
+                      context,
+                      filter.hasActiveFilters,
+                      isAuthenticatedWithOAuth: isAuthenticatedWithOAuth,
+                      topPadding: appBarTopOffset,
+                    );
+                  }
 
-          Expanded(
-            child: feedStateAsync.when(
-              skipLoadingOnReload: true,
-              data: (feedState) {
-                final items = feedState.items;
-                if (items.isEmpty) {
-                  return _buildEmptyState(
-                    context,
-                    ref,
-                    filter.hasActiveFilters,
-                  );
-                }
+                  final showFooter =
+                      feedState.hasMore ||
+                      feedState.isLoadingMore ||
+                      feedState.paginationError != null;
 
-                final showFooter =
-                    feedState.hasMore ||
-                    feedState.isLoadingMore ||
-                    feedState.paginationError != null;
+                  Widget content;
+                  switch (feedLayoutMode) {
+                    case FeedLayoutMode.card:
+                    case FeedLayoutMode.compact:
+                      content = CustomScrollView(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        slivers: [
+                          SliverPadding(
+                            key: ValueKey('feed_list_$_sliverResetEpoch'),
+                            padding: EdgeInsets.fromLTRB(
+                              0,
+                              appBarTopOffset,
+                              0,
+                              104,
+                            ),
+                            sliver: SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  if (index >= items.length) {
+                                    return _buildPaginationFooter(
+                                      context,
+                                      feedState,
+                                    );
+                                  }
+                                  final item = items[index];
+                                  if (feedLayoutMode ==
+                                      FeedLayoutMode.compact) {
+                                    return CompactListItem(
+                                      key: ValueKey(item.id),
+                                      item: item,
+                                    );
+                                  }
+                                  if (item.itemType == ItemType.comment) {
+                                    return CommentCard(
+                                      key: ValueKey(item.id),
+                                      item: item,
+                                    );
+                                  }
+                                  return PostCard(
+                                    key: ValueKey(item.id),
+                                    item: item,
+                                  );
+                                },
+                                childCount: items.length + (showFooter ? 1 : 0),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                      break;
 
-                Widget content;
-                switch (feedLayoutMode) {
-                  case FeedLayoutMode.card:
-                  case FeedLayoutMode.compact:
-                    content = CustomScrollView(
-                      controller: _scrollController,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      slivers: [
-                        SliverPadding(
-                          key: ValueKey('feed_list_$_sliverResetEpoch'),
-                          padding: const EdgeInsets.only(bottom: 104),
-                          sliver: SliverList(
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              if (index >= items.length) {
-                                return _buildPaginationFooter(
-                                  context,
-                                  feedState,
-                                );
-                              }
-                              final item = items[index];
-                              if (feedLayoutMode == FeedLayoutMode.compact) {
-                                return CompactListItem(
+                    case FeedLayoutMode.gallery:
+                      content = CustomScrollView(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        slivers: [
+                          SliverPadding(
+                            key: ValueKey('feed_grid_$_sliverResetEpoch'),
+                            padding: EdgeInsets.fromLTRB(
+                              10,
+                              appBarTopOffset + 8,
+                              10,
+                              104,
+                            ),
+                            sliver: SliverGrid(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    childAspectRatio: 0.82,
+                                    crossAxisSpacing: 8,
+                                    mainAxisSpacing: 8,
+                                  ),
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                index,
+                              ) {
+                                final item = items[index];
+                                return GalleryItem(
                                   key: ValueKey(item.id),
                                   item: item,
                                 );
-                              }
-                              if (item.itemType == ItemType.comment) {
-                                return CommentCard(
-                                  key: ValueKey(item.id),
-                                  item: item,
-                                );
-                              }
-                              return PostCard(
-                                key: ValueKey(item.id),
-                                item: item,
-                              );
-                            }, childCount: items.length + (showFooter ? 1 : 0)),
+                              }, childCount: items.length),
+                            ),
                           ),
-                        ),
-                      ],
-                    );
-                    break;
+                          if (showFooter)
+                            SliverToBoxAdapter(
+                              child: _buildPaginationFooter(context, feedState),
+                            ),
+                        ],
+                      );
+                      break;
+                  }
 
-                  case FeedLayoutMode.gallery:
-                    content = CustomScrollView(
-                      controller: _scrollController,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      slivers: [
-                        SliverPadding(
-                          key: ValueKey('feed_grid_$_sliverResetEpoch'),
-                          padding: const EdgeInsets.fromLTRB(10, 8, 10, 104),
-                          sliver: SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  childAspectRatio: 0.82,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
-                                ),
-                            delegate: SliverChildBuilderDelegate((
-                              context,
-                              index,
-                            ) {
-                              final item = items[index];
-                              return GalleryItem(
-                                key: ValueKey(item.id),
-                                item: item,
-                              );
-                            }, childCount: items.length),
-                          ),
-                        ),
-                        if (showFooter)
-                          SliverToBoxAdapter(
-                            child: _buildPaginationFooter(context, feedState),
-                          ),
-                      ],
-                    );
-                    break;
-                }
-
-                return NotificationListener<ScrollNotification>(
-                  onNotification: (notification) {
-                    if (!_isScrollingToTop &&
-                        notification.depth == 0 &&
-                        notification.metrics.pixels >=
-                            notification.metrics.maxScrollExtent - 3000) {
-                      final current = ref
-                          .read(savedFeedPaginationProvider)
-                          .value;
-                      if (current != null &&
-                          current.hasMore &&
-                          !current.isLoadingMore &&
-                          current.paginationError == null) {
-                        ref
-                            .read(savedFeedPaginationProvider.notifier)
-                            .fetchNextPage();
+                  return NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (!_isScrollingToTop &&
+                          notification.depth == 0 &&
+                          notification.metrics.pixels >=
+                              notification.metrics.maxScrollExtent - 3000) {
+                        final current = ref
+                            .read(savedFeedPaginationProvider)
+                            .value;
+                        if (current != null &&
+                            current.hasMore &&
+                            !current.isLoadingMore &&
+                            current.paginationError == null) {
+                          ref
+                              .read(savedFeedPaginationProvider.notifier)
+                              .fetchNextPage();
+                        }
                       }
-                    }
-                    return false;
-                  },
-                  child: RefreshIndicator(
-                    onRefresh: () async {
-                      if (isAuthenticatedWithOAuth) {
-                        await _syncFromReddit(showErrorSnackbar: true);
-                      } else {
-                        ref.invalidate(savedFeedPaginationProvider);
-                      }
-                      await ref.read(savedFeedPaginationProvider.future);
+                      return false;
                     },
-                    child: content,
+                    child: RefreshIndicator(
+                      edgeOffset: appBarTopOffset,
+                      onRefresh: () async {
+                        if (isAuthenticatedWithOAuth) {
+                          await _syncFromReddit(showErrorSnackbar: true);
+                        } else {
+                          ref.invalidate(savedFeedPaginationProvider);
+                        }
+                        await ref.read(savedFeedPaginationProvider.future);
+                      },
+                      child: content,
+                    ),
+                  );
+                },
+                loading: () => Padding(
+                  padding: EdgeInsets.only(top: appBarTopOffset),
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
                   ),
-                );
-              },
-              loading: () => const Center(
-                child: CircularProgressIndicator(strokeWidth: 2.5),
-              ),
-              error: (err, stack) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text('Error loading feed: $err'),
+                ),
+                error: (err, stack) => Padding(
+                  padding: EdgeInsets.only(top: appBarTopOffset),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text('Error loading feed: $err'),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+              if ((feedStateAsync.isLoading && feedStateAsync.hasValue) ||
+                  isSyncingReddit)
+                Positioned(
+                  top: appBarTopOffset,
+                  left: 0,
+                  right: 0,
+                  child: const LinearProgressIndicator(minHeight: 2),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildEmptyState(
     BuildContext context,
-    WidgetRef ref,
-    bool hasActiveFilters,
-  ) {
+    bool hasActiveFilters, {
+    required bool isAuthenticatedWithOAuth,
+    double topPadding = 0,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isAuthenticatedWithOAuth = ref.watch(
-      settingsViewModelProvider.select((s) => s.isAuthenticatedWithOAuth),
-    );
-    final importState = ref.watch(importExportViewModelProvider);
 
     if (hasActiveFilters) {
       return Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
+          padding: EdgeInsets.fromLTRB(32, topPadding + 32, 32, 104),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -844,116 +873,126 @@ class _SavedViewState extends ConsumerState<SavedView> {
       );
     }
 
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withValues(alpha: 0.4),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.bookmarks_rounded,
-                size: 52,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No Saved Posts Yet',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.4,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              isAuthenticatedWithOAuth
-                  ? 'Your Reddit account is connected! Pull your latest saved posts & comments directly from Reddit, or import an export file.'
-                  : 'Import your Reddit Takeout CSV/ZIP or connect your Reddit account in Settings to start exploring saved items.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.45,
-                fontSize: 13.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (importState.isImporting) ...[
-              const SizedBox(width: 220, child: LinearProgressIndicator()),
-              const SizedBox(height: 12),
-              Text(
-                importState.statusMessage ??
-                    'Syncing saved items from Reddit...',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-            ] else if (isAuthenticatedWithOAuth) ...[
-              FilledButton.icon(
-                onPressed: _syncFromReddit,
-                icon: const Icon(Icons.cloud_download_rounded),
-                label: const Text('Pull Saved from Reddit (OAuth)'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF4500),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 14,
+    return Consumer(
+      builder: (context, emptyRef, _) {
+        final importState = emptyRef.watch(importExportViewModelProvider);
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(32, topPadding + 32, 32, 104),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.4),
+                    shape: BoxShape.circle,
                   ),
-                  shape: const StadiumBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (ctx) => const ImportView()),
-                  );
-                },
-                icon: const Icon(Icons.file_upload_rounded),
-                label: const Text('Import Reddit Takeout CSV'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 14,
+                  child: Icon(
+                    Icons.bookmarks_rounded,
+                    size: 52,
+                    color: colorScheme.primary,
                   ),
-                  shape: const StadiumBorder(),
                 ),
-              ),
-            ] else ...[
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (ctx) => const ImportView()),
-                  );
-                },
-                icon: const Icon(Icons.file_upload_rounded),
-                label: const Text('Import Reddit Takeout'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 14,
+                const SizedBox(height: 24),
+                Text(
+                  'No Saved Posts Yet',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.4,
                   ),
-                  shape: const StadiumBorder(),
                 ),
-              ),
-            ],
-          ],
-        ),
-      ),
+                const SizedBox(height: 10),
+                Text(
+                  isAuthenticatedWithOAuth
+                      ? 'Your Reddit account is connected! Pull your latest saved posts & comments directly from Reddit, or import an export file.'
+                      : 'Import your Reddit Takeout CSV/ZIP or connect your Reddit account in Settings to start exploring saved items.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.45,
+                    fontSize: 13.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (importState.isImporting) ...[
+                  const SizedBox(width: 220, child: LinearProgressIndicator()),
+                  const SizedBox(height: 12),
+                  Text(
+                    importState.statusMessage ??
+                        'Syncing saved items from Reddit...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ] else if (isAuthenticatedWithOAuth) ...[
+                  FilledButton.icon(
+                    onPressed: _syncFromReddit,
+                    icon: const Icon(Icons.cloud_download_rounded),
+                    label: const Text('Pull Saved from Reddit (OAuth)'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFFF4500),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (ctx) => const ImportView()),
+                      );
+                    },
+                    icon: const Icon(Icons.file_upload_rounded),
+                    label: const Text('Import Reddit Takeout CSV'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                ] else ...[
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (ctx) => const ImportView()),
+                      );
+                    },
+                    icon: const Icon(Icons.file_upload_rounded),
+                    label: const Text('Import Reddit Takeout'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 14,
+                      ),
+                      shape: const StadiumBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   void _openSortSheet(BuildContext context) {
-    showModalBottomSheet(context: context, builder: (ctx) => const SortSheet());
+    showFrostedModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => const SortSheet(),
+    );
   }
 
   static const _backSentinel = Object();
@@ -965,21 +1004,38 @@ class _SavedViewState extends ConsumerState<SavedView> {
         Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (renderBox == null || overlay == null) return;
 
-    final colorScheme = Theme.of(context).colorScheme;
-    final currentMode = ref.read(settingsViewModelProvider).feedLayoutMode;
-
-    final target = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(target, target + renderBox.size.bottomRight(Offset.zero)),
-      Offset.zero & overlay.size,
-    );
+    RelativeRect computePosition() {
+      final target = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
+      return RelativeRect.fromRect(
+        Rect.fromPoints(
+          target,
+          target + renderBox.size.bottomRight(Offset.zero),
+        ),
+        Offset.zero & overlay.size,
+      );
+    }
 
     await Future.delayed(const Duration(milliseconds: 10));
-    if (!mounted || !context.mounted) return;
+    if (!mounted ||
+        !context.mounted ||
+        !renderBox.attached ||
+        !overlay.attached) {
+      return;
+    }
 
-    final selected = await showMenu<Object?>(
+    final colorScheme = Theme.of(context).colorScheme;
+    final currentMode = ref.read(settingsViewModelProvider).feedLayoutMode;
+    final position = computePosition();
+
+    final selected = await showFrostedMenu<Object?>(
       context: context,
       position: position,
+      positionBuilder: (_, fallback) {
+        if (!mounted || !renderBox.attached || !overlay.attached) {
+          return fallback;
+        }
+        return computePosition();
+      },
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       items: [
         PopupMenuItem<Object?>(
@@ -993,12 +1049,14 @@ class _SavedViewState extends ConsumerState<SavedView> {
                 color: colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 8),
-              Text(
-                'Post View',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurfaceVariant,
+              Expanded(
+                child: Text(
+                  'Post View',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],

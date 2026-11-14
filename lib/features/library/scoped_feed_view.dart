@@ -18,6 +18,7 @@ import 'package:savedex/features/search/widgets/filter_sheet.dart';
 import 'package:savedex/features/search/widgets/sort_sheet.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class ScopedFeedArgs {
   final Collection? collection;
@@ -653,8 +654,9 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       },
     };
 
-    showModalBottomSheet<void>(
+    showFrostedModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       builder: (ctx) => SortSheet(
         currentSort: _scopedFilter.sortOption,
         excludedOptions: excluded,
@@ -781,7 +783,10 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     );
   }
 
-  Widget _buildScopedActionSurface(BuildContext context) {
+  Widget _buildScopedActionSurface(
+    BuildContext context, {
+    required bool enableFrosted,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
@@ -790,15 +795,15 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     final baseDockSurface = isDark
         ? colorScheme.surfaceContainerHigh
         : colorScheme.surfaceContainerHighest;
-    final dockSurface = kEnableNavBarBlur
+    final dockSurface = enableFrosted
         ? baseDockSurface.withValues(
             alpha: isDark ? kNavBarBlurAlphaDark : kNavBarBlurAlphaLight,
           )
         : baseDockSurface;
     final dockBorder = colorScheme.outlineVariant.withValues(
       alpha: isDark
-          ? (kEnableNavBarBlur ? 0.40 : 0.55)
-          : (kEnableNavBarBlur ? 0.35 : 0.45),
+          ? (enableFrosted ? 0.40 : 0.55)
+          : (enableFrosted ? 0.35 : 0.45),
     );
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom > 0
@@ -889,6 +894,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                       surfaceColor: dockSurface,
                                       borderColor: dockBorder,
                                       isDark: isDark,
+                                      enableBlur: enableFrosted,
                                       customShadow: const BoxShadow(
                                         color: Colors.transparent,
                                       ),
@@ -942,6 +948,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                         dockSurface: dockSurface,
                                         dockBorder: dockBorder,
                                         isDark: isDark,
+                                        enableBlur: enableFrosted,
                                       ),
                                     ),
                                   ),
@@ -975,6 +982,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                           surfaceColor: dockSurface,
                                           borderColor: dockBorder,
                                           isDark: isDark,
+                                          enableBlur: enableFrosted,
                                           padding: const EdgeInsets.symmetric(
                                             horizontal:
                                                 kNavBarSearchBarHorizontalPadding,
@@ -1004,6 +1012,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                           dockSurface: dockSurface,
                                           dockBorder: dockBorder,
                                           isDark: isDark,
+                                          enableBlur: enableFrosted,
                                         ),
                                 ),
                               ] else ...[
@@ -1026,6 +1035,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                         dockSurface: dockSurface,
                                         dockBorder: dockBorder,
                                         isDark: isDark,
+                                        enableBlur: enableFrosted,
                                       ),
                                     ),
                                   ),
@@ -1059,6 +1069,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                           surfaceColor: dockSurface,
                                           borderColor: dockBorder,
                                           isDark: isDark,
+                                          enableBlur: enableFrosted,
                                           padding: const EdgeInsets.symmetric(
                                             horizontal:
                                                 kNavBarSearchBarHorizontalPadding,
@@ -1088,6 +1099,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                                           dockSurface: dockSurface,
                                           dockBorder: dockBorder,
                                           isDark: isDark,
+                                          enableBlur: enableFrosted,
                                         ),
                                 ),
                               ],
@@ -1127,6 +1139,10 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final enableFrosted = watchFrostedEffects(ref);
+    final feedLayoutMode = ref.watch(
+      settingsViewModelProvider.select((s) => s.feedLayoutMode),
+    );
 
     return _ScopedFeedInherited(
       args: widget.args,
@@ -1140,149 +1156,186 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
             _closeScopedSearch();
           }
         },
-        child: Scaffold(
-          appBar: AppBar(
-            titleSpacing: 0,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    if (widget.args.isCollection) ...[
-                      Container(
-                        width: 12,
-                        height: 12,
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: Color(widget.args.collection!.colorValue),
-                          shape: BoxShape.circle,
+        child: SnackBarTheme(
+          data: theme.snackBarTheme.copyWith(
+            insetPadding: kFloatingBarSnackBarMargin,
+          ),
+          child: Scaffold(
+            extendBodyBehindAppBar: enableFrosted,
+            appBar: AppBar(
+              titleSpacing: 0,
+              backgroundColor: enableFrosted ? Colors.transparent : null,
+              elevation: 0,
+              scrolledUnderElevation: enableFrosted ? 0 : null,
+              surfaceTintColor: enableFrosted ? Colors.transparent : null,
+              flexibleSpace: FrostedAppBarBackground(enableBlur: enableFrosted),
+              title: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      if (widget.args.isCollection) ...[
+                        Container(
+                          width: 12,
+                          height: 12,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: Color(widget.args.collection!.colorValue),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                      Flexible(
+                        child: Text(
+                          widget.args.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
                     ],
-                    Flexible(
-                      child: Text(
-                        widget.args.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  _isLoading && _items.isEmpty
-                      ? 'Loading...'
-                      : _isTotalCountPending
-                      ? '$_totalCount+ saved items'
-                      : '$_totalCount saved ${_totalCount == 1 ? 'item' : 'items'}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
                   ),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.sort_rounded),
-                tooltip: 'Sort: ${_scopedFilter.sortOption.label}',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _openSortSheet(context),
-              ),
-              if (widget.args.isSubreddit) ...[
-                IconButton(
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  tooltip: 'Open subreddit on Reddit',
-                  onPressed: () => _openInReddit(widget.args.subreddit!),
-                ),
-              ],
-              if (widget.args.isAuthor &&
-                  widget.args.author != '[deleted]') ...[
-                IconButton(
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  tooltip: 'Open user on Reddit',
-                  onPressed: () => _openUserInReddit(widget.args.author!),
-                ),
-              ],
-              const SizedBox(width: 4),
-            ],
-          ),
-          body: Stack(
-            children: [
-              Column(
-                children: [
-                  Expanded(
-                    child: _isLoading && _items.isEmpty
-                        ? const Center(child: CircularProgressIndicator())
-                        : _errorMessage != null && _items.isEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.error_outline_rounded,
-                                    size: 48,
-                                    color: colorScheme.error,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Error loading items',
-                                    style: theme.textTheme.titleMedium,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _errorMessage!,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: colorScheme.onSurfaceVariant,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  FilledButton.tonal(
-                                    onPressed: () => _loadInitial(
-                                      showFullScreenLoader: true,
-                                    ),
-                                    child: const Text('Retry'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : _buildFeedList(context),
+                  Text(
+                    _isLoading && _items.isEmpty
+                        ? 'Loading...'
+                        : _isTotalCountPending
+                        ? '$_totalCount+ saved items'
+                        : '$_totalCount saved ${_totalCount == 1 ? 'item' : 'items'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ],
               ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_isFilterExpanded,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOut,
-                    opacity: _isFilterExpanded ? 1.0 : 0.0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _closeScopedFilter,
-                      onVerticalDragUpdate: (details) {
-                        if ((details.primaryDelta ?? 0) > 6) {
-                          _closeScopedFilter();
-                        }
-                      },
-                      child: Container(
-                        color: Colors.black.withValues(
-                          alpha: isDark ? 0.40 : 0.22,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.sort_rounded),
+                  tooltip: 'Sort: ${_scopedFilter.sortOption.label}',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _openSortSheet(context),
+                ),
+                if (widget.args.isSubreddit) ...[
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    tooltip: 'Open subreddit on Reddit',
+                    onPressed: () => _openInReddit(widget.args.subreddit!),
+                  ),
+                ],
+                if (widget.args.isAuthor &&
+                    widget.args.author != '[deleted]') ...[
+                  IconButton(
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    tooltip: 'Open user on Reddit',
+                    onPressed: () => _openUserInReddit(widget.args.author!),
+                  ),
+                ],
+                const SizedBox(width: 4),
+              ],
+            ),
+            body: Builder(
+              builder: (bodyContext) {
+                final appBarTopOffset = MediaQuery.paddingOf(bodyContext).top;
+                return Stack(
+                  children: [
+                    Column(
+                      children: [
+                        Expanded(
+                          child: _isLoading && _items.isEmpty
+                              ? Padding(
+                                  padding: EdgeInsets.only(
+                                    top: appBarTopOffset,
+                                  ),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                )
+                              : _errorMessage != null && _items.isEmpty
+                              ? Padding(
+                                  padding: EdgeInsets.only(
+                                    top: appBarTopOffset,
+                                  ),
+                                  child: Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.error_outline_rounded,
+                                            size: 48,
+                                            color: colorScheme.error,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            'Error loading items',
+                                            style: theme.textTheme.titleMedium,
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            _errorMessage!,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          FilledButton.tonal(
+                                            onPressed: () => _loadInitial(
+                                              showFullScreenLoader: true,
+                                            ),
+                                            child: const Text('Retry'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : _buildFeedList(
+                                  bodyContext,
+                                  feedLayoutMode: feedLayoutMode,
+                                  topPadding: appBarTopOffset,
+                                ),
+                        ),
+                      ],
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        ignoring: !_isFilterExpanded,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                          opacity: _isFilterExpanded ? 1.0 : 0.0,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _closeScopedFilter,
+                            onVerticalDragUpdate: (details) {
+                              if ((details.primaryDelta ?? 0) > 6) {
+                                _closeScopedFilter();
+                              }
+                            },
+                            child: Container(
+                              color: Colors.black.withValues(
+                                alpha: isDark ? 0.40 : 0.22,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              ),
-              _buildScopedActionSurface(context),
-            ],
+                    _buildScopedActionSurface(
+                      bodyContext,
+                      enableFrosted: enableFrosted,
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -1319,12 +1372,13 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     return const SizedBox.shrink();
   }
 
-  Widget _buildFeedList(BuildContext context) {
+  Widget _buildFeedList(
+    BuildContext context, {
+    required FeedLayoutMode feedLayoutMode,
+    double topPadding = 0,
+  }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final feedLayoutMode = ref.watch(
-      settingsViewModelProvider.select((s) => s.feedLayoutMode),
-    );
 
     if (_items.isEmpty) {
       final isSearching =
@@ -1334,7 +1388,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
       return Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(32),
+          padding: EdgeInsets.fromLTRB(32, topPadding + 32, 32, 104),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1425,7 +1479,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
           slivers: [
             SliverPadding(
               key: ValueKey('scoped_feed_list_$_sliverResetEpoch'),
-              padding: const EdgeInsets.only(bottom: 104),
+              padding: EdgeInsets.fromLTRB(0, topPadding, 0, 104),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
                   if (index >= _items.length) {
@@ -1454,7 +1508,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
           slivers: [
             SliverPadding(
               key: ValueKey('scoped_feed_grid_$_sliverResetEpoch'),
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 104),
+              padding: EdgeInsets.fromLTRB(10, topPadding + 8, 10, 104),
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
@@ -1483,7 +1537,11 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         }
         return false;
       },
-      child: RefreshIndicator(onRefresh: _loadInitial, child: scrollContent),
+      child: RefreshIndicator(
+        edgeOffset: topPadding,
+        onRefresh: _loadInitial,
+        child: scrollContent,
+      ),
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class _VideoQuality {
   final int height;
@@ -56,6 +57,7 @@ class _MediaVideoPlayerState extends ConsumerState<MediaVideoPlayer> {
   bool _isPlaying = false;
   bool _isBuffering = true;
   bool _showControls = true;
+  bool _controlsHiddenSettled = false;
 
   bool _voGpuAttached = false;
   bool _didReopenAfterVoAttach = false;
@@ -451,54 +453,57 @@ class _MediaVideoPlayerState extends ConsumerState<MediaVideoPlayer> {
     if (_qualities.isEmpty) return;
     _hideControlsTimer?.cancel();
 
-    showModalBottomSheet<void>(
+    showFrostedModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'Video Quality',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const Divider(color: Colors.white12, height: 1),
-              ..._qualities.map((q) {
-                final isSelected = q.url == _selectedQuality?.url;
-                return ListTile(
-                  leading: Icon(
-                    isSelected ? Icons.check_rounded : null,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  title: Text(
-                    q.label,
+        return FrostedSheetContainer(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          blurSurfaceColor: const Color(0xFF1E1E1E).withValues(alpha: 0.84),
+          solidSurfaceColor: const Color(0xFF1E1E1E),
+          borderColor: Colors.white.withValues(alpha: 0.16),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    'Video Quality',
                     style: TextStyle(
                       color: Colors.white,
-                      fontWeight: isSelected
-                          ? FontWeight.w700
-                          : FontWeight.w400,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _changeQuality(q);
-                  },
-                );
-              }),
-              const SizedBox(height: 8),
-            ],
+                ),
+                const Divider(color: Colors.white12, height: 1),
+                ..._qualities.map((q) {
+                  final isSelected = q.url == _selectedQuality?.url;
+                  return ListTile(
+                    leading: Icon(
+                      isSelected ? Icons.check_rounded : null,
+                      color: Theme.of(sheetContext).colorScheme.primary,
+                    ),
+                    title: Text(
+                      q.label,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w400,
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _changeQuality(q);
+                    },
+                  );
+                }),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         );
       },
@@ -526,13 +531,19 @@ class _MediaVideoPlayerState extends ConsumerState<MediaVideoPlayer> {
     _hideControlsTimer?.cancel();
     _hideControlsTimer = Timer(const Duration(seconds: 3), () {
       if (mounted && _isPlaying) {
-        setState(() => _showControls = false);
+        setState(() {
+          _controlsHiddenSettled = false;
+          _showControls = false;
+        });
       }
     });
   }
 
   void _toggleControls() {
-    setState(() => _showControls = !_showControls);
+    setState(() {
+      _showControls = !_showControls;
+      _controlsHiddenSettled = false;
+    });
     if (_showControls) {
       _startHideControlsTimer();
     }
@@ -611,26 +622,47 @@ class _MediaVideoPlayerState extends ConsumerState<MediaVideoPlayer> {
           AnimatedOpacity(
             opacity: _showControls ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
+            onEnd: () {
+              if (!_showControls && mounted && !_controlsHiddenSettled) {
+                setState(() => _controlsHiddenSettled = true);
+              }
+            },
             child: IgnorePointer(
               ignoring: !_showControls,
               child: Stack(
                 children: [
                   // center play/pause button
                   Center(
-                    child: Material(
-                      color: Colors.black.withValues(alpha: 0.55),
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: IconButton(
-                        iconSize: 48,
-                        icon: Icon(
-                          _isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          color: Colors.white,
-                        ),
-                        onPressed: _togglePlayPause,
-                      ),
+                    child: Consumer(
+                      builder: (context, ref, _) {
+                        final enableFrosted =
+                            watchFrostedEffects(ref) &&
+                            (_showControls || !_controlsHiddenSettled);
+                        return FrostedSurface(
+                          enableBlur: enableFrosted,
+                          blurSigma: 12.0,
+                          borderRadius: BorderRadius.circular(999),
+                          surfaceColor: Colors.black.withValues(
+                            alpha: enableFrosted ? 0.45 : 0.55,
+                          ),
+                          borderColor: enableFrosted
+                              ? Colors.white.withValues(alpha: 0.24)
+                              : null,
+                          child: Material(
+                            type: MaterialType.transparency,
+                            child: IconButton(
+                              iconSize: 48,
+                              icon: Icon(
+                                _isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                color: Colors.white,
+                              ),
+                              onPressed: _togglePlayPause,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
 

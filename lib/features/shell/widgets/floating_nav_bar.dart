@@ -767,25 +767,27 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       _ => Alignment.centerRight,
     };
 
+    final enableFrosted = watchFrostedEffects(ref);
+
     final baseDockSurface = isDark
         ? colorScheme.surfaceContainerHigh
         : colorScheme.surfaceContainerHighest;
-    final dockSurface = kEnableNavBarBlur
+    final dockSurface = enableFrosted
         ? baseDockSurface.withValues(
             alpha: isDark ? kNavBarBlurAlphaDark : kNavBarBlurAlphaLight,
           )
         : baseDockSurface;
     final dockBorder = colorScheme.outlineVariant.withValues(
       alpha: isDark
-          ? (kEnableNavBarBlur ? 0.40 : 0.55)
-          : (kEnableNavBarBlur ? 0.35 : 0.45),
+          ? (enableFrosted ? 0.40 : 0.55)
+          : (enableFrosted ? 0.35 : 0.45),
     );
     final inactiveSlotFill = isDark
         ? colorScheme.surfaceContainerHighest.withValues(
-            alpha: kEnableNavBarBlur ? 0.65 : 1.0,
+            alpha: enableFrosted ? 0.65 : 1.0,
           )
         : colorScheme.surfaceContainer.withValues(
-            alpha: kEnableNavBarBlur ? 0.65 : 1.0,
+            alpha: enableFrosted ? 0.65 : 1.0,
           );
 
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom > 0
@@ -882,6 +884,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                     surfaceColor: dockSurface,
                                     borderColor: dockBorder,
                                     isDark: isDark,
+                                    enableBlur: enableFrosted,
                                     customShadow: const BoxShadow(
                                       color: Colors.transparent,
                                     ),
@@ -932,7 +935,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                     borderColor: dockBorder,
                                     isDark: isDark,
                                     enableBlur:
-                                        kEnableNavBarBlur && !isSearchMorphed,
+                                        enableFrosted && !isSearchMorphed,
                                     padding: EdgeInsets.symmetric(
                                       horizontal: mainIslandHorizontalPadding,
                                       vertical: kNavBarIslandPadding,
@@ -974,6 +977,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                       dockSurface: dockSurface,
                                       dockBorder: dockBorder,
                                       isDark: isDark,
+                                      enableBlur: enableFrosted,
                                     ),
                                   ),
                                 ),
@@ -1003,6 +1007,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                         surfaceColor: dockSurface,
                                         borderColor: dockBorder,
                                         isDark: isDark,
+                                        enableBlur: enableFrosted,
                                         padding: const EdgeInsets.symmetric(
                                           horizontal:
                                               kNavBarSearchBarHorizontalPadding,
@@ -1034,6 +1039,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                         dockSurface: dockSurface,
                                         dockBorder: dockBorder,
                                         isDark: isDark,
+                                        enableBlur: enableFrosted,
                                       ),
                               ),
                             ] else ...[
@@ -1055,6 +1061,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                         dockSurface: dockSurface,
                                         dockBorder: dockBorder,
                                         isDark: isDark,
+                                        enableBlur: enableFrosted,
                                       ),
                                     ),
                                   ),
@@ -1087,6 +1094,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                           surfaceColor: dockSurface,
                                           borderColor: dockBorder,
                                           isDark: isDark,
+                                          enableBlur: enableFrosted,
                                           padding: const EdgeInsets.symmetric(
                                             horizontal:
                                                 kNavBarSearchBarHorizontalPadding,
@@ -1121,6 +1129,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                                           dockSurface: dockSurface,
                                           dockBorder: dockBorder,
                                           isDark: isDark,
+                                          enableBlur: enableFrosted,
                                         ),
                                 ),
                             ],
@@ -1140,105 +1149,107 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
 
   void _showCollectionSortSheet(BuildContext context, WidgetRef ref) {
     final currentSort = ref.read(collectionSortOptionProvider);
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
 
-    showModalBottomSheet<void>(
+    showFrostedModalBottomSheet<void>(
       context: context,
-      backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(top: 4, bottom: 12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(2),
+        final theme = Theme.of(ctx);
+        final colorScheme = theme.colorScheme;
+        final textTheme = theme.textTheme;
+        return FrostedSheetContainer(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 4, bottom: 12),
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.sort_rounded,
-                        size: 22,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Sort Collections',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.sort_rounded,
+                          size: 22,
+                          color: colorScheme.primary,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                ...CollectionSortOption.values.map((option) {
-                  final isSelected = option == currentSort;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Material(
-                      color: isSelected
-                          ? colorScheme.primaryContainer.withValues(alpha: 0.45)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () {
-                          ref
-                              .read(collectionSortOptionProvider.notifier)
-                              .setSort(option);
-                          Navigator.pop(ctx);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                        const SizedBox(width: 10),
+                        Text(
+                          'Sort Collections',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  option.label,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    color: isSelected
-                                        ? colorScheme.primary
-                                        : colorScheme.onSurface,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  ...CollectionSortOption.values.map((option) {
+                    final isSelected = option == currentSort;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Material(
+                        color: isSelected
+                            ? colorScheme.primaryContainer.withValues(
+                                alpha: 0.45,
+                              )
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            ref
+                                .read(collectionSortOptionProvider.notifier)
+                                .setSort(option);
+                            Navigator.pop(ctx);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    option.label,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? colorScheme.primary
+                                          : colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (isSelected)
-                                Icon(
-                                  Icons.check_circle_rounded,
-                                  size: 20,
-                                  color: colorScheme.primary,
-                                ),
-                            ],
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 20,
+                                    color: colorScheme.primary,
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }),
-              ],
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         );
@@ -1253,103 +1264,105 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
     String noun,
   ) {
     final currentSort = ref.read(sortProvider);
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
 
-    showModalBottomSheet<void>(
+    showFrostedModalBottomSheet<void>(
       context: context,
-      backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 4,
-                  margin: const EdgeInsets.only(top: 4, bottom: 12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(2),
+        final theme = Theme.of(ctx);
+        final colorScheme = theme.colorScheme;
+        final textTheme = theme.textTheme;
+        return FrostedSheetContainer(
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 4, bottom: 12),
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.sort_rounded,
-                        size: 22,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Sort $noun',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.sort_rounded,
+                          size: 22,
+                          color: colorScheme.primary,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                ...SubredditSortOption.values.map((option) {
-                  final isSelected = option == currentSort;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Material(
-                      color: isSelected
-                          ? colorScheme.primaryContainer.withValues(alpha: 0.45)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(14),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () {
-                          ref.read(sortProvider.notifier).setSort(option);
-                          Navigator.pop(ctx);
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                        const SizedBox(width: 10),
+                        Text(
+                          'Sort $noun',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  option.label,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: isSelected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    color: isSelected
-                                        ? colorScheme.primary
-                                        : colorScheme.onSurface,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  ...SubredditSortOption.values.map((option) {
+                    final isSelected = option == currentSort;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Material(
+                        color: isSelected
+                            ? colorScheme.primaryContainer.withValues(
+                                alpha: 0.45,
+                              )
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            ref.read(sortProvider.notifier).setSort(option);
+                            Navigator.pop(ctx);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    option.label,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? colorScheme.primary
+                                          : colorScheme.onSurface,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (isSelected)
-                                Icon(
-                                  Icons.check_circle_rounded,
-                                  size: 20,
-                                  color: colorScheme.primary,
-                                ),
-                            ],
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 20,
+                                    color: colorScheme.primary,
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }),
-              ],
+                    );
+                  }),
+                ],
+              ),
             ),
           ),
         );
@@ -1952,6 +1965,7 @@ class StandaloneFloatingActionButton extends StatelessWidget {
   final Color dockSurface;
   final Color dockBorder;
   final bool isDark;
+  final bool enableBlur;
 
   const StandaloneFloatingActionButton({
     super.key,
@@ -1959,6 +1973,7 @@ class StandaloneFloatingActionButton extends StatelessWidget {
     required this.dockSurface,
     required this.dockBorder,
     required this.isDark,
+    this.enableBlur = kEnableNavBarBlur,
   });
 
   @override
@@ -1981,7 +1996,7 @@ class StandaloneFloatingActionButton extends StatelessWidget {
         surfaceColor: fill,
         borderColor: borderColor,
         isDark: isDark,
-        enableBlur: kEnableNavBarBlur,
+        enableBlur: enableBlur && !spec.isActive,
         customShadow: spec.isActive
             ? BoxShadow(
                 color: colorScheme.primary.withValues(alpha: 0.35),

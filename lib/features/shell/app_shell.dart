@@ -4,6 +4,7 @@ import 'package:savedex/features/library/library_view.dart';
 import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
 import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 export 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
 
 class ShellTabViewModel extends Notifier<int> {
@@ -112,57 +113,65 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     final isSavedFilterExpanded =
         selectedIndex == 0 && ref.watch(isSavedFilterExpandedProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     void dismissFilter() {
       ref.read(isSavedFilterExpandedProvider.notifier).setExpanded(false);
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: selectedIndex,
-            children: [
-              const SavedView(),
-              _visitedTabs.contains(1)
-                  ? const LibraryView()
-                  : const SizedBox.shrink(),
-              _visitedTabs.contains(2)
-                  ? const SettingsView()
-                  : const SizedBox.shrink(),
-            ],
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: !isSavedFilterExpanded,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                opacity: isSavedFilterExpanded ? 1.0 : 0.0,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: dismissFilter,
-                  onVerticalDragUpdate: (details) {
-                    if ((details.primaryDelta ?? 0) > 6) {
-                      dismissFilter();
-                    }
-                  },
-                  child: Container(
-                    color: Colors.black.withValues(alpha: isDark ? 0.40 : 0.22),
+    return SnackBarTheme(
+      data: theme.snackBarTheme.copyWith(
+        insetPadding: kFloatingBarSnackBarMargin,
+      ),
+      child: Scaffold(
+        body: Stack(
+          children: [
+            IndexedStack(
+              index: selectedIndex,
+              children: [
+                const SavedView(),
+                _visitedTabs.contains(1)
+                    ? const LibraryView()
+                    : const SizedBox.shrink(),
+                _visitedTabs.contains(2)
+                    ? const SettingsView()
+                    : const SizedBox.shrink(),
+              ],
+            ),
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !isSavedFilterExpanded,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  opacity: isSavedFilterExpanded ? 1.0 : 0.0,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: dismissFilter,
+                    onVerticalDragUpdate: (details) {
+                      if ((details.primaryDelta ?? 0) > 6) {
+                        dismissFilter();
+                      }
+                    },
+                    child: Container(
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.40 : 0.22,
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const Positioned(
-            key: ValueKey('app_shell_floating_nav_bar'),
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: RepaintBoundary(child: FloatingNavBar()),
-          ),
-        ],
+            const Positioned(
+              key: ValueKey('app_shell_floating_nav_bar'),
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: RepaintBoundary(child: FloatingNavBar()),
+            ),
+          ],
+        ),
       ),
     );
   }

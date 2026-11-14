@@ -66,6 +66,12 @@ class SettingsViewModel extends Notifier<UserSettings> {
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
+  void toggleFrostedEffects([bool? value]) {
+    final nextValue = value ?? !state.enableFrostedEffects;
+    state = state.copyWith(enableFrostedEffects: nextValue);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
   void updateRedditCredentials({
     required String? clientId,
     String? clientSecret,

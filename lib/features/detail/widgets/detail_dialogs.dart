@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:savedex/features/detail/item_detail_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 void showNoteSnackBar(
   BuildContext context, {
@@ -7,33 +8,14 @@ void showNoteSnackBar(
   VoidCallback? onUndo,
   Duration duration = const Duration(seconds: 2),
 }) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.clearSnackBars();
-
-  late final ScaffoldFeatureController<SnackBar, SnackBarClosedReason>
-  controller;
-  controller = messenger.showSnackBar(
-    SnackBar(
-      content: Text(message),
-      behavior: SnackBarBehavior.floating,
-      duration: duration,
-      action: onUndo != null
-          ? SnackBarAction(
-              label: 'Undo',
-              onPressed: () {
-                controller.close();
-                onUndo();
-              },
-            )
-          : null,
-    ),
+  showAppSnackBar(
+    context,
+    message,
+    duration: duration,
+    action: onUndo != null
+        ? SnackBarAction(label: 'Undo', onPressed: onUndo)
+        : null,
   );
-
-  Future.delayed(duration, () {
-    try {
-      controller.close();
-    } catch (_) {}
-  });
 }
 
 void showEditNoteDialog(
@@ -42,7 +24,18 @@ void showEditNoteDialog(
   String itemId,
   String? currentNote,
 ) {
-  showDialog(
+  final messenger = ScaffoldMessenger.of(context);
+  final hasExistingNote = currentNote != null && currentNote.trim().isNotEmpty;
+
+  SnackBarAction? buildUndoAction() {
+    if (!hasExistingNote) return null;
+    return SnackBarAction(
+      label: 'Undo',
+      onPressed: () => actions.updateNote(itemId, currentNote),
+    );
+  }
+
+  showFrostedDialog(
     context: context,
     builder: (ctx) => _NoteDialog(
       initialNote: currentNote,
@@ -51,31 +44,20 @@ void showEditNoteDialog(
             ? null
             : note.trim();
         await actions.updateNote(itemId, cleanNote);
-        if (context.mounted) {
-          final isRemoved = cleanNote == null;
-          showNoteSnackBar(
-            context,
-            message: isRemoved ? 'Note removed' : 'Note saved',
-            onUndo:
-                isRemoved &&
-                    currentNote != null &&
-                    currentNote.trim().isNotEmpty
-                ? () => actions.updateNote(itemId, currentNote)
-                : null,
-          );
-        }
+        final isRemoved = cleanNote == null;
+        showAppSnackBarOnMessenger(
+          messenger,
+          message: isRemoved ? 'Note removed' : 'Note saved',
+          action: isRemoved ? buildUndoAction() : null,
+        );
       },
       onDelete: () async {
         await actions.updateNote(itemId, null);
-        if (context.mounted) {
-          showNoteSnackBar(
-            context,
-            message: 'Note removed',
-            onUndo: currentNote != null && currentNote.trim().isNotEmpty
-                ? () => actions.updateNote(itemId, currentNote)
-                : null,
-          );
-        }
+        showAppSnackBarOnMessenger(
+          messenger,
+          message: 'Note removed',
+          action: buildUndoAction(),
+        );
       },
     ),
   );
@@ -89,9 +71,11 @@ void showConfirmDeleteDialog(
   bool isComment = false,
   VoidCallback? onDeletedSelf,
 }) {
-  showDialog(
+  final messenger = ScaffoldMessenger.of(context);
+
+  showFrostedDialog(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => FrostedAlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: Text(isComment ? 'Delete Comment?' : 'Delete Item?'),
       content: Text(
@@ -106,7 +90,8 @@ void showConfirmDeleteDialog(
         ),
         FilledButton(
           style: FilledButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.error,
+            backgroundColor: Theme.of(ctx).colorScheme.error,
+            foregroundColor: Theme.of(ctx).colorScheme.onError,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
@@ -118,25 +103,15 @@ void showConfirmDeleteDialog(
             } else if (onConfirmDelete != null) {
               await onConfirmDelete();
             }
-            if (context.mounted) {
-              if (onDeletedSelf != null) {
-                onDeletedSelf();
-              } else {
-                ScaffoldMessenger.of(context)
-                  ..clearSnackBars()
-                  ..showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        isComment
-                            ? 'Comment removed from saved items'
-                            : 'Item removed from saved items',
-                      ),
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-              }
+            if (context.mounted && onDeletedSelf != null) {
+              onDeletedSelf();
             }
+            showAppSnackBarOnMessenger(
+              messenger,
+              message: isComment
+                  ? 'Comment removed from saved items'
+                  : 'Item removed from saved items',
+            );
           },
           child: const Text('Delete'),
         ),
@@ -146,9 +121,9 @@ void showConfirmDeleteDialog(
 }
 
 Future<bool> showArchiveRefreshWarningDialog(BuildContext context) async {
-  final result = await showDialog<bool>(
+  final result = await showFrostedDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => FrostedAlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: const Text('Refresh archived item?'),
       content: const Text(
@@ -204,7 +179,8 @@ class _NoteDialogState extends State<_NoteDialog> {
     final isEditing =
         widget.initialNote != null && widget.initialNote!.trim().isNotEmpty;
 
-    return AlertDialog(
+    return FrostedAlertDialog(
+      scrollable: true,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),

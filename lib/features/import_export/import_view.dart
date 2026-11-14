@@ -8,6 +8,7 @@ import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
 import 'package:savedex/features/settings/settings_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class ImportView extends ConsumerWidget {
   const ImportView({super.key});
@@ -567,29 +568,17 @@ class ImportView extends ConsumerWidget {
 
     if (savedPath != null) {
       final fileName = savedPath.split(Platform.pathSeparator).last;
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('Backup created: $fileName'),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      showAppSnackBar(
+        context,
+        'Backup created: $fileName',
+        duration: const Duration(seconds: 3),
+      );
     } else {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error != null) {
         _showErrorSnackBar(context, error);
       } else {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Backup cancelled: no save location selected'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
+        showAppSnackBar(context, 'Backup cancelled: no save location selected');
       }
     }
   }
@@ -612,15 +601,7 @@ class ImportView extends ConsumerWidget {
       if (error != null) {
         _showErrorSnackBar(context, error);
       } else {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Restore cancelled: no file selected'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
+        showAppSnackBar(context, 'Restore cancelled: no file selected');
       }
     }
   }
@@ -637,29 +618,17 @@ class ImportView extends ConsumerWidget {
 
     if (savedPath != null) {
       final fileName = savedPath.split(Platform.pathSeparator).last;
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('Export saved: $fileName'),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      showAppSnackBar(
+        context,
+        'Export saved: $fileName',
+        duration: const Duration(seconds: 3),
+      );
     } else {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error != null) {
         _showErrorSnackBar(context, error);
       } else {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Export cancelled: no save location selected'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
+        showAppSnackBar(context, 'Export cancelled: no save location selected');
       }
     }
   }
@@ -682,15 +651,7 @@ class ImportView extends ConsumerWidget {
       if (error != null) {
         _showErrorSnackBar(context, error);
       } else {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Import cancelled: no file selected'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
+        showAppSnackBar(context, 'Import cancelled: no file selected');
       }
     }
   }
@@ -734,39 +695,29 @@ class ImportView extends ConsumerWidget {
         !settings.autoEnrichOnImport &&
         summary.newItemsImported > 0;
 
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          action: canOfferFetch
-              ? SnackBarAction(
-                  label: 'Fetch Metadata',
-                  onPressed: () {
-                    ref
-                        .read(enrichmentViewModelProvider.notifier)
-                        .startEnrichment();
-                  },
-                )
-              : null,
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: canOfferFetch ? 6 : 3),
-        ),
-      );
+    showAppSnackBar(
+      context,
+      message,
+      duration: Duration(seconds: canOfferFetch ? 6 : 3),
+      action: canOfferFetch
+          ? SnackBarAction(
+              label: 'Fetch Metadata',
+              onPressed: () {
+                ref
+                    .read(enrichmentViewModelProvider.notifier)
+                    .startEnrichment();
+              },
+            )
+          : null,
+    );
   }
 
   void _showErrorSnackBar(BuildContext context, String message) {
-    if (!context.mounted) return;
-    final colorScheme = Theme.of(context).colorScheme;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message, style: TextStyle(color: colorScheme.onError)),
-          backgroundColor: colorScheme.error,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+    showAppSnackBar(
+      context,
+      message,
+      isError: true,
+      duration: const Duration(seconds: 4),
+    );
   }
 }

@@ -5,6 +5,7 @@ import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:savedex/features/library/library_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class SubredditUserMetadataState {
   final bool isRetryingSubIcons;
@@ -306,17 +307,7 @@ class SubredditUserMetadataView extends ConsumerWidget {
     ) {
       if (next.feedbackId != previous?.feedbackId &&
           next.feedbackMessage != null) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(next.feedbackMessage!),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
+        showAppSnackBar(context, next.feedbackMessage!);
       }
     });
 

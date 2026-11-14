@@ -83,8 +83,19 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   @override
   Widget build(BuildContext context) {
+    final enableFrosted = watchFrostedEffects(ref);
+
     return Scaffold(
+      extendBodyBehindAppBar: enableFrosted,
       appBar: AppBar(
+        backgroundColor: enableFrosted ? Colors.transparent : null,
+        elevation: 0,
+        scrolledUnderElevation: enableFrosted ? 0 : null,
+        surfaceTintColor: enableFrosted ? Colors.transparent : null,
+        flexibleSpace: FrostedAppBarBackground(
+          enableBlur: enableFrosted,
+          showBottomBorder: false,
+        ),
         title: const Text(
           'Library',
           style: TextStyle(fontWeight: FontWeight.w900),
@@ -161,9 +172,9 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
   bool get wantKeepAlive => true;
 
   Future<void> _deleteCollection(BuildContext context, Collection col) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showFrostedDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => FrostedAlertDialog(
         title: Text('Delete "${col.name}"?'),
         content: const Text(
           'This collection will be deleted. None of your saved posts or comments will be removed.',
@@ -189,15 +200,7 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
       await ref.read(collectionRepositoryProvider).deleteCollection(col.id);
       ref.read(itemCollectionsOverrideProvider.notifier).clear();
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content: Text('Deleted collection "${col.name}"'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+        showAppSnackBar(context, 'Deleted collection "${col.name}"');
       }
     }
   }
@@ -208,61 +211,65 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
     final collectionsAsync = ref.watch(sortedCollectionsProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final topOffset = MediaQuery.paddingOf(context).top;
 
     return collectionsAsync.when(
       data: (collections) {
         if (collections.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer.withValues(
-                        alpha: 0.35,
+          return Padding(
+            padding: EdgeInsets.only(top: topOffset),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer.withValues(
+                          alpha: 0.35,
+                        ),
+                        shape: BoxShape.circle,
                       ),
-                      shape: BoxShape.circle,
+                      child: Icon(
+                        Icons.folder_open_rounded,
+                        size: 52,
+                        color: colorScheme.primary,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.folder_open_rounded,
-                      size: 52,
-                      color: colorScheme.primary,
+                    const SizedBox(height: 20),
+                    Text(
+                      'No Collections Yet',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'No Collections Yet',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
+                    const SizedBox(height: 8),
+                    Text(
+                      'Create custom collections to categorize and group your favorite Reddit posts and comments.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.4,
+                        fontSize: 13.5,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Create custom collections to categorize and group your favorite Reddit posts and comments.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      height: 1.4,
-                      fontSize: 13.5,
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: () => showCollectionFormDialog(context),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Create Collection'),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton.icon(
-                    onPressed: () => showCollectionFormDialog(context),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Create Collection'),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
         }
 
         return ListView.separated(
-          padding: const EdgeInsets.only(top: 6, bottom: 104),
+          padding: EdgeInsets.only(top: topOffset + 6, bottom: 104),
           itemCount: collections.length,
           separatorBuilder: (context, _) => Divider(
             height: 1,
@@ -358,13 +365,16 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
                         ],
                       ),
                     ),
-                    PopupMenuButton<String>(
+                    FrostedPopupMenuButton<String>(
                       icon: Icon(
                         Icons.more_vert_rounded,
                         size: 20,
                         color: colorScheme.onSurfaceVariant,
                       ),
                       tooltip: 'Collection options',
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       onSelected: (val) {
                         if (val == 'edit') {
                           showCollectionFormDialog(
@@ -412,8 +422,14 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
           },
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, _) => Center(child: Text('Error loading collections: $err')),
+      loading: () => Padding(
+        padding: EdgeInsets.only(top: topOffset),
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (err, _) => Padding(
+        padding: EdgeInsets.only(top: topOffset),
+        child: Center(child: Text('Error loading collections: $err')),
+      ),
     );
   }
 }
@@ -632,12 +648,16 @@ class _PagedDirectoryTabState<T> extends ConsumerState<_PagedDirectoryTab<T>>
     });
 
     final colorScheme = Theme.of(context).colorScheme;
+    final topOffset = MediaQuery.paddingOf(context).top;
     return widget.pageAsync.when(
       skipLoadingOnReload: true,
       data: (pageState) {
         final items = pageState.items;
         if (items.isEmpty) {
-          return widget.emptyBuilder(context);
+          return Padding(
+            padding: EdgeInsets.only(top: topOffset),
+            child: widget.emptyBuilder(context),
+          );
         }
 
         final divider = Divider(
@@ -650,7 +670,7 @@ class _PagedDirectoryTabState<T> extends ConsumerState<_PagedDirectoryTab<T>>
         return ListView.builder(
           controller: _scrollController,
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 104),
+          padding: EdgeInsets.fromLTRB(0, topOffset + 8, 0, 104),
           itemCount: items.length + (pageState.hasMore ? 1 : 0),
           prototypeItem: widget.prototypeBuilder(colorScheme, divider),
           itemBuilder: (context, index) {
@@ -667,8 +687,14 @@ class _PagedDirectoryTabState<T> extends ConsumerState<_PagedDirectoryTab<T>>
           },
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, _) => Center(child: Text('${widget.errorPrefix}: $err')),
+      loading: () => Padding(
+        padding: EdgeInsets.only(top: topOffset),
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (err, _) => Padding(
+        padding: EdgeInsets.only(top: topOffset),
+        child: Center(child: Text('${widget.errorPrefix}: $err')),
+      ),
     );
   }
 }

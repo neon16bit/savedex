@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:extended_image/extended_image.dart' hide MediaType;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
@@ -12,12 +13,14 @@ import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/widgets/media_video_player.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class ItemMediaView extends StatefulWidget {
   final SavedItem item;
   final int initialIndex;
   final ValueChanged<int>? onIndexChanged;
   final BorderRadius? borderRadius;
+  final bool enableFrostedControls;
 
   const ItemMediaView({
     super.key,
@@ -25,6 +28,7 @@ class ItemMediaView extends StatefulWidget {
     this.initialIndex = 0,
     this.onIndexChanged,
     this.borderRadius,
+    this.enableFrostedControls = false,
   });
 
   @override
@@ -115,13 +119,15 @@ class _ItemMediaViewState extends State<ItemMediaView> {
   }
 
   Widget _buildPlayBadge({required bool isVideo}) {
-    return Container(
+    final enableBlur = widget.enableFrostedControls;
+    return FrostedSurface(
+      enableBlur: enableBlur,
+      blurSigma: 12.0,
       width: 44,
       height: 44,
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.65),
-        shape: BoxShape.circle,
-      ),
+      borderRadius: BorderRadius.circular(22),
+      surfaceColor: Colors.black.withValues(alpha: enableBlur ? 0.48 : 0.65),
+      borderColor: enableBlur ? Colors.white.withValues(alpha: 0.22) : null,
       child: Center(
         child: isVideo
             ? const Padding(
@@ -258,6 +264,7 @@ class _ItemMediaViewState extends State<ItemMediaView> {
                         child: _DetailGalleryCounter(
                           current: _currentIndex + 1,
                           total: urls.length,
+                          enableBlur: widget.enableFrostedControls,
                         ),
                       ),
                       if (_isDesktop)
@@ -268,6 +275,7 @@ class _ItemMediaViewState extends State<ItemMediaView> {
                               _DetailGalleryButton(
                                 icon: Icons.chevron_left_rounded,
                                 enabled: _currentIndex > 0,
+                                enableBlur: widget.enableFrostedControls,
                                 onPressed: () => _pageController.previousPage(
                                   duration: const Duration(milliseconds: 220),
                                   curve: Curves.easeOut,
@@ -276,6 +284,7 @@ class _ItemMediaViewState extends State<ItemMediaView> {
                               _DetailGalleryButton(
                                 icon: Icons.chevron_right_rounded,
                                 enabled: _currentIndex < urls.length - 1,
+                                enableBlur: widget.enableFrostedControls,
                                 onPressed: () => _pageController.nextPage(
                                   duration: const Duration(milliseconds: 220),
                                   curve: Curves.easeOut,
@@ -324,13 +333,18 @@ class _ItemMediaViewState extends State<ItemMediaView> {
           width: double.infinity,
           color: colorScheme.surfaceContainerHigh,
           child: Center(
-            child: Container(
+            child: FrostedSurface(
+              enableBlur: widget.enableFrostedControls,
+              blurSigma: 12.0,
               width: 48,
               height: 48,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                shape: BoxShape.circle,
-              ),
+              borderRadius: BorderRadius.circular(24),
+              surfaceColor: widget.enableFrostedControls
+                  ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
+                  : colorScheme.surfaceContainerHighest,
+              borderColor: widget.enableFrostedControls
+                  ? colorScheme.outlineVariant.withValues(alpha: 0.35)
+                  : null,
               child: Center(
                 child: item.isVideo
                     ? Padding(
@@ -362,7 +376,7 @@ class _ItemMediaViewState extends State<ItemMediaView> {
   }
 }
 
-class DetailMediaView extends StatelessWidget {
+class DetailMediaView extends ConsumerWidget {
   final SavedItem item;
   final int initialIndex;
   final ValueChanged<int>? onIndexChanged;
@@ -431,8 +445,10 @@ class DetailMediaView extends StatelessWidget {
     if (uri == null ||
         (uri.scheme != 'http' && uri.scheme != 'https') ||
         uri.host.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This link is not a valid web URL')),
+      showAppSnackBar(
+        context,
+        'This link is not a valid web URL',
+        isError: true,
       );
       return;
     }
@@ -445,15 +461,14 @@ class DetailMediaView extends StatelessWidget {
     }
 
     if (!launched && context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not open this link')));
+      showAppSnackBar(context, 'Could not open this link', isError: true);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
+    final enableFrosted = watchFrostedEffects(ref);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -464,6 +479,7 @@ class DetailMediaView extends StatelessWidget {
             item: item,
             initialIndex: initialIndex,
             onIndexChanged: onIndexChanged,
+            enableFrostedControls: enableFrosted,
           ),
         ],
 
@@ -550,17 +566,23 @@ class DetailMediaView extends StatelessWidget {
 class _DetailGalleryCounter extends StatelessWidget {
   final int current;
   final int total;
+  final bool enableBlur;
 
-  const _DetailGalleryCounter({required this.current, required this.total});
+  const _DetailGalleryCounter({
+    required this.current,
+    required this.total,
+    this.enableBlur = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return FrostedSurface(
+      enableBlur: enableBlur,
+      blurSigma: 12.0,
+      borderRadius: BorderRadius.circular(999),
+      surfaceColor: Colors.black.withValues(alpha: enableBlur ? 0.50 : 0.7),
+      borderColor: enableBlur ? Colors.white.withValues(alpha: 0.22) : null,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(999),
-      ),
       child: Text(
         '$current/$total',
         style: const TextStyle(
@@ -576,32 +598,46 @@ class _DetailGalleryCounter extends StatelessWidget {
 class _DetailGalleryButton extends StatelessWidget {
   final IconData icon;
   final bool enabled;
+  final bool enableBlur;
   final VoidCallback onPressed;
 
   const _DetailGalleryButton({
     required this.icon,
     required this.enabled,
+    this.enableBlur = false,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeBlur = enableBlur && enabled;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: IconButton(
-        onPressed: enabled ? onPressed : null,
-        style: IconButton.styleFrom(
-          backgroundColor: Colors.black.withValues(alpha: 0.65),
-          foregroundColor: Colors.white,
-          disabledForegroundColor: Colors.white38,
+      child: FrostedSurface(
+        enableBlur: activeBlur,
+        blurSigma: 12.0,
+        borderRadius: BorderRadius.circular(999),
+        surfaceColor: Colors.black.withValues(alpha: activeBlur ? 0.45 : 0.65),
+        borderColor: activeBlur ? Colors.white.withValues(alpha: 0.22) : null,
+        child: Material(
+          type: MaterialType.transparency,
+          child: IconButton(
+            onPressed: enabled ? onPressed : null,
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              disabledBackgroundColor: Colors.transparent,
+              foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white38,
+            ),
+            icon: Icon(icon),
+          ),
         ),
-        icon: Icon(icon),
       ),
     );
   }
 }
 
-class FullscreenMediaViewer extends StatefulWidget {
+class FullscreenMediaViewer extends ConsumerStatefulWidget {
   final SavedItem item;
   final int initialIndex;
 
@@ -612,10 +648,11 @@ class FullscreenMediaViewer extends StatefulWidget {
   });
 
   @override
-  State<FullscreenMediaViewer> createState() => _FullscreenMediaViewerState();
+  ConsumerState<FullscreenMediaViewer> createState() =>
+      _FullscreenMediaViewerState();
 }
 
-class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
+class _FullscreenMediaViewerState extends ConsumerState<FullscreenMediaViewer> {
   bool _isDownloading = false;
   late final ExtendedPageController _pageController;
   late int _currentIndex;
@@ -684,46 +721,47 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
   }
 
   void _showGifDownloadDialog() {
-    showModalBottomSheet(
+    showFrostedModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
+        return FrostedSheetContainer(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      'Download GIF',
+                      style: Theme.of(ctx).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                  child: Text(
-                    'Download GIF',
-                    style: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ListTile(
+                    leading: const Icon(Icons.videocam_rounded),
+                    title: const Text('Save as MP4 Video'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _downloadMedia(_currentUrl, extension: 'mp4');
+                    },
                   ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.videocam_rounded),
-                  title: const Text('Save as MP4 Video'),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    _downloadMedia(_currentUrl, extension: 'mp4');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.gif_box_rounded),
-                  title: const Text('Save as GIF Image'),
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    _downloadMedia(_currentUrl, extension: 'gif');
-                  },
-                ),
-              ],
+                  ListTile(
+                    leading: const Icon(Icons.gif_box_rounded),
+                    title: const Text('Save as GIF Image'),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _downloadMedia(_currentUrl, extension: 'gif');
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -792,13 +830,7 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
             await file.writeAsBytes(bytes);
           }
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Saved to $filePath'),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          showAppSnackBar(context, 'Saved to $filePath');
         }
       } else {
         if (extension == 'mp4') {
@@ -815,23 +847,15 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
         }
 
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Saved to gallery'),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        showAppSnackBar(context, 'Saved to gallery');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save: $e'),
-            backgroundColor: Colors.red.shade800,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
+        showAppSnackBar(
+          context,
+          'Failed to save: $e',
+          isError: true,
+          duration: const Duration(seconds: 3),
         );
       }
     } finally {
@@ -843,6 +867,8 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
 
   @override
   Widget build(BuildContext context) {
+    final enableFrosted = watchFrostedEffects(ref);
+
     if (_mediaUrls.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -867,9 +893,27 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
+        extendBodyBehindAppBar: true,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          surfaceTintColor: Colors.transparent,
           foregroundColor: Colors.white,
+          flexibleSpace: enableFrosted
+              ? FrostedAppBarBackground(
+                  enableBlur: true,
+                  showBottomBorder: false,
+                  surfaceColor: Colors.black,
+                  darkAlpha: 0.45,
+                  lightAlpha: 0.45,
+                )
+              : DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                  ),
+                  child: const SizedBox.expand(),
+                ),
           leading: BackButton(
             onPressed: () => Navigator.of(context).pop(_currentIndex),
           ),
@@ -983,6 +1027,7 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
                   child: _GalleryNavigationButton(
                     icon: Icons.chevron_left_rounded,
                     tooltip: 'Previous media',
+                    enableBlur: enableFrosted,
                     onPressed: _currentIndex == 0
                         ? null
                         : () => _pageController.previousPage(
@@ -1000,6 +1045,7 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
                   child: _GalleryNavigationButton(
                     icon: Icons.chevron_right_rounded,
                     tooltip: 'Next media',
+                    enableBlur: enableFrosted,
                     onPressed: _currentIndex == _mediaUrls.length - 1
                         ? null
                         : () => _pageController.nextPage(
@@ -1020,26 +1066,43 @@ class _FullscreenMediaViewerState extends State<FullscreenMediaViewer> {
 class _GalleryNavigationButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
+  final bool enableBlur;
   final VoidCallback? onPressed;
 
   const _GalleryNavigationButton({
     required this.icon,
     required this.tooltip,
+    this.enableBlur = false,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onPressed,
-      tooltip: tooltip,
-      icon: Icon(icon, size: 34),
-      color: Colors.white,
-      disabledColor: Colors.white30,
-      style: IconButton.styleFrom(
-        backgroundColor: Colors.black.withValues(alpha: 0.55),
-        disabledBackgroundColor: Colors.black.withValues(alpha: 0.25),
-        padding: const EdgeInsets.all(10),
+    final activeBlur = enableBlur && onPressed != null;
+    final fill = onPressed != null
+        ? Colors.black.withValues(alpha: activeBlur ? 0.45 : 0.55)
+        : Colors.black.withValues(alpha: 0.25);
+
+    return FrostedSurface(
+      enableBlur: activeBlur,
+      blurSigma: 12.0,
+      borderRadius: BorderRadius.circular(999),
+      surfaceColor: fill,
+      borderColor: activeBlur ? Colors.white.withValues(alpha: 0.22) : null,
+      child: Material(
+        type: MaterialType.transparency,
+        child: IconButton(
+          onPressed: onPressed,
+          tooltip: tooltip,
+          icon: Icon(icon, size: 34),
+          color: Colors.white,
+          disabledColor: Colors.white30,
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
+            padding: const EdgeInsets.all(10),
+          ),
+        ),
       ),
     );
   }

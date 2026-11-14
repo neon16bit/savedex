@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class DetailUserNoteCard extends StatelessWidget {
   final String note;
@@ -13,9 +14,9 @@ class DetailUserNoteCard extends StatelessWidget {
   });
 
   Future<void> _confirmClear(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showFrostedDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => FrostedAlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Text('Clear note?'),
         content: const Text('Are you sure you want to delete this note?'),
@@ -26,7 +27,8 @@ class DetailUserNoteCard extends StatelessWidget {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),

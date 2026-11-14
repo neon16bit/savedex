@@ -11,12 +11,47 @@ class AppTheme {
     Colors.cyan,
   ];
 
-  static ThemeData lightTheme({required Color seedColor}) {
-    return ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: seedColor,
-        brightness: Brightness.light,
+  static SnackBarThemeData _buildSnackBarTheme(
+    ColorScheme colorScheme, {
+    required bool isDark,
+    bool isAmoled = false,
+  }) {
+    return SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: isAmoled
+          ? const Color(0xFF1C1C1C)
+          : colorScheme.surfaceContainerHighest,
+      contentTextStyle: TextStyle(
+        color: colorScheme.onSurface,
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
       ),
+      actionTextColor: colorScheme.primary,
+      disabledActionTextColor: colorScheme.onSurfaceVariant.withValues(
+        alpha: 0.38,
+      ),
+      closeIconColor: colorScheme.onSurfaceVariant,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: colorScheme.outlineVariant.withValues(
+            alpha: isDark ? 0.45 : 0.35,
+          ),
+        ),
+      ),
+      insetPadding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+    );
+  }
+
+  static ThemeData lightTheme({required Color seedColor}) {
+    final lightScheme = ColorScheme.fromSeed(
+      seedColor: seedColor,
+      brightness: Brightness.light,
+    );
+    return ThemeData(
+      colorScheme: lightScheme,
+      snackBarTheme: _buildSnackBarTheme(lightScheme, isDark: false),
     );
   }
 
@@ -30,7 +65,10 @@ class AppTheme {
     );
 
     if (!isAmoled) {
-      return ThemeData(colorScheme: baseScheme);
+      return ThemeData(
+        colorScheme: baseScheme,
+        snackBarTheme: _buildSnackBarTheme(baseScheme, isDark: true),
+      );
     }
 
     final amoledScheme = baseScheme.copyWith(
@@ -52,6 +90,11 @@ class AppTheme {
       cardTheme: const CardThemeData(color: Color(0xFF101010)),
       navigationBarTheme: const NavigationBarThemeData(
         backgroundColor: Colors.black,
+      ),
+      snackBarTheme: _buildSnackBarTheme(
+        amoledScheme,
+        isDark: true,
+        isAmoled: true,
       ),
     );
   }

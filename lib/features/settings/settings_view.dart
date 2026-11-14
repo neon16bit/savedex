@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -19,6 +20,7 @@ import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
 import 'package:savedex/features/shell/app_shell.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
@@ -237,6 +239,22 @@ class SettingsView extends ConsumerWidget {
                   subtitle: const Text('Mute video playback by default'),
                   value: settings.startVideosMuted,
                   onChanged: (val) => viewModel.toggleStartVideosMuted(val),
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                SwitchListTile(
+                  secondary: const Icon(Icons.blur_on_outlined),
+                  title: const Text(
+                    'Frosted Glass Effects',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Translucent blur on bars, sheets, dialogs, and controls',
+                  ),
+                  value: settings.enableFrostedEffects,
+                  onChanged: (val) => viewModel.toggleFrostedEffects(val),
                 ),
               ],
             ),
@@ -542,9 +560,9 @@ class SettingsView extends ConsumerWidget {
                                   tooltip:
                                       'Reset and re-check $unavailableCount unavailable item(s)',
                                   onPressed: () async {
-                                    final confirm = await showDialog<bool>(
+                                    final confirm = await showFrostedDialog<bool>(
                                       context: context,
-                                      builder: (ctx) => AlertDialog(
+                                      builder: (ctx) => FrostedAlertDialog(
                                         title: const Text(
                                           'Re-check Unavailable Items?',
                                         ),
@@ -753,9 +771,9 @@ class SettingsView extends ConsumerWidget {
     ArchiveBackend current,
     SettingsViewModel viewModel,
   ) {
-    showDialog<void>(
+    showFrostedDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => FrostedAlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Text('Archive Source'),
         contentPadding: const EdgeInsets.only(top: 12, bottom: 8),
@@ -810,9 +828,9 @@ class SettingsView extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    showDialog(
+    showFrostedDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => FrostedAlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(
           children: [
@@ -855,15 +873,7 @@ class SettingsView extends ConsumerWidget {
               ref.invalidate(archiveRecoveryStateProvider);
               ref.invalidate(subredditUserMetadataProvider);
               if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                  ..clearSnackBars()
-                  ..showSnackBar(
-                    const SnackBar(
-                      content: Text('Database cleared successfully'),
-                      behavior: SnackBarBehavior.floating,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                showAppSnackBar(context, 'Database cleared successfully');
               }
             },
             child: const Text('Delete Everything'),
@@ -874,7 +884,10 @@ class SettingsView extends ConsumerWidget {
   }
 
   void _showApiCredentialsDialog(BuildContext context) {
-    showDialog(context: context, builder: (ctx) => const _RedditOAuthDialog());
+    showFrostedDialog(
+      context: context,
+      builder: (ctx) => const _RedditOAuthDialog(),
+    );
   }
 }
 
@@ -891,6 +904,8 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
   late final TextEditingController _userAgentController;
 
   bool _isConnecting = false;
+  bool _copiedAuthUrl = false;
+  Timer? _copiedAuthUrlTimer;
   String? _errorMessage;
 
   @override
@@ -924,6 +939,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
   @override
   void dispose() {
+    _copiedAuthUrlTimer?.cancel();
     _clientIdController.dispose();
     _redirectUriController.dispose();
     _userAgentController.dispose();
@@ -1033,15 +1049,13 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
     await Clipboard.setData(ClipboardData(text: authUrl));
     if (mounted) {
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('Authorization URL copied to clipboard!'),
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
+      _copiedAuthUrlTimer?.cancel();
+      setState(() => _copiedAuthUrl = true);
+      _copiedAuthUrlTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() => _copiedAuthUrl = false);
+        }
+      });
     }
   }
 
@@ -1202,7 +1216,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
         _redirectUriController.text != (settings.redditRedirectUri ?? '') ||
         _userAgentController.text != (settings.userAgent ?? '');
 
-    return AlertDialog(
+    return FrostedAlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
       contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -1448,13 +1462,19 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
                       ),
                       const SizedBox(width: 8),
                       IconButton.filledTonal(
-                        tooltip: 'Copy Auth URL',
+                        tooltip: _copiedAuthUrl ? 'Copied!' : 'Copy Auth URL',
                         onPressed:
                             (_clientIdController.text.trim().isEmpty ||
                                 _redirectUriController.text.trim().isEmpty)
                             ? null
                             : _copyAuthUrl,
-                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        icon: Icon(
+                          _copiedAuthUrl
+                              ? Icons.check_rounded
+                              : Icons.copy_rounded,
+                          size: 18,
+                          color: _copiedAuthUrl ? colorScheme.primary : null,
+                        ),
                       ),
                     ],
                   ),
@@ -1586,9 +1606,9 @@ class _ImageCacheTileState extends ConsumerState<_ImageCacheTile> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showFrostedDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => FrostedAlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: Row(
           children: [
@@ -1638,20 +1658,15 @@ class _ImageCacheTileState extends ConsumerState<_ImageCacheTile> {
       PaintingBinding.instance.imageCache.clearLiveImages();
       await _loadCacheSize();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Image cache cleared successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        showAppSnackBar(context, 'Image cache cleared successfully');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not clear image cache: $e'),
-            duration: const Duration(seconds: 2),
-          ),
+        showAppSnackBar(
+          context,
+          'Could not clear image cache: $e',
+          isError: true,
+          duration: const Duration(seconds: 3),
         );
       }
     } finally {

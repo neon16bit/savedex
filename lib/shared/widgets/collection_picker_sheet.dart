@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:savedex/shared/widgets/collection_form_dialog.dart';
+import 'package:savedex/shared/widgets/frosted_surface.dart';
 
 const List<int> kCollectionPresetColors = [
   0xFFFF4500, // reddit orange
@@ -18,14 +19,10 @@ const List<int> kCollectionPresetColors = [
 ];
 
 Future<void> showCollectionPickerSheet(BuildContext context, String itemId) {
-  return showModalBottomSheet(
+  return showFrostedModalBottomSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
     builder: (ctx) => CollectionPickerSheet(itemId: itemId),
   );
 }
@@ -49,191 +46,198 @@ class CollectionPickerSheet extends ConsumerWidget {
       maxChildSize: 0.9,
       expand: false,
       builder: (context, scrollController) {
-        return Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
+        return FrostedSheetContainer(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer.withValues(
-                        alpha: 0.6,
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer.withValues(
+                          alpha: 0.6,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      child: Icon(
+                        Icons.collections_bookmark_rounded,
+                        size: 20,
+                        color: colorScheme.primary,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.collections_bookmark_rounded,
-                      size: 20,
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Collections',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.2,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Collections',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Organize this item into custom groups',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
+                          Text(
+                            'Organize this item into custom groups',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  FilledButton.tonalIcon(
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    FilledButton.tonalIcon(
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      onPressed: () =>
+                          _openCreateCollectionDialog(context, ref, itemId),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('New'),
                     ),
-                    onPressed: () =>
-                        _openCreateCollectionDialog(context, ref, itemId),
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('New'),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            Expanded(
-              child: allCollectionsAsync.when(
-                data: (allCollections) {
-                  if (allCollections.isEmpty) {
-                    return _buildEmptyState(context, ref);
-                  }
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              Expanded(
+                child: allCollectionsAsync.when(
+                  data: (allCollections) {
+                    if (allCollections.isEmpty) {
+                      return _buildEmptyState(context, ref);
+                    }
 
-                  final assignedIds =
-                      itemCollectionsAsync.asData?.value
-                          .map((c) => c.id)
-                          .toSet() ??
-                      const <int>{};
+                    final assignedIds =
+                        itemCollectionsAsync.asData?.value
+                            .map((c) => c.id)
+                            .toSet() ??
+                        const <int>{};
 
-                  return ListView.separated(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: allCollections.length,
-                    separatorBuilder: (_, _) =>
-                        const Divider(height: 1, indent: 64, endIndent: 20),
-                    itemBuilder: (context, index) {
-                      final col = allCollections[index];
-                      final isAssigned = assignedIds.contains(col.id);
-                      final colColor = Color(col.colorValue);
+                    return ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: allCollections.length,
+                      separatorBuilder: (_, _) =>
+                          const Divider(height: 1, indent: 64, endIndent: 20),
+                      itemBuilder: (context, index) {
+                        final col = allCollections[index];
+                        final isAssigned = assignedIds.contains(col.id);
+                        final colColor = Color(col.colorValue);
 
-                      return InkWell(
-                        onTap: () async {
-                          HapticFeedback.lightImpact();
-                          await feedNotifier.setItemCollectionMembership(
-                            itemId: itemId,
-                            collectionId: col.id,
-                            assign: !isAssigned,
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: colColor.withValues(alpha: 0.18),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: colColor.withValues(alpha: 0.45),
-                                    width: 1.5,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.bookmark_rounded,
-                                    size: 18,
-                                    color: colColor,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      col.name,
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 15,
-                                          ),
+                        return InkWell(
+                          onTap: () async {
+                            HapticFeedback.lightImpact();
+                            await feedNotifier.setItemCollectionMembership(
+                              itemId: itemId,
+                              collectionId: col.id,
+                              assign: !isAssigned,
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: colColor.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: colColor.withValues(alpha: 0.45),
+                                      width: 1.5,
                                     ),
-                                    if (col.description != null &&
-                                        col.description!.trim().isNotEmpty) ...[
-                                      const SizedBox(height: 2),
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.bookmark_rounded,
+                                      size: 18,
+                                      color: colColor,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Text(
-                                        col.description!.trim(),
-                                        style: theme.textTheme.bodySmall
+                                        col.name,
+                                        style: theme.textTheme.titleSmall
                                             ?.copyWith(
-                                              color:
-                                                  colorScheme.onSurfaceVariant,
-                                              height: 1.3,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15,
                                             ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
+                                      if (col.description != null &&
+                                          col.description!
+                                              .trim()
+                                              .isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          col.description!.trim(),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: colorScheme
+                                                    .onSurfaceVariant,
+                                                height: 1.3,
+                                              ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              Checkbox(
-                                value: isAssigned,
-                                activeColor: colColor,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
+                                Checkbox(
+                                  value: isAssigned,
+                                  activeColor: colColor,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  onChanged: (val) async {
+                                    HapticFeedback.lightImpact();
+                                    await feedNotifier
+                                        .setItemCollectionMembership(
+                                          itemId: itemId,
+                                          collectionId: col.id,
+                                          assign: !isAssigned,
+                                        );
+                                  },
                                 ),
-                                onChanged: (val) async {
-                                  HapticFeedback.lightImpact();
-                                  await feedNotifier
-                                      .setItemCollectionMembership(
-                                        itemId: itemId,
-                                        collectionId: col.id,
-                                        assign: !isAssigned,
-                                      );
-                                },
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  );
-                },
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) =>
-                    Center(child: Text('Error loading collections: $e')),
+                        );
+                      },
+                    );
+                  },
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) =>
+                      Center(child: Text('Error loading collections: $e')),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );

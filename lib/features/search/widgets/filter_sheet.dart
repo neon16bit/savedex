@@ -10,6 +10,7 @@ import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
+import 'package:savedex/shared/widgets/widgets.dart';
 
 enum _CompactEntityCategory {
   subreddits('Subreddits'),
@@ -785,279 +786,282 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         filter.isStarred != true &&
         effectiveIsNsfw == null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isFloating ? Colors.transparent : colorScheme.surface,
-        borderRadius: isFloating
-            ? BorderRadius.circular(24)
-            : const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onVerticalDragStart: _onVerticalDragStart,
-            onVerticalDragUpdate: _onVerticalDragUpdate,
-            onVerticalDragEnd: _onVerticalDragEnd,
-            onVerticalDragCancel: _onVerticalDragCancel,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // drag pill handle
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Container(
-                      width: 40,
-                      height: 4.5,
-                      decoration: BoxDecoration(
-                        color: colorScheme.outlineVariant.withValues(
-                          alpha: 0.7,
-                        ),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragStart: _onVerticalDragStart,
+          onVerticalDragUpdate: _onVerticalDragUpdate,
+          onVerticalDragEnd: _onVerticalDragEnd,
+          onVerticalDragCancel: _onVerticalDragCancel,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // drag pill handle
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Container(
+                    width: 40,
+                    height: 4.5,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
                 ),
+              ),
 
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 2, 10, 6),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.tune_rounded,
-                        size: 16,
-                        color: colorScheme.primary,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 2, 10, 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.tune_rounded,
+                      size: 16,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Filters',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
                       ),
-                      const SizedBox(width: 7),
-                      Text(
-                        'Filters',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.2,
+                    ),
+
+                    const Spacer(),
+                    if (filter.hasActiveNonSearchFilters)
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: colorScheme.error,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          _resetFilters(filter, viewModel);
+                        },
+                        child: const Text(
+                          'Reset',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-
-                      const Spacer(),
-                      if (filter.hasActiveNonSearchFilters)
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: colorScheme.error,
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            _resetFilters(filter, viewModel);
-                          },
-                          child: const Text(
-                            'Reset',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(),
-                        onPressed: _triggerClose,
-                      ),
-                    ],
-                  ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(),
+                      onPressed: _triggerClose,
+                    ),
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 5,
-                        children: [
-                          _buildCompactChoiceChip(
-                            label: 'All',
-                            isSelected: isAllSelected,
-                            onSelected: () => _selectAllQuickFilters(
-                              filter,
-                              viewModel,
-                              hideNsfwInFeed,
-                            ),
-                            colorScheme: colorScheme,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 5,
+                      children: [
+                        _buildCompactChoiceChip(
+                          label: 'All',
+                          isSelected: isAllSelected,
+                          onSelected: () => _selectAllQuickFilters(
+                            filter,
+                            viewModel,
+                            hideNsfwInFeed,
                           ),
-                          _buildCompactChoiceChip(
-                            label: 'Posts',
-                            isSelected: filter.itemType == ItemType.post,
-                            onSelected: () => _setItemType(
-                              filter,
-                              viewModel,
-                              filter.itemType == ItemType.post
-                                  ? null
-                                  : ItemType.post,
-                            ),
-                            colorScheme: colorScheme,
-                          ),
-                          _buildCompactChoiceChip(
-                            label: 'Comments',
-                            isSelected: filter.itemType == ItemType.comment,
-                            onSelected: () => _setItemType(
-                              filter,
-                              viewModel,
-                              filter.itemType == ItemType.comment
-                                  ? null
-                                  : ItemType.comment,
-                            ),
-                            colorScheme: colorScheme,
-                          ),
-                          _buildCompactChoiceChip(
-                            label: 'Starred',
-                            isSelected: filter.isStarred == true,
-                            onSelected: () => _toggleStarredOnly(
-                              filter,
-                              viewModel,
-                              filter.isStarred != true,
-                            ),
-                            colorScheme: colorScheme,
-                          ),
-                          _buildCompactChoiceChip(
-                            label: 'NSFW',
-                            isSelected: effectiveIsNsfw == true,
-                            onSelected: () => _setNsfwFilter(
-                              filter,
-                              viewModel,
-                              hideNsfwInFeed,
-                              effectiveIsNsfw == true ? null : true,
-                            ),
-                            colorScheme: colorScheme,
-                          ),
-                          _buildCompactChoiceChip(
-                            label: 'SFW',
-                            isSelected: effectiveIsNsfw == false,
-                            onSelected: () => _setNsfwFilter(
-                              filter,
-                              viewModel,
-                              hideNsfwInFeed,
-                              effectiveIsNsfw == false ? null : false,
-                            ),
-                            colorScheme: colorScheme,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-                Divider(
-                  height: 1,
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.25),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 5,
-                        children:
-                            [
-                              (MediaType.image, 'Images'),
-                              (MediaType.video, 'Videos'),
-                              (MediaType.gallery, 'Galleries'),
-                              (MediaType.text, 'Text'),
-                              (MediaType.link, 'Links'),
-                              (MediaType.gif, 'GIFs'),
-                            ].map((opt) {
-                              final isSelected = filter.selectedMediaTypes
-                                  .contains(opt.$1);
-                              return _buildCompactChoiceChip(
-                                label: opt.$2,
-                                isSelected: isSelected,
-                                onSelected: () =>
-                                    _toggleMediaType(filter, viewModel, opt.$1),
-                                colorScheme: colorScheme,
-                              );
-                            }).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-                Divider(
-                  height: 1,
-                  color: colorScheme.outlineVariant.withValues(alpha: 0.25),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
-                  child: Row(
-                    children: [
-                      if (widget.showSubredditsTab) ...[
-                        _buildEntityTab(
-                          label: 'Subreddits',
-                          count: filter.selectedSubreddits.length,
-                          isSelected:
-                              _currentEntity ==
-                              _CompactEntityCategory.subreddits,
-                          onTap: () =>
-                              _selectEntity(_CompactEntityCategory.subreddits),
                           colorScheme: colorScheme,
                         ),
-                        const SizedBox(width: 6),
-                      ],
-                      if (widget.showAuthorsTab) ...[
-                        _buildEntityTab(
-                          label: 'Authors',
-                          count: filter.selectedAuthors.length,
-                          isSelected:
-                              _currentEntity == _CompactEntityCategory.authors,
-                          onTap: () =>
-                              _selectEntity(_CompactEntityCategory.authors),
+                        _buildCompactChoiceChip(
+                          label: 'Posts',
+                          isSelected: filter.itemType == ItemType.post,
+                          onSelected: () => _setItemType(
+                            filter,
+                            viewModel,
+                            filter.itemType == ItemType.post
+                                ? null
+                                : ItemType.post,
+                          ),
                           colorScheme: colorScheme,
                         ),
-                        const SizedBox(width: 6),
+                        _buildCompactChoiceChip(
+                          label: 'Comments',
+                          isSelected: filter.itemType == ItemType.comment,
+                          onSelected: () => _setItemType(
+                            filter,
+                            viewModel,
+                            filter.itemType == ItemType.comment
+                                ? null
+                                : ItemType.comment,
+                          ),
+                          colorScheme: colorScheme,
+                        ),
+                        _buildCompactChoiceChip(
+                          label: 'Starred',
+                          isSelected: filter.isStarred == true,
+                          onSelected: () => _toggleStarredOnly(
+                            filter,
+                            viewModel,
+                            filter.isStarred != true,
+                          ),
+                          colorScheme: colorScheme,
+                        ),
+                        _buildCompactChoiceChip(
+                          label: 'NSFW',
+                          isSelected: effectiveIsNsfw == true,
+                          onSelected: () => _setNsfwFilter(
+                            filter,
+                            viewModel,
+                            hideNsfwInFeed,
+                            effectiveIsNsfw == true ? null : true,
+                          ),
+                          colorScheme: colorScheme,
+                        ),
+                        _buildCompactChoiceChip(
+                          label: 'SFW',
+                          isSelected: effectiveIsNsfw == false,
+                          onSelected: () => _setNsfwFilter(
+                            filter,
+                            viewModel,
+                            hideNsfwInFeed,
+                            effectiveIsNsfw == false ? null : false,
+                          ),
+                          colorScheme: colorScheme,
+                        ),
                       ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 5,
+                      children:
+                          [
+                            (MediaType.image, 'Images'),
+                            (MediaType.video, 'Videos'),
+                            (MediaType.gallery, 'Galleries'),
+                            (MediaType.text, 'Text'),
+                            (MediaType.link, 'Links'),
+                            (MediaType.gif, 'GIFs'),
+                          ].map((opt) {
+                            final isSelected = filter.selectedMediaTypes
+                                .contains(opt.$1);
+                            return _buildCompactChoiceChip(
+                              label: opt.$2,
+                              isSelected: isSelected,
+                              onSelected: () =>
+                                  _toggleMediaType(filter, viewModel, opt.$1),
+                              colorScheme: colorScheme,
+                            );
+                          }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 8),
+              Divider(
+                height: 1,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
+                child: Row(
+                  children: [
+                    if (widget.showSubredditsTab) ...[
                       _buildEntityTab(
-                        label: 'Flairs',
-                        count: filter.selectedFlairs.length,
+                        label: 'Subreddits',
+                        count: filter.selectedSubreddits.length,
                         isSelected:
-                            _currentEntity == _CompactEntityCategory.flairs,
+                            _currentEntity == _CompactEntityCategory.subreddits,
                         onTap: () =>
-                            _selectEntity(_CompactEntityCategory.flairs),
+                            _selectEntity(_CompactEntityCategory.subreddits),
                         colorScheme: colorScheme,
                       ),
+                      const SizedBox(width: 6),
                     ],
-                  ),
+                    if (widget.showAuthorsTab) ...[
+                      _buildEntityTab(
+                        label: 'Authors',
+                        count: filter.selectedAuthors.length,
+                        isSelected:
+                            _currentEntity == _CompactEntityCategory.authors,
+                        onTap: () =>
+                            _selectEntity(_CompactEntityCategory.authors),
+                        colorScheme: colorScheme,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    _buildEntityTab(
+                      label: 'Flairs',
+                      count: filter.selectedFlairs.length,
+                      isSelected:
+                          _currentEntity == _CompactEntityCategory.flairs,
+                      onTap: () => _selectEntity(_CompactEntityCategory.flairs),
+                      colorScheme: colorScheme,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
 
-          // search bar current entity
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: _buildEntitySearchBar(colorScheme),
-          ),
+        // search bar current entity
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: _buildEntitySearchBar(colorScheme),
+        ),
 
-          // scrollable chip result
-          Expanded(
-            child: _buildEntityChipList(
-              filter,
-              viewModel,
-              colorScheme,
-              scrollController,
-            ),
+        // scrollable chip result
+        Expanded(
+          child: _buildEntityChipList(
+            filter,
+            viewModel,
+            colorScheme,
+            scrollController,
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+
+    if (isFloating) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: body,
+      );
+    }
+
+    return FrostedSheetContainer(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: body,
     );
   }
 

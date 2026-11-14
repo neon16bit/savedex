@@ -43,7 +43,6 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   Future<void> _refreshMetadata(
     ItemDetailActions actions,
     SavedItem item,
-    ColorScheme colorScheme,
   ) async {
     final notifier = ref.read(enrichingItemsProvider.notifier);
     if (notifier.isEnriching(item.id)) return;
@@ -52,59 +51,40 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       if (!confirmed || !mounted) return;
     }
     final messenger = ScaffoldMessenger.of(context);
-    final errorColor = colorScheme.error;
 
     notifier.add(item.id);
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text('Refreshing metadata...'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 1),
-        ),
-      );
+    showAppSnackBarOnMessenger(
+      messenger,
+      message: 'Refreshing metadata...',
+      duration: const Duration(seconds: 1),
+    );
     try {
       final result = await actions.reEnrich(item);
       if (!messenger.mounted) return;
       if (result.success) {
-        messenger
-          ..clearSnackBars()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('Metadata refreshed successfully'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 2),
-            ),
-          );
+        showAppSnackBarOnMessenger(
+          messenger,
+          message: 'Metadata refreshed successfully',
+          duration: const Duration(seconds: 2),
+        );
       } else {
-        messenger
-          ..clearSnackBars()
-          ..showSnackBar(
-            SnackBar(
-              content: Text(
-                result.error?.isNotEmpty == true
-                    ? result.error!
-                    : 'Failed to refresh metadata',
-              ),
-              backgroundColor: errorColor,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+        showAppSnackBarOnMessenger(
+          messenger,
+          message: result.error?.isNotEmpty == true
+              ? result.error!
+              : 'Failed to refresh metadata',
+          isError: true,
+          duration: const Duration(seconds: 3),
+        );
       }
     } catch (e) {
       if (!messenger.mounted) return;
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: errorColor,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      showAppSnackBarOnMessenger(
+        messenger,
+        message: 'Error: $e',
+        isError: true,
+        duration: const Duration(seconds: 3),
+      );
     } finally {
       notifier.remove(item.id);
     }
@@ -113,54 +93,38 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   Future<void> _recoverFromArchive(
     ItemDetailActions actions,
     SavedItem item,
-    ColorScheme colorScheme,
   ) async {
     final notifier = ref.read(enrichingItemsProvider.notifier);
     if (notifier.isEnriching(item.id)) return;
     final messenger = ScaffoldMessenger.of(context);
-    final errorColor = colorScheme.error;
 
     notifier.add(item.id);
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(
-        const SnackBar(
-          content: Text('Trying archive recovery...'),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 1),
-        ),
-      );
+    showAppSnackBarOnMessenger(
+      messenger,
+      message: 'Trying archive recovery...',
+      duration: const Duration(seconds: 1),
+    );
     try {
       final result = await actions.recoverFromArchive(item, force: true);
       if (!messenger.mounted) return;
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(
-              result.success
-                  ? 'Recovered metadata from archive'
-                  : (result.error?.isNotEmpty == true
-                        ? result.error!
-                        : 'Archive recovery failed'),
-            ),
-            backgroundColor: result.success ? null : errorColor,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      showAppSnackBarOnMessenger(
+        messenger,
+        message: result.success
+            ? 'Recovered metadata from archive'
+            : (result.error?.isNotEmpty == true
+                  ? result.error!
+                  : 'Archive recovery failed'),
+        isError: !result.success,
+        duration: const Duration(seconds: 3),
+      );
     } catch (e) {
       if (!messenger.mounted) return;
-      messenger
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: errorColor,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+      showAppSnackBarOnMessenger(
+        messenger,
+        message: 'Error: $e',
+        isError: true,
+        duration: const Duration(seconds: 3),
+      );
     } finally {
       notifier.remove(item.id);
     }
@@ -208,6 +172,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             : null;
         final item = parentPost ?? rawItem;
         final isComment = item.itemType == ItemType.comment;
+        final enableFrosted = watchFrostedEffects(ref);
 
         return PopScope(
           canPop: false,
@@ -216,12 +181,17 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             Navigator.of(context).pop(_mediaIndex);
           },
           child: Scaffold(
+            extendBodyBehindAppBar: enableFrosted,
+            extendBody: true,
             appBar: AppBar(
               leading: BackButton(
                 onPressed: () => Navigator.of(context).pop(_mediaIndex),
               ),
+              backgroundColor: enableFrosted ? Colors.transparent : null,
               elevation: 0,
-              scrolledUnderElevation: 2,
+              scrolledUnderElevation: enableFrosted ? 0 : 2,
+              surfaceTintColor: enableFrosted ? Colors.transparent : null,
+              flexibleSpace: FrostedAppBarBackground(enableBlur: enableFrosted),
               titleSpacing: 0,
               title: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -253,7 +223,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       enrichingItemsProvider.select((s) => s.contains(item.id)),
                     );
 
-                    return PopupMenuButton<String>(
+                    return FrostedPopupMenuButton<String>(
                       icon: isEnriching
                           ? SizedBox(
                               width: 20,
@@ -269,28 +239,21 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                       ),
                       onSelected: (val) {
                         if (val == 'refresh') {
-                          _refreshMetadata(actions, item, colorScheme);
+                          _refreshMetadata(actions, item);
                         } else if (val == 'recover_archive') {
-                          _recoverFromArchive(actions, item, colorScheme);
+                          _recoverFromArchive(actions, item);
                         } else if (val == 'copy_text') {
                           if (item.body != null &&
                               item.body!.trim().isNotEmpty) {
                             Clipboard.setData(
                               ClipboardData(text: item.body!.trim()),
                             );
-                            ScaffoldMessenger.of(context)
-                              ..clearSnackBars()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    item.isComment
-                                        ? 'Comment text copied to clipboard'
-                                        : 'Post text copied to clipboard',
-                                  ),
-                                  behavior: SnackBarBehavior.floating,
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
+                            showAppSnackBar(
+                              context,
+                              item.isComment
+                                  ? 'Comment text copied to clipboard'
+                                  : 'Post text copied to clipboard',
+                            );
                           }
                         } else if (val == 'open_reddit') {
                           openRedditUrl(context, item.fullPermalink);
@@ -298,15 +261,10 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           Clipboard.setData(
                             ClipboardData(text: item.fullPermalink),
                           );
-                          ScaffoldMessenger.of(context)
-                            ..clearSnackBars()
-                            ..showSnackBar(
-                              const SnackBar(
-                                content: Text('Permalink copied to clipboard'),
-                                behavior: SnackBarBehavior.floating,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
+                          showAppSnackBar(
+                            context,
+                            'Permalink copied to clipboard',
+                          );
                         } else if (val == 'collections') {
                           showCollectionPickerSheet(context, item.id);
                         } else if (val == 'delete') {
@@ -406,17 +364,17 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                           value: 'delete',
                           child: Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.delete_outline_rounded,
                                 size: 18,
-                                color: Colors.red,
+                                color: colorScheme.error,
                               ),
                               const SizedBox(width: 10),
                               Text(
                                 item.isComment
                                     ? 'Delete Comment'
                                     : 'Delete Item',
-                                style: const TextStyle(color: Colors.red),
+                                style: TextStyle(color: colorScheme.error),
                               ),
                             ],
                           ),
@@ -428,177 +386,188 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                 const SizedBox(width: 8),
               ],
             ),
-            body: ListView(
-              padding: const EdgeInsets.only(top: 8, bottom: 32),
-              children: [
-                if (isComment) ...[
-                  DetailDiscussionHeader(commentItem: item),
-                  const SizedBox(height: 8),
-                ],
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (!isComment ||
-                          item.parentPostTitle == null ||
-                          item.parentPostTitle!.isEmpty) ...[
-                        Text(
-                          item.title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      Consumer(
-                        builder: (context, ref, _) {
-                          final colsAsync = ref.watch(
-                            itemCollectionsProvider(item.id),
-                          );
-                          final cols =
-                              colsAsync.asData?.value ?? item.collections;
-                          return DetailBadgeRow(
-                            isComment: isComment,
-                            isNsfw: item.isNsfw,
-                            postFlair: item.postFlair,
-                            isArchiveRecovered: item.isArchiveRecovered,
-                            collections: cols,
-                            onCollectionTap: (_) =>
-                                showCollectionPickerSheet(context, item.id),
-                          );
-                        },
-                      ),
-                      if (item.author != null && item.author!.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: item.author != '[deleted]'
-                                  ? () => ScopedFeedView.openAuthor(
-                                      context,
-                                      item.author!,
-                                    )
-                                  : null,
-                              child: Text(
-                                'u/${item.author}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.onSurface,
-                                ),
-                              ),
-                            ),
-                            if (item.createdAtUtc != null)
-                              Text(
-                                ' • ${DateFormatter.timeAgo(item.createdAtUtc)}',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                      if (item.isCrosspost) ...[
-                        const SizedBox(height: 12),
-                        DetailCrosspostOriginCard(item: item),
-                      ],
-                    ],
+            body: Builder(
+              builder: (bodyContext) {
+                final bodyPadding = MediaQuery.paddingOf(bodyContext);
+                return ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    0,
+                    bodyPadding.top + 8,
+                    0,
+                    bodyPadding.bottom + 32,
                   ),
-                ),
-                DetailMediaView(
-                  item: item,
-                  initialIndex: _mediaIndex,
-                  onIndexChanged: (idx) => _mediaIndex = idx,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (item.body != null &&
-                          item.body!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        const Divider(height: 1),
-                        const SizedBox(height: 16),
-                        DetailMarkdownContent(data: item.body!.trim()),
-                      ],
-                      Consumer(
-                        builder: (context, ref, _) {
-                          final note = ref.watch(
-                            itemNoteProvider((
-                              id: item.id,
-                              initialNote: item.userNote,
-                            )),
-                          );
-                          if (note == null || note.trim().isEmpty) {
-                            return const SizedBox.shrink();
-                          }
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 14),
-                            child: DetailUserNoteCard(
-                              note: note.trim(),
-                              onTap: () => showEditNoteDialog(
-                                context,
-                                actions,
-                                item.id,
-                                note,
-                              ),
-                              onDelete: () {
-                                actions.updateNote(item.id, null);
-                                showNoteSnackBar(
-                                  context,
-                                  message: 'Note removed',
-                                  onUndo: () =>
-                                      actions.updateNote(item.id, note),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
+                  children: [
+                    if (isComment) ...[
+                      DetailDiscussionHeader(commentItem: item),
+                      const SizedBox(height: 8),
+                    ],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          DetailScoreChip(score: item.score),
-                          if (!isComment && item.numComments > 0) ...[
-                            const SizedBox(width: 8),
-                            DetailCommentsChip(count: item.numComments),
-                          ],
-                          const Spacer(),
-                          ItemNoteButton(
-                            itemId: item.id,
-                            initialNote: item.userNote,
-                            showLabel: true,
-                            onEditNote: (currentNote) => showEditNoteDialog(
-                              context,
-                              actions,
-                              item.id,
-                              currentNote,
+                          if (!isComment ||
+                              item.parentPostTitle == null ||
+                              item.parentPostTitle!.isEmpty) ...[
+                            Text(
+                              item.title,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
+                                height: 1.3,
+                              ),
                             ),
+                            const SizedBox(height: 12),
+                          ],
+                          Consumer(
+                            builder: (context, ref, _) {
+                              final colsAsync = ref.watch(
+                                itemCollectionsProvider(item.id),
+                              );
+                              final cols =
+                                  colsAsync.asData?.value ?? item.collections;
+                              return DetailBadgeRow(
+                                isComment: isComment,
+                                isNsfw: item.isNsfw,
+                                postFlair: item.postFlair,
+                                isArchiveRecovered: item.isArchiveRecovered,
+                                collections: cols,
+                                onCollectionTap: (_) =>
+                                    showCollectionPickerSheet(context, item.id),
+                              );
+                            },
                           ),
+                          if (item.author != null &&
+                              item.author!.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: item.author != '[deleted]'
+                                      ? () => ScopedFeedView.openAuthor(
+                                          context,
+                                          item.author!,
+                                        )
+                                      : null,
+                                  child: Text(
+                                    'u/${item.author}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                if (item.createdAtUtc != null)
+                                  Text(
+                                    ' • ${DateFormatter.timeAgo(item.createdAtUtc)}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                          if (item.isCrosspost) ...[
+                            const SizedBox(height: 12),
+                            DetailCrosspostOriginCard(item: item),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 16),
-                    ],
-                  ),
-                ),
-                DetailCommentsSection(
-                  threadRootId: widget.itemId,
-                  currentItem: item,
-                  actions: actions,
-                  highlightedCommentId: widget.itemId != item.id
-                      ? widget.itemId
-                      : null,
-                  onRefresh: (comment) =>
-                      _refreshMetadata(actions, comment, colorScheme),
-                  onRecoverArchive: (comment) =>
-                      _recoverFromArchive(actions, comment, colorScheme),
-                ),
-              ],
+                    ),
+                    DetailMediaView(
+                      item: item,
+                      initialIndex: _mediaIndex,
+                      onIndexChanged: (idx) => _mediaIndex = idx,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (item.body != null &&
+                              item.body!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            const Divider(height: 1),
+                            const SizedBox(height: 16),
+                            DetailMarkdownContent(data: item.body!.trim()),
+                          ],
+                          Consumer(
+                            builder: (context, ref, _) {
+                              final note = ref.watch(
+                                itemNoteProvider((
+                                  id: item.id,
+                                  initialNote: item.userNote,
+                                )),
+                              );
+                              if (note == null || note.trim().isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 14),
+                                child: DetailUserNoteCard(
+                                  note: note.trim(),
+                                  onTap: () => showEditNoteDialog(
+                                    context,
+                                    actions,
+                                    item.id,
+                                    note,
+                                  ),
+                                  onDelete: () {
+                                    actions.updateNote(item.id, null);
+                                    showNoteSnackBar(
+                                      context,
+                                      message: 'Note removed',
+                                      onUndo: () =>
+                                          actions.updateNote(item.id, note),
+                                    );
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              DetailScoreChip(score: item.score),
+                              if (!isComment && item.numComments > 0) ...[
+                                const SizedBox(width: 8),
+                                DetailCommentsChip(count: item.numComments),
+                              ],
+                              const Spacer(),
+                              ItemNoteButton(
+                                itemId: item.id,
+                                initialNote: item.userNote,
+                                showLabel: true,
+                                onEditNote: (currentNote) => showEditNoteDialog(
+                                  context,
+                                  actions,
+                                  item.id,
+                                  currentNote,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                    DetailCommentsSection(
+                      threadRootId: widget.itemId,
+                      currentItem: item,
+                      actions: actions,
+                      highlightedCommentId: widget.itemId != item.id
+                          ? widget.itemId
+                          : null,
+                      onRefresh: (comment) =>
+                          _refreshMetadata(actions, comment),
+                      onRecoverArchive: (comment) =>
+                          _recoverFromArchive(actions, comment),
+                    ),
+                  ],
+                );
+              },
             ),
             bottomNavigationBar: DetailBottomBar(
               item: item,
