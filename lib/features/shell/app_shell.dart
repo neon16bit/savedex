@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/features/library/library_view.dart';
 import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
+import 'package:savedex/features/shell/widgets/welcome_onboarding_dialog.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 export 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
 
@@ -105,6 +107,32 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   final Set<int> _visitedTabs = {0};
+  bool _didCheckOnboarding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowOnboarding();
+    });
+  }
+
+  Future<void> _maybeShowOnboarding() async {
+    if (_didCheckOnboarding || !mounted) return;
+    _didCheckOnboarding = true;
+
+    final settings = ref.read(settingsViewModelProvider);
+    if (settings.hasSeenOnboarding) return;
+
+    final hasConfiguredCreds =
+        settings.isAuthenticatedWithOAuth ||
+        (settings.redditClientId != null &&
+            settings.redditClientId!.trim().isNotEmpty);
+    if (hasConfiguredCreds) return;
+
+    ref.read(settingsViewModelProvider.notifier).setHasSeenOnboarding(true);
+    await showWelcomeOnboardingDialog(context);
+  }
 
   @override
   Widget build(BuildContext context) {

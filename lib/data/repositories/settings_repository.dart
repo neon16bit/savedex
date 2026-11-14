@@ -34,6 +34,7 @@ class UserSettings {
   final bool startVideosMuted;
   final bool hideNsfwInFeed;
   final bool enableFrostedEffects;
+  final bool hasSeenOnboarding;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -57,6 +58,7 @@ class UserSettings {
     this.startVideosMuted = false,
     this.hideNsfwInFeed = false,
     this.enableFrostedEffects = true,
+    this.hasSeenOnboarding = false,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -101,6 +103,7 @@ class UserSettings {
     bool? startVideosMuted,
     bool? hideNsfwInFeed,
     bool? enableFrostedEffects,
+    bool? hasSeenOnboarding,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -134,6 +137,7 @@ class UserSettings {
       startVideosMuted: startVideosMuted ?? this.startVideosMuted,
       hideNsfwInFeed: hideNsfwInFeed ?? this.hideNsfwInFeed,
       enableFrostedEffects: enableFrostedEffects ?? this.enableFrostedEffects,
+      hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
     );
   }
 }
@@ -211,6 +215,7 @@ class SettingsRepository {
     final hideNsfwInFeed = _prefs.getBool('hide_nsfw_in_feed') ?? false;
     final enableFrostedEffects =
         _prefs.getBool('enable_frosted_effects') ?? true;
+    final hasSeenOnboarding = _prefs.getBool('has_seen_onboarding') ?? false;
 
     return UserSettings(
       themeMode: themeMode,
@@ -234,6 +239,7 @@ class SettingsRepository {
       startVideosMuted: startVideosMuted,
       hideNsfwInFeed: hideNsfwInFeed,
       enableFrostedEffects: enableFrostedEffects,
+      hasSeenOnboarding: hasSeenOnboarding,
     );
   }
 
@@ -352,6 +358,7 @@ class SettingsRepository {
       'enable_frosted_effects',
       newSettings.enableFrostedEffects,
     );
+    await prefs.setBool('has_seen_onboarding', newSettings.hasSeenOnboarding);
   }
 
   Future<void> updateOAuthTokens({

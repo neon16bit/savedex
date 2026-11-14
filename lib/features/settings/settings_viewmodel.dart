@@ -127,6 +127,11 @@ class SettingsViewModel extends Notifier<UserSettings> {
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
+  void setHasSeenOnboarding([bool value = true]) {
+    state = state.copyWith(hasSeenOnboarding: value);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
   void updateRedditCredentials({
     required String? clientId,
     String? clientSecret,

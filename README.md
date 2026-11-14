@@ -1,17 +1,16 @@
-# savedex
+# Savedex
 
-A new Flutter project.
+Reddit saved library manager for browsing, organizing, searching, and backing up your saved posts and comments locally.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+## Get Started
 
-A few resources to get you started if this is your first Flutter project:
+1. **Configure Reddit API credentials:** Open **Settings → Reddit Account** and enter your OAuth Client ID, Redirect URI, and User Agent.
+2. **Sign in with Reddit (recommended):** Authorizing your account speeds up post, comment, and media metadata fetching and lets you sync up to your last **1,000 saves** directly from Reddit.
+3. **Import older saves via Reddit Takeout:** Have more than 1,000 saved items? Request your account data from [reddit.com/settings/data-request](https://www.reddit.com/settings/data-request), then import the `.zip` or `.csv` file in **Settings → Import & Sync**.
+4. **Organize & back up:** Filter and search your saves, group items into collections, and create snapshots or JSON/CSV exports in **Settings → Backup & Restore**.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Where do I get a Client ID?
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Use [RedReader](https://github.com/QuantumBadger/RedReader/releases/latest) and log in, RedReader will email you the OAuth ID, or you can simply Google it along with it's Redirect URI and User Agent.

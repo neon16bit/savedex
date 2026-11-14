@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
 import 'package:savedex/theme/app_theme.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
@@ -21,6 +22,7 @@ import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
 import 'package:savedex/features/shell/app_shell.dart';
+import 'package:savedex/features/shell/widgets/welcome_onboarding_dialog.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
 class SettingsView extends ConsumerWidget {
@@ -76,7 +78,7 @@ class SettingsView extends ConsumerWidget {
                         : 'Connect OAuth to sync saved items',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _showApiCredentialsDialog(context),
+                  onTap: () => showApiCredentialsDialog(context),
                 ),
                 const Divider(height: 1, indent: 56, endIndent: 16),
                 ListTile(
@@ -733,15 +735,40 @@ class SettingsView extends ConsumerWidget {
           ),
 
           _buildSectionHeader('About', colorScheme),
-          const Card(
+          Card(
             clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: Icon(Icons.info_outline_rounded),
-              title: Text(
-                'Savedex',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
-              ),
-              subtitle: Text('Version 0.0.1 • Reddit Saved Library Manager'),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.help_outline_rounded),
+                  title: const Text(
+                    'Setup Guide',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'How to configure Reddit API & import saves',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => showWelcomeOnboardingDialog(context),
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                const ListTile(
+                  leading: Icon(Icons.info_outline_rounded),
+                  title: Text(
+                    'Savedex',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Version 0.0.1 • Reddit Saved Library Manager',
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1081,7 +1108,7 @@ class SettingsView extends ConsumerWidget {
     );
   }
 
-  void _showApiCredentialsDialog(BuildContext context) {
+  static void showApiCredentialsDialog(BuildContext context) {
     showFrostedDialog(
       context: context,
       builder: (ctx) => const _RedditOAuthDialog(),
@@ -1142,6 +1169,12 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     _redirectUriController.dispose();
     _userAgentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _launchUrl(String url) async {
+    try {
+      await ExternalUrlLauncher.launch(Uri.parse(url));
+    } catch (_) {}
   }
 
   Future<void> _handleAuthorize() async {
@@ -1612,12 +1645,31 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text(
-                          'Enter your Reddit OAuth Client ID and Redirect URI to authorize.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                            height: 1.35,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text.rich(
+                              TextSpan(
+                                text: 'See ',
+                                children: [
+                                  WidgetSpan(
+                                    alignment: PlaceholderAlignment.baseline,
+                                    baseline: TextBaseline.alphabetic,
+                                    child: _InlineLinkText(
+                                      label: 'GitHub README',
+                                      onTap: () => _launchUrl(
+                                        'https://github.com/neon16bit/savedex#where-do-i-get-a-client-id',
+                                      ),
+                                    ),
+                                  ),
+                                  const TextSpan(
+                                    text:
+                                        ' for how to get your Client ID, Redirect URI, and User Agent.',
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -1723,6 +1775,38 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
             child: const Text('Save Credentials'),
           ),
       ],
+    );
+  }
+}
+
+class _InlineLinkText extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _InlineLinkText({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Semantics(
+      link: true,
+      button: true,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+              decoration: TextDecoration.underline,
+              decorationColor: colorScheme.primary,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
