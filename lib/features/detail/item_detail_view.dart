@@ -212,7 +212,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
                     item.isStarred
                         ? Icons.star_rounded
                         : Icons.star_border_rounded,
-                    color: item.isStarred ? Colors.amber : null,
+                    color: item.isStarred ? colorScheme.primary : null,
                   ),
                   tooltip: item.isStarred ? 'Starred' : 'Star',
                   onPressed: () => actions.toggleStar(item),

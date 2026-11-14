@@ -26,7 +26,7 @@ class ItemStarButton extends ConsumerWidget {
             item.isStarred ? Icons.star_rounded : Icons.star_outline_rounded,
             size: 22,
             color: item.isStarred
-                ? Colors.yellow
+                ? colorScheme.primary
                 : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
           ),
         ),

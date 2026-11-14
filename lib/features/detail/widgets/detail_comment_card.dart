@@ -455,7 +455,7 @@ class DetailCommentCard extends StatelessWidget {
                       ? Icons.star_rounded
                       : Icons.star_border_rounded,
                   color: comment.isStarred
-                      ? Colors.amber
+                      ? colorScheme.primary
                       : colorScheme.onSurfaceVariant,
                 ),
                 tooltip: comment.isStarred ? 'Starred' : 'Star',

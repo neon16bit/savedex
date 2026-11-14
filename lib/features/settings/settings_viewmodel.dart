@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
+import 'package:savedex/theme/app_theme.dart';
 
 final settingsViewModelProvider =
     NotifierProvider<SettingsViewModel, UserSettings>(() {
@@ -35,13 +36,67 @@ class SettingsViewModel extends Notifier<UserSettings> {
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
-  void setSeedColorIndex(int index) {
-    state = state.copyWith(seedColorIndex: index);
+  void setThemeFlavor(ThemeFlavor flavor) {
+    state = switch (flavor) {
+      ThemeFlavor.system => state.copyWith(
+        themeMode: ThemeMode.system,
+        catppuccinLightFlavor: CatppuccinFlavor.latte,
+        catppuccinDarkFlavor: CatppuccinFlavor.mocha,
+      ),
+      ThemeFlavor.latte => state.copyWith(
+        themeMode: ThemeMode.light,
+        catppuccinLightFlavor: CatppuccinFlavor.latte,
+      ),
+      ThemeFlavor.frappe => state.copyWith(
+        themeMode: ThemeMode.dark,
+        catppuccinDarkFlavor: CatppuccinFlavor.frappe,
+      ),
+      ThemeFlavor.macchiato => state.copyWith(
+        themeMode: ThemeMode.dark,
+        catppuccinDarkFlavor: CatppuccinFlavor.macchiato,
+      ),
+      ThemeFlavor.mocha => state.copyWith(
+        themeMode: ThemeMode.dark,
+        catppuccinDarkFlavor: CatppuccinFlavor.mocha,
+      ),
+    };
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
   void toggleDynamicColor(bool useDynamic) {
     state = state.copyWith(useDynamicColor: useDynamic);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
+  void setCatppuccinLightFlavor(CatppuccinFlavor flavor) {
+    state = state.copyWith(catppuccinLightFlavor: flavor);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
+  void setCatppuccinDarkFlavor(CatppuccinFlavor flavor) {
+    state = state.copyWith(catppuccinDarkFlavor: flavor);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
+  void setCatppuccinFlavorForBrightness(
+    CatppuccinFlavor flavor,
+    Brightness brightness,
+  ) {
+    if (brightness == Brightness.light) {
+      setCatppuccinLightFlavor(flavor);
+    } else {
+      setCatppuccinDarkFlavor(flavor);
+    }
+  }
+
+  void setCatppuccinAccent(String accent) {
+    state = state.copyWith(useDynamicColor: false, catppuccinAccent: accent);
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
+  void toggleCatppuccinSeed([bool? value]) {
+    final nextValue = value ?? !state.useCatppuccinSeed;
+    state = state.copyWith(useCatppuccinSeed: nextValue);
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 

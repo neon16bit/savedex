@@ -32,23 +32,43 @@ class SavedexApp extends ConsumerWidget {
 
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
-        final seedColor = settings.useDynamicColor && lightDynamic != null
+        final rawLightDynamic = lightDynamic != null
             ? Color(lightDynamic.primary.toARGB32())
-            : settings.currentSeedColor;
+            : null;
+        final darkDynamicScheme = darkDynamic ?? lightDynamic;
+        final rawDarkDynamic = darkDynamicScheme != null
+            ? Color(darkDynamicScheme.primary.toARGB32())
+            : null;
 
-        final lightTheme = AppTheme.lightTheme(seedColor: seedColor);
-        final darkTheme = AppTheme.darkTheme(
-          seedColor: seedColor,
+        final lightPalette = settings.catppuccinLightFlavor.palette;
+        final darkPalette = settings.catppuccinDarkFlavor.palette;
+
+        final lightTheme = AppTheme.catppuccinTheme(
+          palette: lightPalette,
+          accentName: settings.effectiveAccentFor(lightPalette.brightness),
+          accentOverride: settings.useDynamicColor ? rawLightDynamic : null,
           isAmoled: settings.isAmoled,
+          useSeedOnly: settings.useCatppuccinSeed,
+        );
+        final darkTheme = AppTheme.catppuccinTheme(
+          palette: darkPalette,
+          accentName: settings.effectiveAccentFor(darkPalette.brightness),
+          accentOverride: settings.useDynamicColor ? rawDarkDynamic : null,
+          isAmoled: settings.isAmoled,
+          useSeedOnly: settings.useCatppuccinSeed,
         );
 
-        return MaterialApp(
-          title: AppConstants.appName,
-          debugShowCheckedModeBanner: false,
-          theme: lightTheme,
-          darkTheme: darkTheme,
-          themeMode: settings.themeMode,
-          home: const AppShell(),
+        return DynamicAccentScope(
+          lightAccent: rawLightDynamic,
+          darkAccent: rawDarkDynamic,
+          child: MaterialApp(
+            title: AppConstants.appName,
+            debugShowCheckedModeBanner: false,
+            theme: lightTheme,
+            darkTheme: darkTheme,
+            themeMode: settings.themeMode,
+            home: const AppShell(),
+          ),
         );
       },
     );

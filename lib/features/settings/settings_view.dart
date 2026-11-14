@@ -107,41 +107,41 @@ class SettingsView extends ConsumerWidget {
             clipBehavior: Clip.antiAlias,
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.brightness_6_outlined),
-                  title: const Text(
-                    'Theme Mode',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14.5,
+                Builder(
+                  builder: (tileContext) => ListTile(
+                    leading: const Icon(Icons.palette_outlined),
+                    title: const Text(
+                      'Theme Flavor',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14.5,
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    settings.themeMode == ThemeMode.system
-                        ? 'System Default'
-                        : settings.themeMode == ThemeMode.dark
-                        ? 'Dark Mode'
-                        : 'Light Mode',
-                  ),
-                  trailing: SegmentedButton<ThemeMode>(
-                    segments: const [
-                      ButtonSegment(
-                        value: ThemeMode.system,
-                        icon: Icon(Icons.auto_mode, size: 16),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode, size: 16),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode, size: 16),
-                      ),
-                    ],
-                    selected: {settings.themeMode},
-                    onSelectionChanged: (set) =>
-                        viewModel.setThemeMode(set.first),
-                    showSelectedIcon: false,
+                    subtitle: Text(settings.themeFlavor.label),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          settings.themeFlavor.label,
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                    onTap: () => _openThemeFlavorMenu(
+                      tileContext,
+                      settings.themeFlavor,
+                      viewModel,
+                    ),
                   ),
                 ),
                 const Divider(height: 1, indent: 56, endIndent: 16),
@@ -155,91 +155,35 @@ class SettingsView extends ConsumerWidget {
                     ),
                   ),
                   subtitle: const Text(
-                    'Use deep pitch black for dark theme surfaces',
+                    'Use pitch black backgrounds in dark mode',
                   ),
                   value: settings.isAmoled,
                   onChanged: (val) => viewModel.toggleAmoled(val),
                 ),
                 const Divider(height: 1, indent: 56, endIndent: 16),
+                _buildAccentColorSection(
+                  context,
+                  settings: settings,
+                  viewModel: viewModel,
+                  colorScheme: colorScheme,
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
                 SwitchListTile(
-                  secondary: const Icon(Icons.palette_outlined),
+                  secondary: const Icon(Icons.tonality_outlined),
                   title: const Text(
-                    'Dynamic Color',
+                    'Pass Through Material Seed',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14.5,
                     ),
                   ),
                   subtitle: const Text(
-                    'Use system Material You wallpaper palette',
+                    'Generate Material 3 tonal surfaces from accent color',
                   ),
-                  value: settings.useDynamicColor,
-                  onChanged: (val) => viewModel.toggleDynamicColor(val),
+                  value: settings.useCatppuccinSeed,
+                  onChanged: (val) => viewModel.toggleCatppuccinSeed(val),
                 ),
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeInOut,
-                  child: settings.useDynamicColor
-                      ? const SizedBox.shrink()
-                      : Padding(
-                          padding: const EdgeInsets.fromLTRB(56, 0, 16, 14),
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: List.generate(AppTheme.presets.length, (
-                                index,
-                              ) {
-                                final presetColor = AppTheme.presets[index];
-                                final isSelected =
-                                    settings.seedColorIndex == index;
 
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: GestureDetector(
-                                    onTap: () =>
-                                        viewModel.setSeedColorIndex(index),
-                                    child: Container(
-                                      width: 34,
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: presetColor,
-                                        shape: BoxShape.circle,
-                                        border: isSelected
-                                            ? Border.all(
-                                                color: colorScheme.onSurface,
-                                                width: 2.5,
-                                              )
-                                            : null,
-                                      ),
-                                      child: isSelected
-                                          ? const Icon(
-                                              Icons.check,
-                                              color: Colors.white,
-                                              size: 18,
-                                            )
-                                          : null,
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
-                          ),
-                        ),
-                ),
-                const Divider(height: 1, indent: 56, endIndent: 16),
-                SwitchListTile(
-                  secondary: const Icon(Icons.volume_off_outlined),
-                  title: const Text(
-                    'Start Videos Muted',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14.5,
-                    ),
-                  ),
-                  subtitle: const Text('Mute video playback by default'),
-                  value: settings.startVideosMuted,
-                  onChanged: (val) => viewModel.toggleStartVideosMuted(val),
-                ),
                 const Divider(height: 1, indent: 56, endIndent: 16),
                 SwitchListTile(
                   secondary: const Icon(Icons.blur_on_outlined),
@@ -255,6 +199,20 @@ class SettingsView extends ConsumerWidget {
                   ),
                   value: settings.enableFrostedEffects,
                   onChanged: (val) => viewModel.toggleFrostedEffects(val),
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                SwitchListTile(
+                  secondary: const Icon(Icons.volume_off_outlined),
+                  title: const Text(
+                    'Start Videos Muted',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: const Text('Mute video playback by default'),
+                  value: settings.startVideosMuted,
+                  onChanged: (val) => viewModel.toggleStartVideosMuted(val),
                 ),
               ],
             ),
@@ -805,6 +763,216 @@ class SettingsView extends ConsumerWidget {
             child: const Text('Close'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _openThemeFlavorMenu(
+    BuildContext tileContext,
+    ThemeFlavor currentFlavor,
+    SettingsViewModel viewModel,
+  ) async {
+    final renderBox = tileContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Navigator.of(tileContext).overlay?.context.findRenderObject()
+            as RenderBox?;
+    if (renderBox == null ||
+        overlay == null ||
+        !renderBox.attached ||
+        !overlay.attached) {
+      return;
+    }
+
+    RelativeRect computePosition() {
+      final topLeft = renderBox.localToGlobal(Offset.zero, ancestor: overlay);
+      final rect = topLeft & renderBox.size;
+      return RelativeRect.fromRect(
+        Rect.fromLTWH(rect.right - 16, rect.top + 8, 16, rect.height - 8),
+        Offset.zero & overlay.size,
+      );
+    }
+
+    final colorScheme = Theme.of(tileContext).colorScheme;
+    final selected = await showFrostedMenu<ThemeFlavor>(
+      context: tileContext,
+      position: computePosition(),
+      positionBuilder: (_, fallback) {
+        if (!tileContext.mounted || !renderBox.attached || !overlay.attached) {
+          return fallback;
+        }
+        return computePosition();
+      },
+      initialValue: currentFlavor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      items: [
+        for (final flavor in ThemeFlavor.values)
+          PopupMenuItem<ThemeFlavor>(
+            value: flavor,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    flavor.label,
+                    style: TextStyle(
+                      fontWeight: currentFlavor == flavor
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: currentFlavor == flavor
+                          ? colorScheme.primary
+                          : null,
+                    ),
+                  ),
+                ),
+                if (currentFlavor == flavor) ...[
+                  const SizedBox(width: 12),
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+
+    if (selected != null) {
+      viewModel.setThemeFlavor(selected);
+    }
+  }
+
+  Widget _buildAccentColorSection(
+    BuildContext context, {
+    required UserSettings settings,
+    required SettingsViewModel viewModel,
+    required ColorScheme colorScheme,
+  }) {
+    final effectiveBrightness = switch (settings.themeMode) {
+      ThemeMode.light => Brightness.light,
+      ThemeMode.dark => Brightness.dark,
+      ThemeMode.system => MediaQuery.platformBrightnessOf(context),
+    };
+    final activePalette = effectiveBrightness == Brightness.light
+        ? settings.catppuccinLightFlavor.palette
+        : settings.catppuccinDarkFlavor.palette;
+    final activeAccent = settings.effectiveAccentFor(effectiveBrightness);
+    final dynamicAccentColor =
+        DynamicAccentScope.of(context, effectiveBrightness) ??
+        activePalette.getColorByName(activeAccent);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          child: Text(
+            'Accent Color',
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildAccentSwatchItem(
+                label: 'Dynamic',
+                isSelected: settings.useDynamicColor,
+                colorScheme: colorScheme,
+                decoration: BoxDecoration(
+                  color: dynamicAccentColor,
+                  shape: BoxShape.circle,
+                  border: settings.useDynamicColor
+                      ? Border.all(
+                          color: colorScheme.onSurface.withValues(alpha: 0.9),
+                          width: 2.5,
+                        )
+                      : null,
+                ),
+                onTap: () => viewModel.toggleDynamicColor(true),
+              ),
+              ...CatppuccinPalette.accentNames.map((name) {
+                final accentColor = activePalette.getColorByName(name);
+                final isSelected =
+                    !settings.useDynamicColor &&
+                    activeAccent.toLowerCase() == name.toLowerCase();
+                return _buildAccentSwatchItem(
+                  label: name,
+                  isSelected: isSelected,
+                  colorScheme: colorScheme,
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    shape: BoxShape.circle,
+                    border: isSelected
+                        ? Border.all(
+                            color: colorScheme.onSurface.withValues(alpha: 0.9),
+                            width: 2.5,
+                          )
+                        : null,
+                  ),
+                  onTap: () => viewModel.setCatppuccinAccent(name),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAccentSwatchItem({
+    required String label,
+    required bool isSelected,
+    required ColorScheme colorScheme,
+    required BoxDecoration decoration,
+    required VoidCallback onTap,
+  }) {
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: '$label accent color',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: SizedBox(
+            width: 54,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  width: 38,
+                  height: 38,
+                  decoration: decoration,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected
+                        ? colorScheme.onSurface
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

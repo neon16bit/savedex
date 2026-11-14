@@ -184,7 +184,7 @@ class CompactListItem extends ConsumerWidget {
                       ? Icons.star_rounded
                       : Icons.star_outline_rounded,
                   color: item.isStarred
-                      ? Colors.yellow
+                      ? colorScheme.primary
                       : colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 ),
                 onPressed: () => viewModel.toggleStar(item),

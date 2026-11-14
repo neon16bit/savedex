@@ -14,9 +14,12 @@ enum ArchiveBackend {
 
 class UserSettings {
   final ThemeMode themeMode;
-  final int seedColorIndex;
   final bool isAmoled;
   final bool useDynamicColor;
+  final CatppuccinFlavor catppuccinLightFlavor;
+  final CatppuccinFlavor catppuccinDarkFlavor;
+  final String? catppuccinAccent;
+  final bool useCatppuccinSeed;
   final FeedLayoutMode feedLayoutMode;
   final String? redditClientId;
   final String? redditClientSecret;
@@ -34,9 +37,12 @@ class UserSettings {
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
-    this.seedColorIndex = 0,
     this.isAmoled = false,
-    this.useDynamicColor = true,
+    this.useDynamicColor = false,
+    this.catppuccinLightFlavor = CatppuccinFlavor.latte,
+    this.catppuccinDarkFlavor = CatppuccinFlavor.mocha,
+    this.catppuccinAccent,
+    this.useCatppuccinSeed = false,
     this.feedLayoutMode = FeedLayoutMode.card,
     this.redditClientId,
     this.redditClientSecret,
@@ -56,18 +62,31 @@ class UserSettings {
   bool get isAuthenticatedWithOAuth =>
       redditRefreshToken != null && redditRefreshToken!.isNotEmpty;
 
-  Color get currentSeedColor {
-    if (seedColorIndex >= 0 && seedColorIndex < AppTheme.presets.length) {
-      return AppTheme.presets[seedColorIndex];
+  ThemeFlavor get themeFlavor => switch (themeMode) {
+    ThemeMode.system => ThemeFlavor.system,
+    ThemeMode.light => ThemeFlavor.latte,
+    ThemeMode.dark => switch (catppuccinDarkFlavor) {
+      CatppuccinFlavor.frappe => ThemeFlavor.frappe,
+      CatppuccinFlavor.macchiato => ThemeFlavor.macchiato,
+      CatppuccinFlavor.latte || CatppuccinFlavor.mocha => ThemeFlavor.mocha,
+    },
+  };
+
+  String effectiveAccentFor(Brightness brightness) {
+    if (catppuccinAccent != null && catppuccinAccent!.isNotEmpty) {
+      return catppuccinAccent!;
     }
-    return AppTheme.presets.first;
+    return brightness == Brightness.light ? 'Maroon' : 'Red';
   }
 
   UserSettings copyWith({
     ThemeMode? themeMode,
-    int? seedColorIndex,
     bool? isAmoled,
     bool? useDynamicColor,
+    CatppuccinFlavor? catppuccinLightFlavor,
+    CatppuccinFlavor? catppuccinDarkFlavor,
+    String? catppuccinAccent,
+    bool? useCatppuccinSeed,
     FeedLayoutMode? feedLayoutMode,
     String? redditClientId,
     String? redditClientSecret,
@@ -86,9 +105,13 @@ class UserSettings {
   }) {
     return UserSettings(
       themeMode: themeMode ?? this.themeMode,
-      seedColorIndex: seedColorIndex ?? this.seedColorIndex,
       isAmoled: isAmoled ?? this.isAmoled,
       useDynamicColor: useDynamicColor ?? this.useDynamicColor,
+      catppuccinLightFlavor:
+          catppuccinLightFlavor ?? this.catppuccinLightFlavor,
+      catppuccinDarkFlavor: catppuccinDarkFlavor ?? this.catppuccinDarkFlavor,
+      catppuccinAccent: catppuccinAccent ?? this.catppuccinAccent,
+      useCatppuccinSeed: useCatppuccinSeed ?? this.useCatppuccinSeed,
       feedLayoutMode: feedLayoutMode ?? this.feedLayoutMode,
       redditClientId: redditClientId ?? this.redditClientId,
       redditClientSecret: redditClientSecret ?? this.redditClientSecret,
@@ -134,9 +157,32 @@ class SettingsRepository {
     final themeMode =
         ThemeMode.values.elementAtOrNull(themeModeIndex) ?? ThemeMode.system;
 
-    final seedColorIndex = _prefs.getInt('seed_color_index') ?? 0;
     final isAmoled = _prefs.getBool('is_amoled') ?? false;
-    final useDynamicColor = _prefs.getBool('use_dynamic_color') ?? true;
+    final useDynamicColor = _prefs.getBool('use_dynamic_color') ?? false;
+
+    final catppuccinLightFlavorIndex =
+        _prefs.getInt('catppuccin_light_flavor') ??
+        CatppuccinFlavor.latte.index;
+    final catppuccinLightFlavor =
+        CatppuccinFlavor.values.elementAtOrNull(catppuccinLightFlavorIndex) ??
+        CatppuccinFlavor.latte;
+
+    final catppuccinDarkFlavorIndex =
+        _prefs.getInt('catppuccin_dark_flavor') ?? CatppuccinFlavor.mocha.index;
+    final catppuccinDarkFlavor =
+        CatppuccinFlavor.values.elementAtOrNull(catppuccinDarkFlavorIndex) ??
+        CatppuccinFlavor.mocha;
+
+    final rawCatppuccinAccent = _prefs.getString('catppuccin_accent');
+    final String? catppuccinAccent = rawCatppuccinAccent == null
+        ? null
+        : CatppuccinPalette.accentNames
+              .where(
+                (name) =>
+                    name.toLowerCase() == rawCatppuccinAccent.toLowerCase(),
+              )
+              .firstOrNull;
+    final useCatppuccinSeed = _prefs.getBool('use_catppuccin_seed') ?? false;
 
     final feedLayoutIndex =
         _prefs.getInt('feed_layout_mode') ?? FeedLayoutMode.card.index;
@@ -168,9 +214,12 @@ class SettingsRepository {
 
     return UserSettings(
       themeMode: themeMode,
-      seedColorIndex: seedColorIndex,
       isAmoled: isAmoled,
       useDynamicColor: useDynamicColor,
+      catppuccinLightFlavor: catppuccinLightFlavor,
+      catppuccinDarkFlavor: catppuccinDarkFlavor,
+      catppuccinAccent: catppuccinAccent,
+      useCatppuccinSeed: useCatppuccinSeed,
       feedLayoutMode: feedLayoutMode,
       redditClientId: redditClientId,
       redditClientSecret: redditClientSecret,
@@ -204,9 +253,23 @@ class SettingsRepository {
     if (prefs == null) return;
 
     await prefs.setInt('theme_mode', newSettings.themeMode.index);
-    await prefs.setInt('seed_color_index', newSettings.seedColorIndex);
     await prefs.setBool('is_amoled', newSettings.isAmoled);
     await prefs.setBool('use_dynamic_color', newSettings.useDynamicColor);
+    await prefs.setInt(
+      'catppuccin_light_flavor',
+      newSettings.catppuccinLightFlavor.index,
+    );
+    await prefs.setInt(
+      'catppuccin_dark_flavor',
+      newSettings.catppuccinDarkFlavor.index,
+    );
+    if (newSettings.catppuccinAccent != null &&
+        newSettings.catppuccinAccent!.isNotEmpty) {
+      await prefs.setString('catppuccin_accent', newSettings.catppuccinAccent!);
+    } else {
+      await prefs.remove('catppuccin_accent');
+    }
+    await prefs.setBool('use_catppuccin_seed', newSettings.useCatppuccinSeed);
     await prefs.setInt('feed_layout_mode', newSettings.feedLayoutMode.index);
 
     if (newSettings.redditClientId != null &&

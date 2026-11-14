@@ -204,10 +204,10 @@ class GalleryItem extends ConsumerWidget {
                     ),
                     const Spacer(),
                     if (item.isStarred)
-                      const Icon(
+                      Icon(
                         Icons.star_rounded,
                         size: 14,
-                        color: Colors.amber,
+                        color: colorScheme.primary,
                       ),
                   ],
                 ),
