@@ -13,6 +13,7 @@ import 'package:savedex/theme/app_theme.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/data/services/reddit_auth_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
+import 'package:savedex/features/import_export/backup_restore_view.dart';
 import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:extended_image/extended_image.dart' hide MediaType;
@@ -81,14 +82,14 @@ class SettingsView extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.swap_vert_rounded),
                   title: const Text(
-                    'Import, Export & Sync',
+                    'Import & Sync',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14.5,
                     ),
                   ),
                   subtitle: const Text(
-                    'Reddit API pull, Takeout CSV/ZIP, and backups',
+                    'Pull via Reddit API or import Takeout CSV/ZIP',
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () {
@@ -101,7 +102,7 @@ class SettingsView extends ConsumerWidget {
             ),
           ),
 
-          _buildSectionHeader('Appearance & Playback', colorScheme),
+          _buildSectionHeader('Appearance', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
             clipBehavior: Clip.antiAlias,
@@ -183,7 +184,6 @@ class SettingsView extends ConsumerWidget {
                   value: settings.useCatppuccinSeed,
                   onChanged: (val) => viewModel.toggleCatppuccinSeed(val),
                 ),
-
                 const Divider(height: 1, indent: 56, endIndent: 16),
                 SwitchListTile(
                   secondary: const Icon(Icons.blur_on_outlined),
@@ -200,7 +200,16 @@ class SettingsView extends ConsumerWidget {
                   value: settings.enableFrostedEffects,
                   onChanged: (val) => viewModel.toggleFrostedEffects(val),
                 ),
-                const Divider(height: 1, indent: 56, endIndent: 16),
+              ],
+            ),
+          ),
+
+          _buildSectionHeader('Playback', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
                 SwitchListTile(
                   secondary: const Icon(Icons.volume_off_outlined),
                   title: const Text(
@@ -255,12 +264,7 @@ class SettingsView extends ConsumerWidget {
                     final isEnriching =
                         enrichState.isRunning || enrichState.isPaused;
 
-                    final formattedCount = pendingCount
-                        .toString()
-                        .replaceAllMapped(
-                          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                          (m) => '${m[1]},',
-                        );
+                    final formattedCount = _formatNumber(pendingCount);
 
                     String subtitle;
                     if (isEnriching) {
@@ -665,6 +669,28 @@ class SettingsView extends ConsumerWidget {
             ),
           ),
 
+          _buildSectionHeader('Backup & Restore', colorScheme),
+          Card(
+            margin: const EdgeInsets.only(bottom: 16),
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.settings_backup_restore_rounded),
+              title: const Text(
+                'Backup & Restore',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+              ),
+              subtitle: const Text(
+                'Create a snapshots, restore library, or export JSON/CSV',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const BackupRestoreView()),
+                );
+              },
+            ),
+          ),
+
           _buildSectionHeader('Storage & Data', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
@@ -706,11 +732,10 @@ class SettingsView extends ConsumerWidget {
             ),
           ),
 
-          // 5. About
           _buildSectionHeader('About', colorScheme),
-          Card(
+          const Card(
             clipBehavior: Clip.antiAlias,
-            child: const ListTile(
+            child: ListTile(
               leading: Icon(Icons.info_outline_rounded),
               title: Text(
                 'Savedex',
@@ -991,6 +1016,11 @@ class SettingsView extends ConsumerWidget {
       ),
     );
   }
+
+  static String _formatNumber(int n) => n.toString().replaceAllMapped(
+    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+    (m) => '${m[1]},',
+  );
 
   void _confirmClearDatabase(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
