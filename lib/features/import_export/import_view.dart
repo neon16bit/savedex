@@ -449,6 +449,9 @@ class ImportView extends ConsumerWidget {
     }
 
     final settings = ref.read(settingsViewModelProvider);
+    final bool willAutoEnrich = ref
+        .read(importExportViewModelProvider)
+        .autoEnrichScheduled;
     final bool canOfferFetch =
         offerFetchMetadata &&
         !settings.autoEnrichOnImport &&
@@ -457,7 +460,9 @@ class ImportView extends ConsumerWidget {
     showAppSnackBar(
       context,
       message,
-      duration: Duration(seconds: canOfferFetch ? 6 : 3),
+      duration: willAutoEnrich
+          ? const Duration(milliseconds: 1500)
+          : Duration(seconds: canOfferFetch ? 6 : 3),
       action: canOfferFetch
           ? SnackBarAction(
               label: 'Fetch Metadata',

@@ -13,6 +13,14 @@ enum ArchiveBackend {
 }
 
 class UserSettings {
+  static const int defaultOauthEnrichmentWorkers = 5;
+  static const int defaultOauthEnrichmentDelayMs = 50;
+  static const int defaultAnonymousRequestDelayMs = 1200;
+  static const int defaultSubredditMetadataDelayMs = 250;
+  static const int defaultArchiveBatchDelayMs = 1000;
+  static const int defaultPullPushRequestDelayMs = 300;
+  static const int defaultArcticShiftRequestDelayMs = 600;
+
   final ThemeMode themeMode;
   final bool isAmoled;
   final bool useDynamicColor;
@@ -36,6 +44,13 @@ class UserSettings {
   final bool enableFrostedEffects;
   final bool hasSeenOnboarding;
   final int pullToRefreshPages;
+  final int oauthEnrichmentWorkers;
+  final int oauthEnrichmentDelayMs;
+  final int anonymousRequestDelayMs;
+  final int subredditMetadataDelayMs;
+  final int archiveBatchDelayMs;
+  final int pullPushRequestDelayMs;
+  final int arcticShiftRequestDelayMs;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -61,6 +76,13 @@ class UserSettings {
     this.enableFrostedEffects = true,
     this.hasSeenOnboarding = false,
     this.pullToRefreshPages = 1,
+    this.oauthEnrichmentWorkers = defaultOauthEnrichmentWorkers,
+    this.oauthEnrichmentDelayMs = defaultOauthEnrichmentDelayMs,
+    this.anonymousRequestDelayMs = defaultAnonymousRequestDelayMs,
+    this.subredditMetadataDelayMs = defaultSubredditMetadataDelayMs,
+    this.archiveBatchDelayMs = defaultArchiveBatchDelayMs,
+    this.pullPushRequestDelayMs = defaultPullPushRequestDelayMs,
+    this.arcticShiftRequestDelayMs = defaultArcticShiftRequestDelayMs,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -107,6 +129,13 @@ class UserSettings {
     bool? enableFrostedEffects,
     bool? hasSeenOnboarding,
     int? pullToRefreshPages,
+    int? oauthEnrichmentWorkers,
+    int? oauthEnrichmentDelayMs,
+    int? anonymousRequestDelayMs,
+    int? subredditMetadataDelayMs,
+    int? archiveBatchDelayMs,
+    int? pullPushRequestDelayMs,
+    int? arcticShiftRequestDelayMs,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -145,6 +174,35 @@ class UserSettings {
         1,
         10,
       ),
+      oauthEnrichmentWorkers:
+          (oauthEnrichmentWorkers ?? this.oauthEnrichmentWorkers).clamp(1, 10),
+      oauthEnrichmentDelayMs:
+          (oauthEnrichmentDelayMs ?? this.oauthEnrichmentDelayMs).clamp(
+            0,
+            1000,
+          ),
+      anonymousRequestDelayMs:
+          (anonymousRequestDelayMs ?? this.anonymousRequestDelayMs).clamp(
+            200,
+            3000,
+          ),
+      subredditMetadataDelayMs:
+          (subredditMetadataDelayMs ?? this.subredditMetadataDelayMs).clamp(
+            0,
+            2000,
+          ),
+      archiveBatchDelayMs: (archiveBatchDelayMs ?? this.archiveBatchDelayMs)
+          .clamp(0, 5000),
+      pullPushRequestDelayMs:
+          (pullPushRequestDelayMs ?? this.pullPushRequestDelayMs).clamp(
+            0,
+            3000,
+          ),
+      arcticShiftRequestDelayMs:
+          (arcticShiftRequestDelayMs ?? this.arcticShiftRequestDelayMs).clamp(
+            0,
+            3000,
+          ),
     );
   }
 }
@@ -225,6 +283,34 @@ class SettingsRepository {
     final hasSeenOnboarding = _prefs.getBool('has_seen_onboarding') ?? false;
     final pullToRefreshPages = (_prefs.getInt('pull_to_refresh_pages') ?? 1)
         .clamp(1, 10);
+    final oauthEnrichmentWorkers =
+        (_prefs.getInt('oauth_enrichment_workers') ??
+                UserSettings.defaultOauthEnrichmentWorkers)
+            .clamp(1, 10);
+    final oauthEnrichmentDelayMs =
+        (_prefs.getInt('oauth_enrichment_delay_ms') ??
+                UserSettings.defaultOauthEnrichmentDelayMs)
+            .clamp(0, 1000);
+    final anonymousRequestDelayMs =
+        (_prefs.getInt('anonymous_request_delay_ms') ??
+                UserSettings.defaultAnonymousRequestDelayMs)
+            .clamp(200, 3000);
+    final subredditMetadataDelayMs =
+        (_prefs.getInt('subreddit_metadata_delay_ms') ??
+                UserSettings.defaultSubredditMetadataDelayMs)
+            .clamp(0, 2000);
+    final archiveBatchDelayMs =
+        (_prefs.getInt('archive_batch_delay_ms') ??
+                UserSettings.defaultArchiveBatchDelayMs)
+            .clamp(0, 5000);
+    final pullPushRequestDelayMs =
+        (_prefs.getInt('pullpush_request_delay_ms') ??
+                UserSettings.defaultPullPushRequestDelayMs)
+            .clamp(0, 3000);
+    final arcticShiftRequestDelayMs =
+        (_prefs.getInt('arctic_shift_request_delay_ms') ??
+                UserSettings.defaultArcticShiftRequestDelayMs)
+            .clamp(0, 3000);
 
     return UserSettings(
       themeMode: themeMode,
@@ -250,6 +336,13 @@ class SettingsRepository {
       enableFrostedEffects: enableFrostedEffects,
       hasSeenOnboarding: hasSeenOnboarding,
       pullToRefreshPages: pullToRefreshPages,
+      oauthEnrichmentWorkers: oauthEnrichmentWorkers,
+      oauthEnrichmentDelayMs: oauthEnrichmentDelayMs,
+      anonymousRequestDelayMs: anonymousRequestDelayMs,
+      subredditMetadataDelayMs: subredditMetadataDelayMs,
+      archiveBatchDelayMs: archiveBatchDelayMs,
+      pullPushRequestDelayMs: pullPushRequestDelayMs,
+      arcticShiftRequestDelayMs: arcticShiftRequestDelayMs,
     );
   }
 
@@ -372,6 +465,34 @@ class SettingsRepository {
     await prefs.setInt(
       'pull_to_refresh_pages',
       newSettings.pullToRefreshPages.clamp(1, 10),
+    );
+    await prefs.setInt(
+      'oauth_enrichment_workers',
+      newSettings.oauthEnrichmentWorkers.clamp(1, 10),
+    );
+    await prefs.setInt(
+      'oauth_enrichment_delay_ms',
+      newSettings.oauthEnrichmentDelayMs.clamp(0, 1000),
+    );
+    await prefs.setInt(
+      'anonymous_request_delay_ms',
+      newSettings.anonymousRequestDelayMs.clamp(200, 3000),
+    );
+    await prefs.setInt(
+      'subreddit_metadata_delay_ms',
+      newSettings.subredditMetadataDelayMs.clamp(0, 2000),
+    );
+    await prefs.setInt(
+      'archive_batch_delay_ms',
+      newSettings.archiveBatchDelayMs.clamp(0, 5000),
+    );
+    await prefs.setInt(
+      'pullpush_request_delay_ms',
+      newSettings.pullPushRequestDelayMs.clamp(0, 3000),
+    );
+    await prefs.setInt(
+      'arctic_shift_request_delay_ms',
+      newSettings.arcticShiftRequestDelayMs.clamp(0, 3000),
     );
   }
 

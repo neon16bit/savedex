@@ -51,7 +51,9 @@ class PullPushApiService {
     required List<String> ids,
     required ItemType itemType,
     bool Function()? isCancelled,
+    Duration? requestDelay,
   }) async {
+    final effectiveDelay = requestDelay ?? const Duration(milliseconds: 300);
     final results = <String, EnrichedRedditData>{};
     final rawIdsByClean = <String, List<String>>{};
     for (final rawId in ids) {
@@ -69,8 +71,8 @@ class PullPushApiService {
         debugPrint('[PullPushApi] Cancelled before batch start');
         break;
       }
-      if (start > 0) {
-        await Future.delayed(const Duration(milliseconds: 300));
+      if (start > 0 && effectiveDelay > Duration.zero) {
+        await Future.delayed(effectiveDelay);
       }
       if (isCancelled?.call() == true) {
         debugPrint('[PullPushApi] Cancelled during delay');

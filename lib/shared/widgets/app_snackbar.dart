@@ -51,6 +51,7 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showAppSnackBar(
   bool isError = false,
   Duration duration = const Duration(seconds: 2),
   SnackBarAction? action,
+  bool clearExisting = true,
 }) {
   if (!context.mounted) return null;
   final messenger = ScaffoldMessenger.maybeOf(context);
@@ -64,6 +65,7 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showAppSnackBar(
     isError: isError,
     duration: duration,
     action: action,
+    clearExisting: clearExisting,
   );
 }
 
@@ -77,6 +79,7 @@ showAppSnackBarOnMessenger(
   bool isError = false,
   Duration duration = const Duration(seconds: 2),
   SnackBarAction? action,
+  bool clearExisting = true,
 }) {
   if (!messenger.mounted) return null;
   final theme = (colorScheme == null || isDark == null)
@@ -84,7 +87,9 @@ showAppSnackBarOnMessenger(
       : null;
   final resolvedColorScheme = colorScheme ?? theme!.colorScheme;
   final resolvedIsDark = isDark ?? (theme!.brightness == Brightness.dark);
-  messenger.clearSnackBars();
+  if (clearExisting) {
+    messenger.clearSnackBars();
+  }
   return messenger.showSnackBar(
     buildAppSnackBar(
       message: message,

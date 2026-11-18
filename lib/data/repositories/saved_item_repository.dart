@@ -1510,18 +1510,27 @@ class SavedItemRepository {
           .toList();
       if (typedItems.isEmpty) continue;
 
-      final backend = _settingsRepository.settings.archiveBackend;
+      final currentSettings = _settingsRepository.settings;
+      final backend = currentSettings.archiveBackend;
+      final pullPushDelay = Duration(
+        milliseconds: currentSettings.pullPushRequestDelayMs,
+      );
+      final arcticShiftDelay = Duration(
+        milliseconds: currentSettings.arcticShiftRequestDelayMs,
+      );
       final primaryIsPullPush = backend != ArchiveBackend.arcticShift;
       final primaryMetadata = primaryIsPullPush
           ? await _pullPushApi.fetchMetadataBatch(
               ids: typedItems.map((item) => item.id).toList(),
               itemType: itemType,
               isCancelled: isCancelled,
+              requestDelay: pullPushDelay,
             )
           : await _arcticShiftApi.fetchMetadataBatch(
               ids: typedItems.map((item) => item.id).toList(),
               itemType: itemType,
               isCancelled: isCancelled,
+              requestDelay: arcticShiftDelay,
             );
       if (isCancelled?.call() == true) break;
 
@@ -1556,11 +1565,13 @@ class SavedItemRepository {
                 ids: pendingFallback.map((item) => item.id).toList(),
                 itemType: itemType,
                 isCancelled: isCancelled,
+                requestDelay: pullPushDelay,
               )
             : await _arcticShiftApi.fetchMetadataBatch(
                 ids: pendingFallback.map((item) => item.id).toList(),
                 itemType: itemType,
                 isCancelled: isCancelled,
+                requestDelay: arcticShiftDelay,
               );
 
         if (isCancelled?.call() == true) break;
@@ -2074,7 +2085,11 @@ class SavedItemRepository {
         }
 
         if (i + 1 < toFetch.length) {
-          await Future.delayed(const Duration(milliseconds: 250));
+          final subDelayMs =
+              _settingsRepository.settings.subredditMetadataDelayMs;
+          if (subDelayMs > 0) {
+            await Future.delayed(Duration(milliseconds: subDelayMs));
+          }
         }
       }
       if (pendingBatch.isNotEmpty) {

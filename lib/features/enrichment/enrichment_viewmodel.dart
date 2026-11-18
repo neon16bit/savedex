@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/services/foreground_enrichment_service.dart';
@@ -16,6 +15,7 @@ class EnrichmentState {
   final int completedInSession;
   final int failedInSession;
   final String? currentItemTitle;
+  final int autoStartNotificationId;
 
   const EnrichmentState({
     this.isRunning = false,
@@ -25,6 +25,7 @@ class EnrichmentState {
     this.completedInSession = 0,
     this.failedInSession = 0,
     this.currentItemTitle,
+    this.autoStartNotificationId = 0,
   });
 
   int get processedCount => completedInSession + failedInSession;
@@ -46,6 +47,7 @@ class EnrichmentState {
     int? failedInSession,
     String? currentItemTitle,
     bool clearTitle = false,
+    int? autoStartNotificationId,
   }) {
     return EnrichmentState(
       isRunning: isRunning ?? this.isRunning,
@@ -57,6 +59,8 @@ class EnrichmentState {
       currentItemTitle: clearTitle
           ? null
           : (currentItemTitle ?? this.currentItemTitle),
+      autoStartNotificationId:
+          autoStartNotificationId ?? this.autoStartNotificationId,
     );
   }
 }
@@ -177,7 +181,12 @@ class ArchiveRecoveryNotifier extends Notifier<ArchiveRecoveryState> {
           failed: state.failed + batchFailed,
         );
         if (!_stopRequested) {
-          await Future.delayed(const Duration(milliseconds: 1000));
+          final archiveDelayMs = ref
+              .read(settingsViewModelProvider)
+              .archiveBatchDelayMs;
+          if (archiveDelayMs > 0) {
+            await Future.delayed(Duration(milliseconds: archiveDelayMs));
+          }
         }
       }
     } catch (e, stack) {
@@ -281,7 +290,10 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
 
   bool get _isMounted => !_isDisposed && !_stopRequested;
 
-  Future<void> startEnrichment() async {
+  Future<void> startEnrichment({
+    bool fromAutoImport = false,
+    int? initialPendingCount,
+  }) async {
     if (_stopRequested && _runFuture != null) {
       try {
         await _runFuture;
@@ -290,15 +302,19 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
 
     // if a run is active, return the existing run future
     if (_runFuture != null) {
+      if (fromAutoImport) {
+        state = state.copyWith(
+          autoStartNotificationId: state.autoStartNotificationId + 1,
+        );
+      }
       if (state.isPaused) {
         resumeEnrichment();
       }
       return _runFuture!;
     }
 
-    if (state.isRunning && !state.isPaused) {
-      return;
-    }
+    _pauseTimeoutTimer?.cancel();
+    _pauseTimeoutTimer = null;
 
     final completer = Completer<void>();
     _runFuture = completer.future;
@@ -311,7 +327,10 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
 
     () async {
       try {
-        await _executeEnrichmentLoop();
+        await _executeEnrichmentLoop(
+          fromAutoImport: fromAutoImport,
+          initialPendingCount: initialPendingCount,
+        );
       } finally {
         _runFuture = null;
         if (!_isDisposed) {
@@ -326,17 +345,14 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
     return _runFuture!;
   }
 
-  Future<void> _executeEnrichmentLoop() async {
+  Future<void> _executeEnrichmentLoop({
+    bool fromAutoImport = false,
+    int? initialPendingCount,
+  }) async {
     final repo = ref.read(savedItemRepositoryProvider);
-    final settings = ref.read(settingsViewModelProvider);
 
-    final isOAuth = settings.isAuthenticatedWithOAuth;
-    final delay = isOAuth
-        ? AppConstants.oauthEnrichmentDelay
-        : AppConstants.anonymousRequestDelay;
-    final workerCount = isOAuth ? AppConstants.oauthEnrichmentWorkers : 1;
-
-    final pendingCount = await repo.getPendingEnrichmentCount();
+    final pendingCount =
+        initialPendingCount ?? await repo.getPendingEnrichmentCount();
     if (!_isMounted) return;
     if (pendingCount == 0) {
       state = state.copyWith(
@@ -362,6 +378,9 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       totalPending: pendingCount,
       completedInSession: state.isPaused ? state.completedInSession : 0,
       failedInSession: state.isPaused ? state.failedInSession : 0,
+      autoStartNotificationId: fromAutoImport
+          ? state.autoStartNotificationId + 1
+          : state.autoStartNotificationId,
     );
 
     await ForegroundEnrichmentService.start(
@@ -372,14 +391,20 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
     );
 
     var consecutive429Batches = 0;
+    var isFirstIteration = true;
 
     while (_isMounted) {
+      var didWaitForResume = false;
       if (state.isPaused && _resumeCompleter != null) {
+        didWaitForResume = true;
         await _resumeCompleter!.future;
         if (!_isMounted) break;
       }
 
-      final currentPending = await repo.getPendingEnrichmentCount();
+      final currentPending = (isFirstIteration && !didWaitForResume)
+          ? pendingCount
+          : await repo.getPendingEnrichmentCount();
+      isFirstIteration = false;
       if (!_isMounted) break;
       if (currentPending == 0) {
         state = state.copyWith(
@@ -392,14 +417,21 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
       }
 
       final requiredTotal = state.processedCount + currentPending;
-      if (requiredTotal > state.totalToEnrich) {
+      final nextTotal = requiredTotal > state.totalToEnrich
+          ? requiredTotal
+          : state.totalToEnrich;
+      if (nextTotal != state.totalToEnrich ||
+          currentPending != state.totalPending) {
         state = state.copyWith(
-          totalToEnrich: requiredTotal,
+          totalToEnrich: nextTotal,
           totalPending: currentPending,
         );
-      } else {
-        state = state.copyWith(totalPending: currentPending);
       }
+
+      final batchSettings = ref.read(settingsViewModelProvider);
+      final workerCount = batchSettings.isAuthenticatedWithOAuth
+          ? batchSettings.oauthEnrichmentWorkers
+          : 1;
 
       final pendingItems = await repo.getPendingEnrichmentItems(
         limit: workerCount * 10,
@@ -426,7 +458,9 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
           if (nextIndex >= pendingItems.length) break;
           final item = pendingItems[nextIndex++];
 
-          state = state.copyWith(currentItemTitle: item.title);
+          if (state.currentItemTitle == null) {
+            state = state.copyWith(currentItemTitle: item.title);
+          }
 
           final result = await repo.enrichItem(item);
           if (!_isMounted) break;
@@ -436,6 +470,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
             state = state.copyWith(
               completedInSession: state.completedInSession + 1,
               totalPending: (state.totalPending - 1).clamp(0, 999999),
+              currentItemTitle: item.title,
             );
             ForegroundEnrichmentService.update(
               processed: state.processedCount,
@@ -458,6 +493,7 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
             state = state.copyWith(
               failedInSession: state.failedInSession + 1,
               totalPending: (state.totalPending - 1).clamp(0, 999999),
+              currentItemTitle: item.title,
             );
             ForegroundEnrichmentService.update(
               processed: state.processedCount,
@@ -468,7 +504,13 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
           }
 
           if (!_isMounted || state.isPaused) break;
-          await Future.delayed(delay);
+          final latestSettings = ref.read(settingsViewModelProvider);
+          final workerDelayMs = latestSettings.isAuthenticatedWithOAuth
+              ? latestSettings.oauthEnrichmentDelayMs
+              : latestSettings.anonymousRequestDelayMs;
+          if (workerDelayMs > 0) {
+            await Future.delayed(Duration(milliseconds: workerDelayMs));
+          }
         }
       }
 
@@ -561,7 +603,9 @@ class EnrichmentViewModel extends Notifier<EnrichmentState> {
 
     // _runFuture is retained until _executeEnrichmentLoop() finishes
     if (!_isDisposed) {
-      state = const EnrichmentState();
+      state = EnrichmentState(
+        autoStartNotificationId: state.autoStartNotificationId,
+      );
     }
   }
 

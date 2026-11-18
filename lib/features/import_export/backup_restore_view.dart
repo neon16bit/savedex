@@ -309,7 +309,7 @@ class BackupRestoreView extends ConsumerWidget {
     if (!context.mounted) return;
 
     if (summary != null) {
-      _showRestoreSuccessSnackBar(context, summary);
+      _showRestoreSuccessSnackBar(context, ref, summary);
     } else {
       final error = ref.read(importExportViewModelProvider).errorMessage;
       if (error != null) {
@@ -354,6 +354,7 @@ class BackupRestoreView extends ConsumerWidget {
 
   void _showRestoreSuccessSnackBar(
     BuildContext context,
+    WidgetRef ref,
     ImportSummary summary,
   ) {
     final totalInDb = summary.totalInDatabase;
@@ -375,7 +376,16 @@ class BackupRestoreView extends ConsumerWidget {
       message = 'Library is up to date$dbSuffix';
     }
 
-    showAppSnackBar(context, message, duration: const Duration(seconds: 3));
+    final willAutoEnrich = ref
+        .read(importExportViewModelProvider)
+        .autoEnrichScheduled;
+    showAppSnackBar(
+      context,
+      message,
+      duration: willAutoEnrich
+          ? const Duration(milliseconds: 1500)
+          : const Duration(seconds: 3),
+    );
   }
 
   void _showErrorSnackBar(BuildContext context, String message) {

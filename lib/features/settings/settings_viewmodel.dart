@@ -32,12 +32,12 @@ class SettingsViewModel extends Notifier<UserSettings> {
   }
 
   void setThemeMode(ThemeMode mode) {
-    state = state.copyWith(themeMode: mode);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (mode == state.themeMode) return;
+    _commitSettings(state.copyWith(themeMode: mode));
   }
 
   void setThemeFlavor(ThemeFlavor flavor) {
-    state = switch (flavor) {
+    final nextState = switch (flavor) {
       ThemeFlavor.system => state.copyWith(
         themeMode: ThemeMode.system,
         catppuccinLightFlavor: CatppuccinFlavor.latte,
@@ -60,22 +60,27 @@ class SettingsViewModel extends Notifier<UserSettings> {
         catppuccinDarkFlavor: CatppuccinFlavor.mocha,
       ),
     };
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (nextState.themeMode == state.themeMode &&
+        nextState.catppuccinLightFlavor == state.catppuccinLightFlavor &&
+        nextState.catppuccinDarkFlavor == state.catppuccinDarkFlavor) {
+      return;
+    }
+    _commitSettings(nextState);
   }
 
   void toggleDynamicColor(bool useDynamic) {
-    state = state.copyWith(useDynamicColor: useDynamic);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (useDynamic == state.useDynamicColor) return;
+    _commitSettings(state.copyWith(useDynamicColor: useDynamic));
   }
 
   void setCatppuccinLightFlavor(CatppuccinFlavor flavor) {
-    state = state.copyWith(catppuccinLightFlavor: flavor);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (flavor == state.catppuccinLightFlavor) return;
+    _commitSettings(state.copyWith(catppuccinLightFlavor: flavor));
   }
 
   void setCatppuccinDarkFlavor(CatppuccinFlavor flavor) {
-    state = state.copyWith(catppuccinDarkFlavor: flavor);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (flavor == state.catppuccinDarkFlavor) return;
+    _commitSettings(state.copyWith(catppuccinDarkFlavor: flavor));
   }
 
   void setCatppuccinFlavorForBrightness(
@@ -90,51 +95,131 @@ class SettingsViewModel extends Notifier<UserSettings> {
   }
 
   void setCatppuccinAccent(String accent) {
-    state = state.copyWith(useDynamicColor: false, catppuccinAccent: accent);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (!state.useDynamicColor && accent == state.catppuccinAccent) return;
+    _commitSettings(
+      state.copyWith(useDynamicColor: false, catppuccinAccent: accent),
+    );
   }
 
   void toggleCatppuccinSeed([bool? value]) {
     final nextValue = value ?? !state.useCatppuccinSeed;
-    state = state.copyWith(useCatppuccinSeed: nextValue);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (nextValue == state.useCatppuccinSeed) return;
+    _commitSettings(state.copyWith(useCatppuccinSeed: nextValue));
   }
 
   void toggleAmoled(bool isAmoled) {
-    state = state.copyWith(isAmoled: isAmoled);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (isAmoled == state.isAmoled) return;
+    _commitSettings(state.copyWith(isAmoled: isAmoled));
   }
 
   void setFeedLayoutMode(FeedLayoutMode mode) {
-    state = state.copyWith(feedLayoutMode: mode);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (mode == state.feedLayoutMode) return;
+    _commitSettings(state.copyWith(feedLayoutMode: mode));
   }
 
   void toggleStartVideosMuted(bool val) {
-    state = state.copyWith(startVideosMuted: val);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (val == state.startVideosMuted) return;
+    _commitSettings(state.copyWith(startVideosMuted: val));
   }
 
   void toggleHideNsfwInFeed([bool? value]) {
     final nextValue = value ?? !state.hideNsfwInFeed;
-    state = state.copyWith(hideNsfwInFeed: nextValue);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (nextValue == state.hideNsfwInFeed) return;
+    _commitSettings(state.copyWith(hideNsfwInFeed: nextValue));
   }
 
   void toggleFrostedEffects([bool? value]) {
     final nextValue = value ?? !state.enableFrostedEffects;
-    state = state.copyWith(enableFrostedEffects: nextValue);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (nextValue == state.enableFrostedEffects) return;
+    _commitSettings(state.copyWith(enableFrostedEffects: nextValue));
   }
 
   void setHasSeenOnboarding([bool value = true]) {
-    state = state.copyWith(hasSeenOnboarding: value);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (value == state.hasSeenOnboarding) return;
+    _commitSettings(state.copyWith(hasSeenOnboarding: value));
+  }
+
+  void _commitSettings(UserSettings next) {
+    state = next;
+    ref.read(settingsRepositoryProvider).updateSettings(next);
   }
 
   void setPullToRefreshPages(int pages) {
-    state = state.copyWith(pullToRefreshPages: pages.clamp(1, 10));
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    final clamped = pages.clamp(1, 10);
+    if (clamped == state.pullToRefreshPages) return;
+    _commitSettings(state.copyWith(pullToRefreshPages: clamped));
+  }
+
+  void setOauthEnrichmentWorkers(int workers) {
+    final clamped = workers.clamp(1, 10);
+    if (clamped == state.oauthEnrichmentWorkers) return;
+    _commitSettings(state.copyWith(oauthEnrichmentWorkers: clamped));
+  }
+
+  void setOauthEnrichmentDelayMs(int delayMs) {
+    final clamped = delayMs.clamp(0, 1000);
+    if (clamped == state.oauthEnrichmentDelayMs) return;
+    _commitSettings(state.copyWith(oauthEnrichmentDelayMs: clamped));
+  }
+
+  void setAnonymousRequestDelayMs(int delayMs) {
+    final clamped = delayMs.clamp(200, 3000);
+    if (clamped == state.anonymousRequestDelayMs) return;
+    _commitSettings(state.copyWith(anonymousRequestDelayMs: clamped));
+  }
+
+  void setSubredditMetadataDelayMs(int delayMs) {
+    final clamped = delayMs.clamp(0, 2000);
+    if (clamped == state.subredditMetadataDelayMs) return;
+    _commitSettings(state.copyWith(subredditMetadataDelayMs: clamped));
+  }
+
+  void setArchiveBatchDelayMs(int delayMs) {
+    final clamped = delayMs.clamp(0, 5000);
+    if (clamped == state.archiveBatchDelayMs) return;
+    _commitSettings(state.copyWith(archiveBatchDelayMs: clamped));
+  }
+
+  void setPullPushRequestDelayMs(int delayMs) {
+    final clamped = delayMs.clamp(0, 3000);
+    if (clamped == state.pullPushRequestDelayMs) return;
+    _commitSettings(state.copyWith(pullPushRequestDelayMs: clamped));
+  }
+
+  void setArcticShiftRequestDelayMs(int delayMs) {
+    final clamped = delayMs.clamp(0, 3000);
+    if (clamped == state.arcticShiftRequestDelayMs) return;
+    _commitSettings(state.copyWith(arcticShiftRequestDelayMs: clamped));
+  }
+
+  void resetRateLimitsToDefaults() {
+    if (state.oauthEnrichmentWorkers ==
+            UserSettings.defaultOauthEnrichmentWorkers &&
+        state.oauthEnrichmentDelayMs ==
+            UserSettings.defaultOauthEnrichmentDelayMs &&
+        state.anonymousRequestDelayMs ==
+            UserSettings.defaultAnonymousRequestDelayMs &&
+        state.subredditMetadataDelayMs ==
+            UserSettings.defaultSubredditMetadataDelayMs &&
+        state.archiveBatchDelayMs == UserSettings.defaultArchiveBatchDelayMs &&
+        state.pullPushRequestDelayMs ==
+            UserSettings.defaultPullPushRequestDelayMs &&
+        state.arcticShiftRequestDelayMs ==
+            UserSettings.defaultArcticShiftRequestDelayMs) {
+      return;
+    }
+    _commitSettings(
+      state.copyWith(
+        oauthEnrichmentWorkers: UserSettings.defaultOauthEnrichmentWorkers,
+        oauthEnrichmentDelayMs: UserSettings.defaultOauthEnrichmentDelayMs,
+        anonymousRequestDelayMs: UserSettings.defaultAnonymousRequestDelayMs,
+        subredditMetadataDelayMs: UserSettings.defaultSubredditMetadataDelayMs,
+        archiveBatchDelayMs: UserSettings.defaultArchiveBatchDelayMs,
+        pullPushRequestDelayMs: UserSettings.defaultPullPushRequestDelayMs,
+        arcticShiftRequestDelayMs:
+            UserSettings.defaultArcticShiftRequestDelayMs,
+      ),
+    );
   }
 
   void updateRedditCredentials({
@@ -143,19 +228,20 @@ class SettingsViewModel extends Notifier<UserSettings> {
     required String? redirectUri,
     required String? userAgent,
   }) {
-    state = state.copyWith(
-      redditClientId: clientId?.trim().isEmpty == true
-          ? null
-          : clientId?.trim(),
-      redditClientSecret: clientSecret?.trim().isEmpty == true
-          ? null
-          : clientSecret?.trim(),
-      redditRedirectUri: redirectUri?.trim().isEmpty == true
-          ? null
-          : redirectUri?.trim(),
-      userAgent: userAgent?.trim().isEmpty == true ? null : userAgent?.trim(),
+    _commitSettings(
+      state.copyWith(
+        redditClientId: clientId?.trim().isEmpty == true
+            ? null
+            : clientId?.trim(),
+        redditClientSecret: clientSecret?.trim().isEmpty == true
+            ? null
+            : clientSecret?.trim(),
+        redditRedirectUri: redirectUri?.trim().isEmpty == true
+            ? null
+            : redirectUri?.trim(),
+        userAgent: userAgent?.trim().isEmpty == true ? null : userAgent?.trim(),
+      ),
     );
-    ref.read(settingsRepositoryProvider).updateSettings(state);
 
     ref
         .read(redditApiServiceProvider)
@@ -175,12 +261,13 @@ class SettingsViewModel extends Notifier<UserSettings> {
     final expiry = DateTime.now().toUtc().add(
       Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
     );
-    state = state.copyWith(
-      redditAccessToken: accessToken,
-      redditRefreshToken: refreshToken,
-      redditTokenExpiry: expiry,
+    _commitSettings(
+      state.copyWith(
+        redditAccessToken: accessToken,
+        redditRefreshToken: refreshToken,
+        redditTokenExpiry: expiry,
+      ),
     );
-    ref.read(settingsRepositoryProvider).updateSettings(state);
 
     ref
         .read(redditApiServiceProvider)
@@ -195,32 +282,29 @@ class SettingsViewModel extends Notifier<UserSettings> {
     final expiry = DateTime.now().toUtc().add(
       Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
     );
-    state = state.copyWith(
-      redditAccessToken: accessToken,
-      redditTokenExpiry: expiry,
+    _commitSettings(
+      state.copyWith(redditAccessToken: accessToken, redditTokenExpiry: expiry),
     );
-    ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
   void clearOAuthAuth() {
-    state = state.copyWith(clearOAuthTokens: true);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    _commitSettings(state.copyWith(clearOAuthTokens: true));
 
     ref.read(redditApiServiceProvider).updateCredentials(clearTokens: true);
   }
 
   void setRedditUsername(String? username) {
-    state = state.copyWith(redditUsername: username);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (username == null || username == state.redditUsername) return;
+    _commitSettings(state.copyWith(redditUsername: username));
   }
 
   void toggleAutoEnrich(bool autoEnrich) {
-    state = state.copyWith(autoEnrichOnImport: autoEnrich);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (autoEnrich == state.autoEnrichOnImport) return;
+    _commitSettings(state.copyWith(autoEnrichOnImport: autoEnrich));
   }
 
   void setArchiveBackend(ArchiveBackend backend) {
-    state = state.copyWith(archiveBackend: backend);
-    ref.read(settingsRepositoryProvider).updateSettings(state);
+    if (backend == state.archiveBackend) return;
+    _commitSettings(state.copyWith(archiveBackend: backend));
   }
 }

@@ -19,6 +19,7 @@ import 'package:savedex/features/import_export/import_view.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
 import 'package:extended_image/extended_image.dart' hide MediaType;
 import 'package:savedex/features/search/search_viewmodel.dart';
+import 'package:savedex/features/settings/rate_limits_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
 import 'package:savedex/features/shell/app_shell.dart';
@@ -684,6 +685,26 @@ class SettingsView extends ConsumerWidget {
                           ),
                         );
                       },
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.speed_rounded),
+                  title: const Text(
+                    'Rate Limits & Concurrency',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: const Text(
+                    'Workers, request delays, and archive cooldowns',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const RateLimitsView()),
                     );
                   },
                 ),

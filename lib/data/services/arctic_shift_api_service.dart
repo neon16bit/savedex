@@ -48,7 +48,9 @@ class ArcticShiftApiService {
     required List<String> ids,
     required ItemType itemType,
     bool Function()? isCancelled,
+    Duration? requestDelay,
   }) async {
+    final effectiveDelay = requestDelay ?? const Duration(milliseconds: 600);
     final results = <String, EnrichedRedditData>{};
     final rawIdsByClean = <String, List<String>>{};
     for (final rawId in ids) {
@@ -65,8 +67,8 @@ class ArcticShiftApiService {
         debugPrint('[ArcticShiftApi] Cancelled before batch start');
         break;
       }
-      if (start > 0) {
-        await Future.delayed(const Duration(milliseconds: 600));
+      if (start > 0 && effectiveDelay > Duration.zero) {
+        await Future.delayed(effectiveDelay);
       }
       if (isCancelled?.call() == true) {
         debugPrint('[ArcticShiftApi] Cancelled during delay');

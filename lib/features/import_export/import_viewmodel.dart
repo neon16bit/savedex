@@ -30,6 +30,7 @@ class ImportExportState {
   final ImportExportType activeType;
   final ImportExportCardStatus cardStatus;
   final String? lastSavedFilePath;
+  final bool autoEnrichScheduled;
 
   const ImportExportState({
     this.statusMessage,
@@ -39,6 +40,7 @@ class ImportExportState {
     this.activeType = ImportExportType.none,
     this.cardStatus = ImportExportCardStatus.idle,
     this.lastSavedFilePath,
+    this.autoEnrichScheduled = false,
   });
 
   bool get isImporting =>
@@ -72,6 +74,7 @@ class ImportExportState {
     ImportExportType? activeType,
     ImportExportCardStatus? cardStatus,
     String? lastSavedFilePath,
+    bool? autoEnrichScheduled,
     bool clearStatus = false,
     bool clearProgress = false,
     bool clearError = false,
@@ -90,6 +93,7 @@ class ImportExportState {
       lastSavedFilePath: clearSavedFilePath
           ? null
           : (lastSavedFilePath ?? this.lastSavedFilePath),
+      autoEnrichScheduled: autoEnrichScheduled ?? this.autoEnrichScheduled,
     );
   }
 }
@@ -120,6 +124,25 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
 
   void _releaseLock() {
     _isOperationBusy = false;
+  }
+
+  Future<bool> _scheduleAutoEnrichmentIfNeeded(int newItemsImported) async {
+    final settings = ref.read(settingsViewModelProvider);
+    if (!settings.autoEnrichOnImport || newItemsImported <= 0) return false;
+
+    final pendingCount = await ref
+        .read(savedItemRepositoryProvider)
+        .getPendingEnrichmentCount();
+    if (pendingCount <= 0) return false;
+
+    final enrichmentVm = ref.read(enrichmentViewModelProvider.notifier);
+    Future(
+      () => enrichmentVm.startEnrichment(
+        fromAutoImport: true,
+        initialPendingCount: pendingCount,
+      ),
+    );
+    return true;
   }
 
   Future<String?> _saveFilePickerResult({
@@ -258,6 +281,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         clearError: true,
         clearSummary: true,
         clearSavedFilePath: true,
+        autoEnrichScheduled: false,
       );
 
       if (pickedFile.path == null) {
@@ -331,21 +355,19 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
           );
       }
 
+      final scheduledEnrich = await _scheduleAutoEnrichmentIfNeeded(
+        summary.newItemsImported,
+      );
+
       state = state.copyWith(
         cardStatus: ImportExportCardStatus.completed,
         statusMessage: 'Restore completed successfully!',
         progress: 1.0,
         lastImportSummary: summary,
+        autoEnrichScheduled: scheduledEnrich,
       );
 
       ref.invalidate(savedFeedPaginationProvider);
-
-      final settings = ref.read(settingsViewModelProvider);
-      final shouldEnrich =
-          settings.autoEnrichOnImport && summary.newItemsImported > 0;
-      if (shouldEnrich) {
-        ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
-      }
 
       return summary;
     } catch (e) {
@@ -384,6 +406,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         clearError: true,
         clearSummary: true,
         clearSavedFilePath: true,
+        autoEnrichScheduled: false,
       );
 
       final repo = ref.read(savedItemRepositoryProvider);
@@ -445,20 +468,19 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         totalInDatabase: totalInDb,
       );
 
+      final scheduledEnrich = await _scheduleAutoEnrichmentIfNeeded(
+        newImported,
+      );
+
       state = state.copyWith(
         cardStatus: ImportExportCardStatus.completed,
         statusMessage: 'Takeout imported successfully!',
         progress: 1.0,
         lastImportSummary: totalSummary,
+        autoEnrichScheduled: scheduledEnrich,
       );
 
       ref.invalidate(savedFeedPaginationProvider);
-
-      final settings = ref.read(settingsViewModelProvider);
-      final shouldEnrich = settings.autoEnrichOnImport && newImported > 0;
-      if (shouldEnrich) {
-        ref.read(enrichmentViewModelProvider.notifier).startEnrichment();
-      }
 
       return totalSummary;
     } catch (e) {
@@ -484,6 +506,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         clearError: true,
         clearSummary: true,
         clearSavedFilePath: true,
+        autoEnrichScheduled: false,
       );
 
       final maxItems = maxPages.clamp(1, 10) * 100;

@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/library/library_view.dart';
 import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
@@ -136,6 +137,19 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(
+      enrichmentViewModelProvider.select((s) => s.autoStartNotificationId),
+      (prev, next) {
+        if (prev != null && next > prev) {
+          showAppSnackBar(
+            context,
+            'Fetching metadata...',
+            clearExisting: false,
+          );
+        }
+      },
+    );
+
     final selectedIndex = ref.watch(selectedShellTabProvider).clamp(0, 2);
     _visitedTabs.add(selectedIndex);
 
