@@ -70,7 +70,7 @@ class UserSettings {
     this.redditTokenExpiry,
     this.redditUsername,
     this.autoEnrichOnImport = true,
-    this.archiveBackend = ArchiveBackend.automatic,
+    this.archiveBackend = ArchiveBackend.arcticShift,
     this.startVideosMuted = false,
     this.hideNsfwInFeed = false,
     this.enableFrostedEffects = true,
@@ -272,10 +272,10 @@ class SettingsRepository {
     final redditUsername = _prefs.getString('reddit_username');
     final autoEnrich = _prefs.getBool('auto_enrich_on_import') ?? true;
     final archiveBackendIndex =
-        _prefs.getInt('archive_backend') ?? ArchiveBackend.automatic.index;
+        _prefs.getInt('archive_backend') ?? ArchiveBackend.arcticShift.index;
     final archiveBackend =
         ArchiveBackend.values.elementAtOrNull(archiveBackendIndex) ??
-        ArchiveBackend.automatic;
+        ArchiveBackend.arcticShift;
     final startVideosMuted = _prefs.getBool('start_videos_muted') ?? false;
     final hideNsfwInFeed = _prefs.getBool('hide_nsfw_in_feed') ?? false;
     final enableFrostedEffects =
