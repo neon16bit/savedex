@@ -8,6 +8,7 @@ import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 export 'package:savedex/data/models/saved_item_model.dart'
     show SubredditSortOption;
@@ -87,7 +88,12 @@ final rawSubredditsWithCountsProvider =
     });
 
 final subredditCountProvider = StreamProvider.autoDispose<int>((ref) {
-  return ref.watch(savedItemRepositoryProvider).watchSubredditCount();
+  final hideNsfw = ref.watch(
+    settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
+  );
+  return ref
+      .watch(savedItemRepositoryProvider)
+      .watchSubredditCount(hideNsfw: hideNsfw);
 });
 
 class SubredditSearchNotifier extends Notifier<String> {
@@ -161,22 +167,27 @@ abstract class _PagedDirectoryNotifier<T>
   Timer? _itemReloadTimer;
   Timer? _metadataRefreshTimer;
   StreamSubscription<Set<TableUpdate>>? _tableSub;
-  StreamSubscription<void>? _metadataSub;
+  StreamSubscription<bool>? _metadataSub;
   StreamSubscription<void>? _extraItemSub;
   String _activeQuery = '';
   SubredditSortOption _activeSort = SubredditSortOption.mostSaved;
+  bool _activeHideNsfw = false;
 
   String readQuery();
   SubredditSortOption readSort();
+  bool readHideNsfw() =>
+      ref.watch(settingsViewModelProvider.select((s) => s.hideNsfwInFeed));
+  bool isItemNsfw(T item);
 
   Future<PagedRows<T>> fetchPage({
     required String query,
     required SubredditSortOption sort,
+    required bool hideNsfw,
     FeedCursor? cursor,
     required int limit,
   });
 
-  Stream<void> metadataChanges(AppDatabase db);
+  Stream<bool> metadataChanges(AppDatabase db);
   Stream<void>? extraItemChanges(AppDatabase db) => null;
   String itemDedupeKey(T item);
   String subredditTableKeyForItem(T item);
@@ -201,6 +212,7 @@ abstract class _PagedDirectoryNotifier<T>
     _isLoadingMore = false;
     _activeQuery = readQuery();
     _activeSort = readSort();
+    _activeHideNsfw = readHideNsfw();
     final db = ref.watch(databaseProvider);
 
     _disposeListeners();
@@ -223,12 +235,14 @@ abstract class _PagedDirectoryNotifier<T>
     if (extraStream != null) {
       _extraItemSub = extraStream.listen((_) => _scheduleItemReload(gen));
     }
-    _metadataSub = metadataChanges(db)
-        .listen((_) => _scheduleMetadataRefresh(gen));
+    _metadataSub = metadataChanges(
+      db,
+    ).listen((isManual) => _scheduleMetadataRefresh(gen, immediate: isManual));
 
     final page = await fetchPage(
       query: _activeQuery,
       sort: _activeSort,
+      hideNsfw: _activeHideNsfw,
       cursor: null,
       limit: pageSize,
     );
@@ -241,9 +255,9 @@ abstract class _PagedDirectoryNotifier<T>
     );
   }
 
-  void _scheduleItemReload(int targetGen) {
+  void _scheduleItemReload(int targetGen, {bool immediate = false}) {
     _itemReloadTimer?.cancel();
-    _itemReloadTimer = Timer(const Duration(milliseconds: 800), () async {
+    Future<void> run() async {
       if (!ref.mounted || targetGen != _generation) return;
       try {
         for (var attempt = 0; attempt < 2; attempt++) {
@@ -256,6 +270,7 @@ abstract class _PagedDirectoryNotifier<T>
           final page = await fetchPage(
             query: _activeQuery,
             sort: _activeSort,
+            hideNsfw: _activeHideNsfw,
             cursor: null,
             limit: targetLimit,
           );
@@ -281,15 +296,27 @@ abstract class _PagedDirectoryNotifier<T>
           return;
         }
       } catch (_) {}
-    });
+    }
+
+    if (immediate) {
+      unawaited(run());
+    } else {
+      _itemReloadTimer = Timer(const Duration(milliseconds: 800), run);
+    }
   }
 
-  void _scheduleMetadataRefresh(int targetGen) {
+  void _scheduleMetadataRefresh(int targetGen, {bool immediate = false}) {
     _metadataRefreshTimer?.cancel();
-    _metadataRefreshTimer = Timer(const Duration(milliseconds: 350), () async {
+    Future<void> run() async {
       if (!ref.mounted || targetGen != _generation) return;
       final current = state.asData?.value;
-      if (current == null || current.items.isEmpty) return;
+      if (current == null) return;
+      if (current.items.isEmpty) {
+        if (_activeHideNsfw && immediate) {
+          _scheduleItemReload(targetGen, immediate: true);
+        }
+        return;
+      }
 
       final queriedKeys = <String>{
         for (final item in current.items) subredditTableKeyForItem(item),
@@ -303,28 +330,50 @@ abstract class _PagedDirectoryNotifier<T>
         if (!ref.mounted || targetGen != _generation) return;
 
         final latest = state.asData?.value;
-        if (latest == null || latest.items.isEmpty) return;
+        if (latest == null) return;
+        if (latest.items.isEmpty) {
+          if (_activeHideNsfw && immediate) {
+            _scheduleItemReload(targetGen, immediate: true);
+          }
+          return;
+        }
 
         var changed = false;
-        final updatedItems = [
-          for (final item in latest.items)
-            () {
-              final key = subredditTableKeyForItem(item);
-              if (!queriedKeys.contains(key)) return item;
-              final patched = patchItemMetadata(item, entries[key]);
-              if (patched != null) {
-                changed = true;
-                return patched;
-              }
-              return item;
-            }(),
-        ];
+        var removedAny = false;
+        final updatedItems = <T>[];
+        for (final item in latest.items) {
+          final key = subredditTableKeyForItem(item);
+          T resolved = item;
+          if (queriedKeys.contains(key)) {
+            final patched = patchItemMetadata(item, entries[key]);
+            if (patched != null) {
+              changed = true;
+              resolved = patched;
+            }
+          }
+          if (_activeHideNsfw && isItemNsfw(resolved)) {
+            changed = true;
+            removedAny = true;
+            continue;
+          }
+          updatedItems.add(resolved);
+        }
 
         if (changed) {
           state = AsyncData(latest.copyWith(items: updatedItems));
         }
+        if (_activeHideNsfw &&
+            ((removedAny && latest.hasMore) || (immediate && !removedAny))) {
+          _scheduleItemReload(targetGen, immediate: immediate);
+        }
       } catch (_) {}
-    });
+    }
+
+    if (immediate) {
+      unawaited(run());
+    } else {
+      _metadataRefreshTimer = Timer(const Duration(milliseconds: 350), run);
+    }
   }
 
   Future<void> loadMore() async {
@@ -334,6 +383,7 @@ abstract class _PagedDirectoryNotifier<T>
     final targetGen = _generation;
     final query = _activeQuery;
     final sort = _activeSort;
+    final hideNsfw = _activeHideNsfw;
 
     _isLoadingMore = true;
     try {
@@ -350,6 +400,7 @@ abstract class _PagedDirectoryNotifier<T>
         final page = await fetchPage(
           query: query,
           sort: sort,
+          hideNsfw: hideNsfw,
           cursor: current.nextCursor,
           limit: pageSize,
         );
@@ -396,9 +447,13 @@ class SubredditsFeedNotifier extends _PagedDirectoryNotifier<SubredditInfo> {
   SubredditSortOption readSort() => ref.watch(subredditSortOptionProvider);
 
   @override
+  bool isItemNsfw(SubredditInfo item) => item.isNsfw;
+
+  @override
   Future<PagedRows<SubredditInfo>> fetchPage({
     required String query,
     required SubredditSortOption sort,
+    required bool hideNsfw,
     FeedCursor? cursor,
     required int limit,
   }) {
@@ -407,13 +462,14 @@ class SubredditsFeedNotifier extends _PagedDirectoryNotifier<SubredditInfo> {
         .getSubredditsPage(
           query: query,
           sort: sort,
+          hideNsfw: hideNsfw,
           cursor: cursor,
           limit: limit,
         );
   }
 
   @override
-  Stream<void> metadataChanges(AppDatabase db) => db.subredditMetadataChanges;
+  Stream<bool> metadataChanges(AppDatabase db) => db.subredditMetadataChanges;
 
   @override
   String itemDedupeKey(SubredditInfo item) => item.lowerName;
@@ -464,7 +520,12 @@ final rawAuthorsWithCountsProvider =
     });
 
 final authorCountProvider = StreamProvider.autoDispose<int>((ref) {
-  return ref.watch(savedItemRepositoryProvider).watchAuthorCount();
+  final hideNsfw = ref.watch(
+    settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
+  );
+  return ref
+      .watch(savedItemRepositoryProvider)
+      .watchAuthorCount(hideNsfw: hideNsfw);
 });
 
 final userSearchQueryProvider =
@@ -485,19 +546,29 @@ class AuthorsFeedNotifier extends _PagedDirectoryNotifier<AuthorInfo> {
   SubredditSortOption readSort() => ref.watch(userSortOptionProvider);
 
   @override
+  bool isItemNsfw(AuthorInfo item) => item.isNsfw;
+
+  @override
   Future<PagedRows<AuthorInfo>> fetchPage({
     required String query,
     required SubredditSortOption sort,
+    required bool hideNsfw,
     FeedCursor? cursor,
     required int limit,
   }) {
     return ref
         .read(savedItemRepositoryProvider)
-        .getAuthorsPage(query: query, sort: sort, cursor: cursor, limit: limit);
+        .getAuthorsPage(
+          query: query,
+          sort: sort,
+          hideNsfw: hideNsfw,
+          cursor: cursor,
+          limit: limit,
+        );
   }
 
   @override
-  Stream<void> metadataChanges(AppDatabase db) => db.authorMetadataChanges;
+  Stream<bool> metadataChanges(AppDatabase db) => db.authorMetadataChanges;
 
   @override
   Stream<void>? extraItemChanges(AppDatabase db) => db.authorItemsChanged;

@@ -111,20 +111,20 @@ class AppDatabase extends _$AppDatabase {
     }
   }
 
-  final StreamController<void> _subredditMetadataChanges =
-      StreamController<void>.broadcast();
-  final StreamController<void> _authorMetadataChanges =
-      StreamController<void>.broadcast();
-  final StreamController<void> _authorItemsChanged =
-      StreamController<void>.broadcast();
+  final StreamController<bool> _subredditMetadataChanges =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> _authorMetadataChanges =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> _authorItemsChanged =
+      StreamController<bool>.broadcast();
 
-  Stream<void> get subredditMetadataChanges => _subredditMetadataChanges.stream;
-  Stream<void> get authorMetadataChanges => _authorMetadataChanges.stream;
+  Stream<bool> get subredditMetadataChanges => _subredditMetadataChanges.stream;
+  Stream<bool> get authorMetadataChanges => _authorMetadataChanges.stream;
   Stream<void> get authorItemsChanged => _authorItemsChanged.stream;
 
   void notifyAuthorItemsChanged() {
     if (!_authorItemsChanged.isClosed) {
-      _authorItemsChanged.add(null);
+      _authorItemsChanged.add(false);
     }
   }
 
@@ -285,7 +285,7 @@ class AppDatabase extends _$AppDatabase {
       "LOWER(CASE WHEN $colExpr LIKE 'r/%' THEN SUBSTR($colExpr, 3) WHEN $colExpr LIKE 'u/%' THEN 'u_' || SUBSTR($colExpr, 3) ELSE $colExpr END)";
 
   static String _buildEffectiveNsfwSql(String alias) =>
-      "($alias.is_nsfw = 1 OR EXISTS (SELECT 1 FROM subreddits_table sub WHERE sub.name = ${_cleanSubSql('$alias.subreddit')} AND sub.is_nsfw = 1))";
+      "($alias.is_nsfw = 1 OR EXISTS (SELECT 1 FROM subreddits_table sub WHERE sub.name IN (${_cleanSubSql('$alias.subreddit')}, 'u_' || LOWER(COALESCE($alias.author, ''))) AND sub.is_nsfw = 1))";
 
   Future<void>? _ftsInitFuture;
 
@@ -1240,19 +1240,42 @@ class AppDatabase extends _$AppDatabase {
     return select(subredditsTable).get();
   }
 
-  Future<bool> isSubredditNsfw(String subreddit) async {
-    final clean = SavedItem.normalizeSubredditKey(subreddit);
-    if (clean.isEmpty) return false;
+  Future<bool> isSubredditNsfw(String subreddit, {String? author}) async {
+    final cleanSub = SavedItem.normalizeSubredditKey(subreddit);
+    final cleanAuthor = (author ?? '').trim().toLowerCase().replaceFirst(
+      RegExp(r'^/?[ru]/'),
+      '',
+    );
+    final keys = <String>[
+      if (cleanSub.isNotEmpty) cleanSub,
+      if (cleanAuthor.isNotEmpty && !SavedItem.isRemovedMarker(cleanAuthor))
+        'u_$cleanAuthor',
+    ];
+    if (keys.isEmpty) return false;
+    final entries = await (select(
+      subredditsTable,
+    )..where((t) => t.name.isIn(keys) & t.isNsfw.equals(true))).get();
+    return entries.isNotEmpty;
+  }
+
+  Future<bool?> getSubredditNsfwEntry(String key) async {
+    final clean = SavedItem.normalizeSubredditKey(key);
+    if (clean.isEmpty) return null;
     final entry = await (select(
       subredditsTable,
     )..where((t) => t.name.equals(clean))).getSingleOrNull();
-    return entry?.isNsfw == true;
+    return entry?.isNsfw;
   }
 
-  Future<void> upsertSubreddit(SubredditsTableCompanion entry) async {
+  Future<void> upsertSubreddit(
+    SubredditsTableCompanion entry, {
+    bool isManualOverride = false,
+  }) async {
     await into(subredditsTable).insertOnConflictUpdate(entry);
     if (entry.name.present) {
-      _emitSubredditMetadataChange([entry.name.value]);
+      _emitSubredditMetadataChange([
+        entry.name.value,
+      ], isManualOverride: isManualOverride);
     }
   }
 
@@ -1278,23 +1301,29 @@ class AppDatabase extends _$AppDatabase {
     ]);
   }
 
-  void _emitSubredditMetadataChange(Iterable<String> keys) {
+  void _emitSubredditMetadataChange(
+    Iterable<String> keys, {
+    bool isManualOverride = false,
+  }) {
     var hasSubreddit = false;
     var hasAuthor = false;
     for (final rawKey in keys) {
       final lower = rawKey.toLowerCase();
       if (lower.startsWith('u_')) {
         hasAuthor = true;
+        if (isManualOverride) {
+          hasSubreddit = true;
+        }
       } else if (lower.isNotEmpty) {
         hasSubreddit = true;
       }
       if (hasSubreddit && hasAuthor) break;
     }
     if (hasSubreddit && !_subredditMetadataChanges.isClosed) {
-      _subredditMetadataChanges.add(null);
+      _subredditMetadataChanges.add(isManualOverride);
     }
     if (hasAuthor && !_authorMetadataChanges.isClosed) {
-      _authorMetadataChanges.add(null);
+      _authorMetadataChanges.add(isManualOverride);
     }
   }
 
@@ -1451,6 +1480,7 @@ class AppDatabase extends _$AppDatabase {
     SubredditSortOption sort = SubredditSortOption.mostSaved,
     FeedCursor? cursor,
     int limit = 100,
+    bool hideNsfw = false,
   }) async {
     final cleanQuery = query
         .trim()
@@ -1476,6 +1506,13 @@ class AppDatabase extends _$AppDatabase {
     vars.addAll(sortParts.havingVars);
     vars.add(Variable.withInt(limit + 1));
 
+    final innerOrderAndLimit = hideNsfw
+        ? ''
+        : 'ORDER BY ${sortParts.innerOrderBy} LIMIT ?';
+    final outerWhere = hideNsfw
+        ? 'WHERE COALESCE(s.is_nsfw, CASE WHEN p.nsfw_count = p.item_count THEN 1 ELSE 0 END) = 0'
+        : '';
+    final outerLimit = hideNsfw ? 'LIMIT ?' : '';
     final whereClause = where.isEmpty ? '' : 'WHERE ${where.join(' AND ')}';
     final rows = await customSelect(
       '''
@@ -1488,8 +1525,7 @@ class AppDatabase extends _$AppDatabase {
         $whereClause
         GROUP BY subreddit COLLATE NOCASE
         ${sortParts.havingClause}
-        ORDER BY ${sortParts.innerOrderBy}
-        LIMIT ?
+        $innerOrderAndLimit
       )
       SELECT
         p.entry_name AS subreddit,
@@ -1500,7 +1536,9 @@ class AppDatabase extends _$AppDatabase {
         s.last_checked
       FROM page_rows p
       LEFT JOIN subreddits_table s ON s.name = ${_cleanSubSql('p.entry_name')}
+      $outerWhere
       ORDER BY ${sortParts.outerOrderBy}
+      $outerLimit
       ''',
       variables: vars,
       readsFrom: {savedItemsTable, subredditsTable},
@@ -1534,24 +1572,41 @@ class AppDatabase extends _$AppDatabase {
     ).distinct(listEquals);
   }
 
-  Future<int> getSubredditCount() async {
+  Future<int> getSubredditCount({bool hideNsfw = false}) async {
+    final sql = hideNsfw
+        ? '''
+          WITH grouped_subs AS (
+            SELECT
+              MIN(subreddit) AS entry_name,
+              COUNT(*) AS item_count,
+              SUM(CASE WHEN is_nsfw = 1 THEN 1 ELSE 0 END) AS nsfw_count
+            FROM saved_items_table
+            GROUP BY subreddit COLLATE NOCASE
+          )
+          SELECT COUNT(*) AS c
+          FROM grouped_subs p
+          LEFT JOIN subreddits_table s ON s.name = ${_cleanSubSql('p.entry_name')}
+          WHERE COALESCE(s.is_nsfw, CASE WHEN p.nsfw_count = p.item_count THEN 1 ELSE 0 END) = 0
+          '''
+        : '''
+          SELECT COUNT(*) AS c
+          FROM (
+            SELECT 1
+            FROM saved_items_table
+            GROUP BY subreddit COLLATE NOCASE
+          )
+          ''';
     final row = await customSelect(
-      '''
-      SELECT COUNT(*) AS c
-      FROM (
-        SELECT 1
-        FROM saved_items_table
-        GROUP BY subreddit COLLATE NOCASE
-      )
-      ''',
-      readsFrom: {savedItemsTable},
+      sql,
+      readsFrom: {savedItemsTable, if (hideNsfw) subredditsTable},
     ).getSingle();
     return row.read<int>('c');
   }
 
-  Stream<int> watchSubredditCount() => _watchThrottled(
-    fetch: getSubredditCount,
+  Stream<int> watchSubredditCount({bool hideNsfw = false}) => _watchThrottled(
+    fetch: () => getSubredditCount(hideNsfw: hideNsfw),
     tables: [savedItemsTable],
+    extraTriggers: [if (hideNsfw) _subredditMetadataChanges.stream],
     shouldRefetch: (updates) => updates.any(
       (u) =>
           u.kind == UpdateKind.insert ||
@@ -1563,12 +1618,12 @@ class AppDatabase extends _$AppDatabase {
   Stream<T> _watchThrottled<T>({
     required Future<T> Function() fetch,
     required List<TableInfo> tables,
-    List<Stream<void>> extraTriggers = const [],
+    List<Stream<bool>> extraTriggers = const [],
     bool Function(Set<TableUpdate> updates)? shouldRefetch,
   }) {
     late final StreamController<T> controller;
     StreamSubscription<Set<TableUpdate>>? sub;
-    final extraSubs = <StreamSubscription<void>>[];
+    final extraSubs = <StreamSubscription<bool>>[];
     Timer? debounceTimer;
     var isFetching = false;
     var needsRefetch = false;
@@ -1612,7 +1667,17 @@ class AppDatabase extends _$AppDatabase {
               scheduleFetch();
             });
         for (final trigger in extraTriggers) {
-          extraSubs.add(trigger.listen((_) => scheduleFetch()));
+          extraSubs.add(
+            trigger.listen((isManualOverride) {
+              if (isManualOverride) {
+                debounceTimer?.cancel();
+                debounceTimer = null;
+                unawaited(fetchAndEmit());
+              } else {
+                scheduleFetch();
+              }
+            }),
+          );
         }
       },
       onCancel: () async {
@@ -1774,6 +1839,7 @@ class AppDatabase extends _$AppDatabase {
     SubredditSortOption sort = SubredditSortOption.mostSaved,
     FeedCursor? cursor,
     int limit = 100,
+    bool hideNsfw = false,
   }) async {
     final cleanQuery = query.trim().toLowerCase().replaceFirst(
       RegExp(r'^/?u/'),
@@ -1802,6 +1868,11 @@ class AppDatabase extends _$AppDatabase {
     vars.addAll(sortParts.havingVars);
     vars.add(Variable.withInt(limit + 1));
 
+    final innerOrderAndLimit = hideNsfw
+        ? ''
+        : 'ORDER BY ${sortParts.innerOrderBy} LIMIT ?';
+    final outerWhere = hideNsfw ? 'WHERE COALESCE(sub.is_nsfw, 0) = 0' : '';
+    final outerLimit = hideNsfw ? 'LIMIT ?' : '';
     final rows = await customSelect(
       '''
       WITH page_rows AS (
@@ -1812,8 +1883,7 @@ class AppDatabase extends _$AppDatabase {
         WHERE ${where.join(' AND ')}
         GROUP BY author COLLATE NOCASE
         ${sortParts.havingClause}
-        ORDER BY ${sortParts.innerOrderBy}
-        LIMIT ?
+        $innerOrderAndLimit
       )
       SELECT
         p.entry_name AS clean_author,
@@ -1824,7 +1894,9 @@ class AppDatabase extends _$AppDatabase {
       FROM page_rows p
       LEFT JOIN subreddits_table sub
         ON sub.name = 'u_' || LOWER(p.entry_name)
+      $outerWhere
       ORDER BY ${sortParts.outerOrderBy}
+      $outerLimit
       ''',
       variables: vars,
       readsFrom: {savedItemsTable, subredditsTable},
@@ -1856,28 +1928,49 @@ class AppDatabase extends _$AppDatabase {
     ),
   ).distinct(listEquals);
 
-  Future<int> getAuthorCount() async {
+  Future<int> getAuthorCount({bool hideNsfw = false}) async {
+    final sql = hideNsfw
+        ? '''
+          WITH grouped_authors AS (
+            SELECT
+              MIN(author) AS entry_name
+            FROM saved_items_table
+            WHERE author IS NOT NULL
+              AND author != ''
+              AND author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
+            GROUP BY author COLLATE NOCASE
+          )
+          SELECT COUNT(*) AS c
+          FROM grouped_authors p
+          LEFT JOIN subreddits_table sub
+            ON sub.name = 'u_' || LOWER(p.entry_name)
+          WHERE COALESCE(sub.is_nsfw, 0) = 0
+          '''
+        : '''
+          SELECT COUNT(*) AS c
+          FROM (
+            SELECT 1
+            FROM saved_items_table
+            WHERE author IS NOT NULL
+              AND author != ''
+              AND author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
+            GROUP BY author COLLATE NOCASE
+          )
+          ''';
     final row = await customSelect(
-      '''
-      SELECT COUNT(*) AS c
-      FROM (
-        SELECT 1
-        FROM saved_items_table
-        WHERE author IS NOT NULL
-          AND author != ''
-          AND author COLLATE NOCASE NOT IN ('[deleted]', '[removed]', 'deleted', 'removed')
-        GROUP BY author COLLATE NOCASE
-      )
-      ''',
-      readsFrom: {savedItemsTable},
+      sql,
+      readsFrom: {savedItemsTable, if (hideNsfw) subredditsTable},
     ).getSingle();
     return row.read<int>('c');
   }
 
-  Stream<int> watchAuthorCount() => _watchThrottled(
-    fetch: getAuthorCount,
+  Stream<int> watchAuthorCount({bool hideNsfw = false}) => _watchThrottled(
+    fetch: () => getAuthorCount(hideNsfw: hideNsfw),
     tables: [savedItemsTable],
-    extraTriggers: [_authorItemsChanged.stream],
+    extraTriggers: [
+      _authorItemsChanged.stream,
+      if (hideNsfw) _authorMetadataChanges.stream,
+    ],
     shouldRefetch: (updates) => updates.any(
       (u) =>
           u.kind == UpdateKind.insert ||

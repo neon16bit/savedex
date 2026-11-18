@@ -139,6 +139,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   Object? _paginationError;
   String? _errorMessage;
   int _sliverResetEpoch = 0;
+  bool _isScopedEntityNsfw = false;
 
   bool _isSearchExpanded = false;
   bool _isFilterExpanded = false;
@@ -173,6 +174,74 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     });
   }
 
+  Future<void> _refreshScopedEntityNsfw([List<SavedItem>? loadedItems]) async {
+    if (!mounted) return;
+    if (widget.args.isCollection) {
+      if (_isScopedEntityNsfw) {
+        setState(() {
+          _isScopedEntityNsfw = false;
+        });
+      }
+      return;
+    }
+
+    final expectedIsSubreddit = widget.args.isSubreddit;
+    final expectedSub = widget.args.subreddit;
+    final expectedAuthor = widget.args.author;
+
+    final repo = ref.read(savedItemRepositoryProvider);
+    final bool nextNsfw;
+    if (expectedIsSubreddit && expectedSub != null) {
+      final override = await repo.getSubredditNsfwEntry(expectedSub);
+      final items = loadedItems ?? _items;
+      nextNsfw = override ?? (items.isNotEmpty && items.every((i) => i.isNsfw));
+    } else if (!expectedIsSubreddit &&
+        expectedAuthor != null &&
+        expectedAuthor != '[deleted]') {
+      final clean = expectedAuthor.trim().toLowerCase().replaceFirst(
+        RegExp(r'^/?[ru]/'),
+        '',
+      );
+      final override = clean.isEmpty
+          ? null
+          : await repo.getSubredditNsfwEntry('u_$clean');
+      nextNsfw = override ?? false;
+    } else {
+      nextNsfw = false;
+    }
+
+    if (!mounted ||
+        widget.args.isCollection ||
+        widget.args.subreddit != expectedSub ||
+        widget.args.author != expectedAuthor ||
+        _isScopedEntityNsfw == nextNsfw) {
+      return;
+    }
+    setState(() {
+      _isScopedEntityNsfw = nextNsfw;
+    });
+  }
+
+  Future<void> _toggleScopedEntityNsfw() async {
+    if (widget.args.isCollection) return;
+    final nextNsfw = !_isScopedEntityNsfw;
+    setState(() {
+      _isScopedEntityNsfw = nextNsfw;
+    });
+    final repo = ref.read(savedItemRepositoryProvider);
+    if (widget.args.isSubreddit) {
+      await repo.setSubredditNsfw(widget.args.subreddit!, isNsfw: nextNsfw);
+    } else if (widget.args.isAuthor && widget.args.author != '[deleted]') {
+      await repo.setAuthorNsfw(widget.args.author!, isNsfw: nextNsfw);
+    }
+    if (mounted) {
+      showAppSnackBar(
+        context,
+        'Marked ${widget.args.title} as ${nextNsfw ? 'NSFW' : 'SFW'}',
+      );
+    }
+  }
+
   void _onSearchFocusChanged() {
     if (_searchFocusNode.hasFocus) {
       _openedViaFilter = false;
@@ -197,6 +266,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       _isFilterExpanded = false;
       _morphFromFilter = false;
       _openedViaFilter = false;
+      _isScopedEntityNsfw = false;
       _items = [];
       _loadInitial(showFullScreenLoader: true);
     }
@@ -248,7 +318,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     if (filter.isNsfw != null) {
       subNsfw = await ref
           .read(savedItemRepositoryProvider)
-          .isSubredditNsfw(updated.subreddit);
+          .isSubredditNsfw(updated.subreddit, author: updated.author);
       if (!mounted) return;
       filter = _buildFilter();
     }
@@ -319,6 +389,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       );
 
       if (!mounted || currentGen != _generation) return;
+
+      unawaited(_refreshScopedEntityNsfw(page.items));
 
       final knownCollectionCount =
           widget.args.isCollection && !_scopedFilter.hasActiveFilters
@@ -423,6 +495,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
         limit: targetLimit,
       );
       if (!mounted || currentGen != _generation || _isLoading) return;
+
+      unawaited(_refreshScopedEntityNsfw(page.items));
 
       final count = page.hasMore
           ? await ref.read(databaseProvider).countFilteredSavedItems(filter)
@@ -1119,8 +1193,17 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   }
 
   Future<void> _openInReddit(String subreddit) async {
-    final cleanSub = subreddit.replaceAll(RegExp(r'^[ru]/'), '');
-    final uri = Uri.parse('https://www.reddit.com/r/$cleanSub/');
+    final rawTrimmed = subreddit.trim();
+    final isUser = SavedItem.isUserSubreddit(rawTrimmed);
+    final strippedSlash = rawTrimmed.replaceFirst(RegExp(r'^/?[ru]/'), '');
+    final cleanName =
+        (isUser &&
+            (strippedSlash.startsWith('u_') || strippedSlash.startsWith('U_')))
+        ? strippedSlash.substring(2)
+        : strippedSlash;
+    if (cleanName.isEmpty) return;
+    final pathSegment = isUser ? 'user/$cleanName' : 'r/$cleanName';
+    final uri = Uri.parse('https://www.reddit.com/$pathSegment/');
     try {
       await ExternalUrlLauncher.launch(uri);
     } catch (_) {}
@@ -1194,6 +1277,28 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                           style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
+                      if (!widget.args.isCollection && _isScopedEntityNsfw) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade700,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'NSFW',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.3,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   Text(
@@ -1232,6 +1337,52 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                     onPressed: () => _openUserInReddit(widget.args.author!),
                   ),
                 ],
+                if (widget.args.isSubreddit ||
+                    (widget.args.isAuthor && widget.args.author != '[deleted]'))
+                  FrostedPopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded),
+                    tooltip: 'More options',
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    style: IconButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onSelected: (value) {
+                      if (value == 'toggle_nsfw') {
+                        unawaited(_toggleScopedEntityNsfw());
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      PopupMenuItem<String>(
+                        value: 'toggle_nsfw',
+                        child: Row(
+                          children: [
+                            Icon(
+                              _isScopedEntityNsfw
+                                  ? Icons.verified_user_outlined
+                                  : Icons.eighteen_up_rating_outlined,
+                              size: 20,
+                              color: _isScopedEntityNsfw
+                                  ? colorScheme.primary
+                                  : colorScheme.error,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              _isScopedEntityNsfw
+                                  ? 'Mark as SFW'
+                                  : 'Mark as NSFW',
+                              style: TextStyle(
+                                color: _isScopedEntityNsfw
+                                    ? colorScheme.onSurface
+                                    : colorScheme.error,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 const SizedBox(width: 4),
               ],
             ),

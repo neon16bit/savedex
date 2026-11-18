@@ -721,7 +721,10 @@ class SavedFeedPaginationNotifier extends AsyncNotifier<SavedFeedState> {
 
     final filter = _getEffectiveFilter();
     final subNsfw = filter.isNsfw != null
-        ? await repo.isSubredditNsfw(freshItem.subreddit)
+        ? await repo.isSubredditNsfw(
+            freshItem.subreddit,
+            author: freshItem.author,
+          )
         : null;
 
     if (gen != _generation || state.isLoading) return;

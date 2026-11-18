@@ -1825,30 +1825,40 @@ class SavedItemRepository {
     SubredditSortOption sort = SubredditSortOption.mostSaved,
     FeedCursor? cursor,
     int limit = 100,
+    bool hideNsfw = false,
   }) => db.getSubredditsPage(
     query: query,
     sort: sort,
     cursor: cursor,
     limit: limit,
+    hideNsfw: hideNsfw,
   );
 
   Stream<List<SubredditInfo>> watchSubredditsWithCounts() =>
       db.watchSubredditsWithCounts();
 
-  Stream<int> watchSubredditCount() => db.watchSubredditCount();
+  Stream<int> watchSubredditCount({bool hideNsfw = false}) =>
+      db.watchSubredditCount(hideNsfw: hideNsfw);
 
   Future<PagedRows<AuthorInfo>> getAuthorsPage({
     String query = '',
     SubredditSortOption sort = SubredditSortOption.mostSaved,
     FeedCursor? cursor,
     int limit = 100,
-  }) =>
-      db.getAuthorsPage(query: query, sort: sort, cursor: cursor, limit: limit);
+    bool hideNsfw = false,
+  }) => db.getAuthorsPage(
+    query: query,
+    sort: sort,
+    cursor: cursor,
+    limit: limit,
+    hideNsfw: hideNsfw,
+  );
 
   Stream<List<AuthorInfo>> watchAuthorsWithCounts() =>
       db.watchAuthorsWithCounts();
 
-  Stream<int> watchAuthorCount() => db.watchAuthorCount();
+  Stream<int> watchAuthorCount({bool hideNsfw = false}) =>
+      db.watchAuthorCount(hideNsfw: hideNsfw);
 
   Future<Map<String, SubredditEntry>> getSubredditsByNames(
     Iterable<String> names,
@@ -1856,6 +1866,8 @@ class SavedItemRepository {
 
   final Set<String> _inFlightSubredditEnrichments = {};
   final Set<String> _attemptedSubredditEnrichments = {};
+  final Set<String> _sessionManualOverrides = {};
+  DateTime? _lastManualNsfwOverrideAt;
   final Map<String, int> _enrichmentFailureCounts = {};
   final Set<String> _failedSubredditEnrichments = {};
   bool _subredditsCheckedForDataset = false;
@@ -1884,7 +1896,13 @@ class SavedItemRepository {
     if (updates.isEmpty) return false;
     final subTableName = db.subredditsTable.actualTableName;
     if (!updates.every((u) => u.table == subTableName)) return false;
-    return effectiveIsNsfw == null || _inFlightSubredditEnrichments.isNotEmpty;
+    if (effectiveIsNsfw == null) return true;
+    final manualAt = _lastManualNsfwOverrideAt;
+    if (manualAt != null &&
+        DateTime.now().difference(manualAt) < const Duration(seconds: 2)) {
+      return false;
+    }
+    return _inFlightSubredditEnrichments.isNotEmpty;
   }
 
   Future<void> saveSubredditMetadata(
@@ -1899,9 +1917,43 @@ class SavedItemRepository {
       SubredditsTableCompanion(
         name: Value(clean),
         isNsfw: Value(isNsfw),
-        iconUrl: Value(iconUrl),
+        iconUrl: iconUrl != null ? Value(iconUrl) : const Value.absent(),
         lastChecked: Value(DateTime.now()),
       ),
+    );
+  }
+
+  Future<void> setSubredditNsfw(
+    String subreddit, {
+    required bool isNsfw,
+  }) async {
+    final clean = SavedItem.normalizeSubredditKey(subreddit);
+    if (clean.isEmpty) return;
+    await _setEntityNsfwByKey(clean, isNsfw: isNsfw);
+  }
+
+  Future<void> setAuthorNsfw(String author, {required bool isNsfw}) async {
+    final clean = author.trim().toLowerCase().replaceFirst(
+      RegExp(r'^/?[ru]/'),
+      '',
+    );
+    if (clean.isEmpty || SavedItem.isRemovedMarker(clean)) return;
+    await _setEntityNsfwByKey('u_$clean', isNsfw: isNsfw);
+  }
+
+  Future<void> _setEntityNsfwByKey(String key, {required bool isNsfw}) async {
+    _lastManualNsfwOverrideAt = DateTime.now();
+    _sessionManualOverrides.add(key);
+    if (_inFlightSubredditEnrichments.isNotEmpty) {
+      _pendingSubredditNsfwNotify = true;
+    }
+    await db.upsertSubreddit(
+      SubredditsTableCompanion(
+        name: Value(key),
+        isNsfw: Value(isNsfw),
+        lastChecked: const Value(null),
+      ),
+      isManualOverride: true,
     );
   }
 
@@ -2015,7 +2067,6 @@ class SavedItemRepository {
     _inFlightSubredditEnrichments.addAll(toFetch);
 
     final pendingBatch = <SubredditsTableCompanion>[];
-    var batchHasNsfw = false;
     var consecutiveBatchFailures = 0;
     const int flushBatchSize = 60;
 
@@ -2039,21 +2090,35 @@ class SavedItemRepository {
               }
             }
 
-            if (about.isNsfw == true) {
-              batchHasNsfw = true;
+            final existingEntry = cached[key];
+            final isManualOverride =
+                (existingEntry != null &&
+                    existingEntry.isNsfw != null &&
+                    existingEntry.lastChecked == null) ||
+                _sessionManualOverrides.contains(key);
+            final preserveNsfw =
+                isManualOverride ||
+                (!forceRefetch && existingEntry?.isNsfw != null);
+            final nextIsNsfw = preserveNsfw ? null : about.isNsfw;
+            if (nextIsNsfw != null ||
+                hasIcon ||
+                forceRefetch ||
+                !isManualOverride) {
+              pendingBatch.add(
+                SubredditsTableCompanion(
+                  name: Value(key),
+                  isNsfw: nextIsNsfw != null
+                      ? Value(nextIsNsfw)
+                      : const Value.absent(),
+                  iconUrl: hasIcon || forceRefetch
+                      ? Value(about.iconUrl)
+                      : const Value.absent(),
+                  lastChecked: isManualOverride
+                      ? const Value.absent()
+                      : Value(DateTime.now()),
+                ),
+              );
             }
-            pendingBatch.add(
-              SubredditsTableCompanion(
-                name: Value(key),
-                isNsfw: about.isNsfw != null
-                    ? Value(about.isNsfw)
-                    : const Value.absent(),
-                iconUrl: hasIcon || forceRefetch
-                    ? Value(about.iconUrl)
-                    : const Value.absent(),
-                lastChecked: Value(DateTime.now()),
-              ),
-            );
           } else {
             consecutiveBatchFailures++;
             final count = (_enrichmentFailureCounts[key] ?? 0) + 1;
@@ -2064,12 +2129,7 @@ class SavedItemRepository {
           }
 
           if (pendingBatch.length >= flushBatchSize) {
-            if (batchHasNsfw) {
-              _pendingSubredditNsfwNotify = true;
-              batchHasNsfw = false;
-            }
-            await db.upsertSubredditsBatch(List.of(pendingBatch));
-            pendingBatch.clear();
+            await _flushPendingSubredditBatch(pendingBatch);
           }
         } catch (_) {
           consecutiveBatchFailures++;
@@ -2092,12 +2152,7 @@ class SavedItemRepository {
           }
         }
       }
-      if (pendingBatch.isNotEmpty) {
-        if (batchHasNsfw) {
-          _pendingSubredditNsfwNotify = true;
-        }
-        await db.upsertSubredditsBatch(pendingBatch);
-      }
+      await _flushPendingSubredditBatch(pendingBatch);
     } finally {
       await Future<void>.delayed(Duration.zero);
       _inFlightSubredditEnrichments.removeAll(toFetch);
@@ -2111,10 +2166,48 @@ class SavedItemRepository {
     }
   }
 
+  /// Sanitizes buffered companions against mid-batch manual overrides and
+  /// flushes any remaining updates to the database.
+  Future<void> _flushPendingSubredditBatch(
+    List<SubredditsTableCompanion> pendingBatch,
+  ) async {
+    if (pendingBatch.isEmpty) return;
+    final toFlush = <SubredditsTableCompanion>[];
+    var hasNsfwUpdate = false;
+    for (final companion in pendingBatch) {
+      if (companion.name.present &&
+          _sessionManualOverrides.contains(companion.name.value)) {
+        if (companion.iconUrl.present) {
+          toFlush.add(
+            SubredditsTableCompanion(
+              name: companion.name,
+              iconUrl: companion.iconUrl,
+            ),
+          );
+        }
+        continue;
+      }
+      if (companion.isNsfw.present && companion.isNsfw.value == true) {
+        hasNsfwUpdate = true;
+      }
+      toFlush.add(companion);
+    }
+    if (toFlush.isNotEmpty) {
+      if (hasNsfwUpdate) {
+        _pendingSubredditNsfwNotify = true;
+      }
+      await db.upsertSubredditsBatch(toFlush);
+    }
+    pendingBatch.clear();
+  }
+
   Future<List<SubredditEntry>> getAllSubreddits() => db.getAllSubreddits();
 
-  Future<bool> isSubredditNsfw(String subreddit) =>
-      db.isSubredditNsfw(subreddit);
+  Future<bool> isSubredditNsfw(String subreddit, {String? author}) =>
+      db.isSubredditNsfw(subreddit, author: author);
+
+  Future<bool?> getSubredditNsfwEntry(String key) =>
+      db.getSubredditNsfwEntry(key);
 
   Future<Set<String>> filterSfwSubreddits(Set<String> subreddits) =>
       db.filterSfwSubreddits(subreddits);
@@ -2167,6 +2260,8 @@ class SavedItemRepository {
 
   Future<void> clearAllData() async {
     _attemptedSubredditEnrichments.clear();
+    _sessionManualOverrides.clear();
+    _lastManualNsfwOverrideAt = null;
     _enrichmentFailureCounts.clear();
     _failedSubredditEnrichments.clear();
     _subredditsCheckedForDataset = false;

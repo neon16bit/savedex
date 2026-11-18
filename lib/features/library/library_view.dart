@@ -1,16 +1,23 @@
 import 'dart:async';
 
 import 'package:extended_image/extended_image.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
 import 'package:savedex/features/library/library_viewmodel.dart';
 import 'package:savedex/features/library/scoped_feed_view.dart';
+import 'package:savedex/features/search/search_viewmodel.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
+import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
 import 'package:savedex/features/shell/app_shell.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
+
+enum _LibraryMenuAction { toggleNsfw, metadataSettings }
 
 class LibraryView extends ConsumerStatefulWidget {
   const LibraryView({super.key});
@@ -84,6 +91,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
   @override
   Widget build(BuildContext context) {
     final enableFrosted = watchFrostedEffects(ref);
+    final hideNsfwInFeed = ref.watch(
+      settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
+    );
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       extendBodyBehindAppBar: enableFrosted,
@@ -100,6 +111,84 @@ class _LibraryViewState extends ConsumerState<LibraryView>
           'Library',
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
+        actions: [
+          FrostedPopupMenuButton<_LibraryMenuAction>(
+            icon: const Icon(Icons.more_vert_rounded),
+            tooltip: 'More options',
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            style: IconButton.styleFrom(visualDensity: VisualDensity.compact),
+            onSelected: (action) {
+              switch (action) {
+                case _LibraryMenuAction.toggleNsfw:
+                  if (ref.read(searchFilterViewModelProvider).isNsfw != null) {
+                    ref
+                        .read(searchFilterViewModelProvider.notifier)
+                        .setNsfwFilter(null);
+                  }
+                  ref
+                      .read(settingsViewModelProvider.notifier)
+                      .toggleHideNsfwInFeed(!hideNsfwInFeed);
+                  break;
+                case _LibraryMenuAction.metadataSettings:
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SubredditUserMetadataView(),
+                    ),
+                  );
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem<_LibraryMenuAction>(
+                value: _LibraryMenuAction.toggleNsfw,
+                child: Row(
+                  children: [
+                    Icon(
+                      hideNsfwInFeed
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded,
+                      size: 20,
+                      color: hideNsfwInFeed
+                          ? colorScheme.error
+                          : colorScheme.onSurface,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(hideNsfwInFeed ? 'Show NSFW' : 'Hide NSFW'),
+                    ),
+                    if (hideNsfwInFeed)
+                      Text(
+                        'Hidden',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.error,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem<_LibraryMenuAction>(
+                value: _LibraryMenuAction.metadataSettings,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.tune_rounded,
+                      size: 20,
+                      color: colorScheme.onSurface,
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(child: Text('Subreddit & User Metadata')),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorSize: TabBarIndicatorSize.tab,
@@ -762,6 +851,10 @@ class _SubredditsTab extends ConsumerWidget {
       ),
       emptyBuilder: (context) {
         final query = ref.read(subredditSearchQueryProvider).trim();
+        final hideNsfwInFeed = ref
+            .read(settingsViewModelProvider)
+            .hideNsfwInFeed;
+        final showingSfwEmpty = query.isEmpty && hideNsfwInFeed;
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -769,7 +862,9 @@ class _SubredditsTab extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.search_off_rounded,
+                  showingSfwEmpty
+                      ? Icons.visibility_off_rounded
+                      : Icons.search_off_rounded,
                   size: 48,
                   color: colorScheme.outline,
                 ),
@@ -777,6 +872,8 @@ class _SubredditsTab extends ConsumerWidget {
                 Text(
                   query.isNotEmpty
                       ? 'No subreddits matching "$query"'
+                      : showingSfwEmpty
+                      ? 'No SFW subreddits found'
                       : 'No saved subreddits found',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
@@ -790,6 +887,16 @@ class _SubredditsTab extends ConsumerWidget {
                     },
                     child: const Text('Clear Search'),
                   ),
+                ] else if (showingSfwEmpty) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      ref
+                          .read(settingsViewModelProvider.notifier)
+                          .toggleHideNsfwInFeed(false);
+                    },
+                    child: const Text('Show NSFW'),
+                  ),
                 ],
               ],
             ),
@@ -799,8 +906,9 @@ class _SubredditsTab extends ConsumerWidget {
       rowBuilder: (context, item, divider) {
         final subName = item.name;
         final isUser = SavedItem.isUserSubreddit(subName);
+        final displayTitle = SavedItem.formatSubreddit(subName);
         return _LibraryEntryRow(
-          title: SavedItem.formatSubreddit(subName),
+          title: displayTitle,
           count: item.count,
           iconUrl: item.iconUrl,
           isNsfw: item.isNsfw,
@@ -823,6 +931,15 @@ class _SubredditsTab extends ConsumerWidget {
               ),
             );
           },
+          onLongPress: () => _showLibraryEntityOptionsSheet(
+            context,
+            ref,
+            displayTitle: displayTitle,
+            rawName: subName,
+            savedCount: item.count,
+            isNsfw: item.isNsfw,
+            isAuthor: false,
+          ),
         );
       },
     );
@@ -864,6 +981,10 @@ class _UsersTab extends ConsumerWidget {
       ),
       emptyBuilder: (context) {
         final query = ref.read(userSearchQueryProvider).trim();
+        final hideNsfwInFeed = ref
+            .read(settingsViewModelProvider)
+            .hideNsfwInFeed;
+        final showingSfwEmpty = query.isEmpty && hideNsfwInFeed;
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -873,6 +994,8 @@ class _UsersTab extends ConsumerWidget {
                 Icon(
                   query.isNotEmpty
                       ? Icons.search_off_rounded
+                      : showingSfwEmpty
+                      ? Icons.visibility_off_rounded
                       : Icons.person_off_rounded,
                   size: 48,
                   color: colorScheme.outline,
@@ -881,12 +1004,14 @@ class _UsersTab extends ConsumerWidget {
                 Text(
                   query.isNotEmpty
                       ? 'No users matching "$query"'
+                      : showingSfwEmpty
+                      ? 'No SFW users found'
                       : 'No saved users found',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                if (query.isEmpty) ...[
+                if (query.isEmpty && !showingSfwEmpty) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Authors of your saved posts and comments will appear here.',
@@ -906,6 +1031,16 @@ class _UsersTab extends ConsumerWidget {
                     },
                     child: const Text('Clear Search'),
                   ),
+                ] else if (showingSfwEmpty) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.tonal(
+                    onPressed: () {
+                      ref
+                          .read(settingsViewModelProvider.notifier)
+                          .toggleHideNsfwInFeed(false);
+                    },
+                    child: const Text('Show NSFW'),
+                  ),
                 ],
               ],
             ),
@@ -914,8 +1049,9 @@ class _UsersTab extends ConsumerWidget {
       },
       rowBuilder: (context, item, divider) {
         final author = item.name;
+        final displayTitle = 'u/$author';
         return _LibraryEntryRow(
-          title: 'u/$author',
+          title: displayTitle,
           count: item.count,
           iconUrl: item.iconUrl,
           isNsfw: item.isNsfw,
@@ -926,10 +1062,187 @@ class _UsersTab extends ConsumerWidget {
             FocusManager.instance.primaryFocus?.unfocus();
             ScopedFeedView.openAuthor(context, author);
           },
+          onLongPress: () => _showLibraryEntityOptionsSheet(
+            context,
+            ref,
+            displayTitle: displayTitle,
+            rawName: author,
+            savedCount: item.count,
+            isNsfw: item.isNsfw,
+            isAuthor: true,
+          ),
         );
       },
     );
   }
+}
+
+Future<void> _showLibraryEntityOptionsSheet(
+  BuildContext context,
+  WidgetRef ref, {
+  required String displayTitle,
+  required String rawName,
+  required int savedCount,
+  required bool isNsfw,
+  required bool isAuthor,
+}) {
+  HapticFeedback.mediumImpact();
+  final nextNsfw = !isNsfw;
+  return showFrostedModalBottomSheet<void>(
+    context: context,
+    builder: (ctx) {
+      final theme = Theme.of(ctx);
+      final colorScheme = theme.colorScheme;
+      final textTheme = theme.textTheme;
+      return FrostedSheetContainer(
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 4, bottom: 12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                      ),
+                      if (isNsfw) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade700,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'NSFW',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.3,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
+                      Text(
+                        '• $savedCount saved',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                const SizedBox(height: 4),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: Icon(
+                    isNsfw
+                        ? Icons.verified_user_outlined
+                        : Icons.eighteen_up_rating_outlined,
+                    color: isNsfw ? colorScheme.primary : colorScheme.error,
+                  ),
+                  title: Text(
+                    isNsfw ? 'Mark as SFW' : 'Mark as NSFW',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isNsfw ? colorScheme.onSurface : colorScheme.error,
+                    ),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final repo = ref.read(savedItemRepositoryProvider);
+                    if (isAuthor) {
+                      await repo.setAuthorNsfw(rawName, isNsfw: nextNsfw);
+                    } else {
+                      await repo.setSubredditNsfw(rawName, isNsfw: nextNsfw);
+                    }
+                    if (context.mounted) {
+                      showAppSnackBar(
+                        context,
+                        'Marked $displayTitle as ${nextNsfw ? 'NSFW' : 'SFW'}',
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: SizedBox.square(
+                    dimension: 24,
+                    child: Center(
+                      child: RedditIcon(
+                        size: 21,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  title: const Text(
+                    'Open in Reddit',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    final rawTrimmed = rawName.trim();
+                    final openAsUser =
+                        isAuthor || SavedItem.isUserSubreddit(rawTrimmed);
+                    final trimmed = rawTrimmed.replaceFirst(
+                      RegExp(r'^/?[ru]/'),
+                      '',
+                    );
+                    final cleanName =
+                        (!isAuthor && SavedItem.isUserSubreddit(trimmed))
+                        ? trimmed.substring(2)
+                        : trimmed;
+                    if (cleanName.isEmpty) return;
+                    final pathSegment = openAsUser
+                        ? 'user/$cleanName'
+                        : 'r/$cleanName';
+                    try {
+                      await ExternalUrlLauncher.launch(
+                        Uri.parse('https://www.reddit.com/$pathSegment/'),
+                      );
+                    } catch (_) {}
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _LibraryEntryRow extends StatelessWidget {
@@ -941,6 +1254,7 @@ class _LibraryEntryRow extends StatelessWidget {
   final Widget placeholder;
   final Widget divider;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _LibraryEntryRow({
     required this.title,
@@ -951,6 +1265,7 @@ class _LibraryEntryRow extends StatelessWidget {
     required this.placeholder,
     required this.divider,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -966,6 +1281,7 @@ class _LibraryEntryRow extends StatelessWidget {
           avatarBackgroundColor: avatarBackgroundColor,
           placeholder: placeholder,
           onTap: onTap,
+          onLongPress: onLongPress,
         ),
         divider,
       ],
@@ -981,6 +1297,7 @@ class _LibraryEntryTile extends StatelessWidget {
   final Color avatarBackgroundColor;
   final Widget placeholder;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _LibraryEntryTile({
     required this.title,
@@ -990,6 +1307,7 @@ class _LibraryEntryTile extends StatelessWidget {
     required this.avatarBackgroundColor,
     required this.placeholder,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -1087,6 +1405,7 @@ class _LibraryEntryTile extends StatelessWidget {
         ],
       ),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 }
