@@ -10,6 +10,11 @@ class AppConstants {
   static const String redditAppScheme = 'reddit://';
 
   static const String crosspostDelimiter = '\u001F';
+
+  static const String githubLatestReleaseUrl =
+      'https://api.github.com/repos/neon16bit/savedex/releases/latest';
+  static const String githubReleasesPageUrl =
+      'https://github.com/neon16bit/savedex/releases';
 }
 
 enum ItemType { post, comment }

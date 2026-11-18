@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/data/services/github_update_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/library/library_view.dart';
 import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
+import 'package:savedex/features/settings/widgets/update_dialog.dart';
 import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
 import 'package:savedex/features/shell/widgets/welcome_onboarding_dialog.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
@@ -109,30 +114,72 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   final Set<int> _visitedTabs = {0};
   bool _didCheckOnboarding = false;
+  bool _didCheckUpdates = false;
+  Timer? _updateCheckTimer;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeShowOnboarding();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final showedOnboarding = await _maybeShowOnboarding();
+      if (!mounted || showedOnboarding) return;
+      _updateCheckTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) _maybeCheckForUpdate();
+      });
     });
   }
 
-  Future<void> _maybeShowOnboarding() async {
-    if (_didCheckOnboarding || !mounted) return;
+  @override
+  void dispose() {
+    _updateCheckTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<bool> _maybeShowOnboarding() async {
+    if (_didCheckOnboarding || !mounted) return false;
     _didCheckOnboarding = true;
 
     final settings = ref.read(settingsViewModelProvider);
-    if (settings.hasSeenOnboarding) return;
+    if (settings.hasSeenOnboarding) return false;
 
     final hasConfiguredCreds =
         settings.isAuthenticatedWithOAuth ||
         (settings.redditClientId != null &&
             settings.redditClientId!.trim().isNotEmpty);
-    if (hasConfiguredCreds) return;
+    if (hasConfiguredCreds) return false;
 
     ref.read(settingsViewModelProvider.notifier).setHasSeenOnboarding(true);
     await showWelcomeOnboardingDialog(context);
+    return true;
+  }
+
+  Future<void> _maybeCheckForUpdate() async {
+    if (_didCheckUpdates || !mounted) return;
+    _didCheckUpdates = true;
+
+    final packageInfo = ref.read(packageInfoProvider);
+    final version = normalizeVersionString(packageInfo?.version ?? '');
+    if (version.isEmpty) return;
+
+    try {
+      final result = await GithubUpdateService.checkForUpdate(
+        currentVersion: version,
+      );
+      if (!mounted ||
+          result.status != UpdateCheckStatus.updateAvailable ||
+          result.update == null) {
+        return;
+      }
+
+      final prefs = ref.read(sharedPreferencesProvider);
+      if (prefs?.getString(kLastDismissedUpdateKey) ==
+          result.update!.latestVersion) {
+        return;
+      }
+
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+      await showAppUpdateDialog(context, result.update!);
+    } catch (_) {}
   }
 
   @override

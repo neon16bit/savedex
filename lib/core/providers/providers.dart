@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:savedex/data/database/database.dart';
 import 'package:savedex/data/repositories/saved_item_repository.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
@@ -15,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) {
   return null;
 });
+
+final packageInfoProvider = Provider<PackageInfo?>((ref) => null);
 
 final databaseProvider = Provider<AppDatabase>((ref) => AppDatabase.instance);
 

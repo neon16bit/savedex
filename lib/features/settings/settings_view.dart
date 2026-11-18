@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
+import 'package:savedex/data/services/github_update_service.dart';
 import 'package:savedex/theme/app_theme.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/data/services/reddit_auth_service.dart';
@@ -22,6 +23,7 @@ import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/rate_limits_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
+import 'package:savedex/features/settings/widgets/update_dialog.dart';
 import 'package:savedex/features/shell/app_shell.dart';
 import 'package:savedex/features/shell/widgets/welcome_onboarding_dialog.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
@@ -796,18 +798,30 @@ class SettingsView extends ConsumerWidget {
                   onTap: () => showWelcomeOnboardingDialog(context),
                 ),
                 const Divider(height: 1, indent: 56, endIndent: 16),
-                const ListTile(
-                  leading: Icon(Icons.info_outline_rounded),
-                  title: Text(
-                    'Savedex',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14.5,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Version 0.0.1 • Reddit Saved Library Manager',
-                  ),
+                const _CheckForUpdatesTile(),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final packageInfo = ref.watch(packageInfoProvider);
+                    final version = normalizeVersionString(
+                      packageInfo?.version ?? '',
+                    );
+                    return ListTile(
+                      leading: const Icon(Icons.info_outline_rounded),
+                      title: const Text(
+                        'Savedex',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14.5,
+                        ),
+                      ),
+                      subtitle: Text(
+                        version.isNotEmpty
+                            ? 'Version $version • Reddit Saved Library Manager'
+                            : 'Reddit Saved Library Manager',
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -2122,6 +2136,98 @@ class _ImageCacheTileState extends ConsumerState<_ImageCacheTile> {
               onPressed: hasCache ? _confirmClearCache : null,
               child: const Text('Clear'),
             ),
+    );
+  }
+}
+
+class _CheckForUpdatesTile extends ConsumerStatefulWidget {
+  const _CheckForUpdatesTile();
+
+  @override
+  ConsumerState<_CheckForUpdatesTile> createState() =>
+      _CheckForUpdatesTileState();
+}
+
+class _CheckForUpdatesTileState extends ConsumerState<_CheckForUpdatesTile> {
+  bool _isChecking = false;
+
+  Future<void> _checkUpdate() async {
+    if (_isChecking) return;
+
+    final packageInfo = ref.read(packageInfoProvider);
+    final version = normalizeVersionString(packageInfo?.version ?? '');
+    if (version.isEmpty) {
+      showAppSnackBar(
+        context,
+        'Current app version is unavailable.',
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() => _isChecking = true);
+    try {
+      final result = await GithubUpdateService.checkForUpdate(
+        currentVersion: version,
+      );
+      if (!mounted) return;
+
+      switch (result.status) {
+        case UpdateCheckStatus.updateAvailable:
+          final update = result.update;
+          if (update != null) {
+            setState(() => _isChecking = false);
+            await showAppUpdateDialog(context, update);
+          } else {
+            showAppSnackBar(
+              context,
+              'Could not check for updates. Check your connection.',
+              isError: true,
+            );
+          }
+        case UpdateCheckStatus.upToDate:
+          showAppSnackBar(context, 'Savedex is up to date (v$version)');
+        case UpdateCheckStatus.noReleases:
+          showAppSnackBar(context, 'No releases published on GitHub yet.');
+        case UpdateCheckStatus.error:
+          showAppSnackBar(
+            context,
+            result.errorMessage ??
+                'Could not check for updates. Check your connection.',
+            isError: true,
+          );
+      }
+    } catch (_) {
+      if (mounted) {
+        showAppSnackBar(context, 'Failed to check for updates.', isError: true);
+      }
+    } finally {
+      if (mounted && _isChecking) {
+        setState(() => _isChecking = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final packageInfo = ref.watch(packageInfoProvider);
+    final version = normalizeVersionString(packageInfo?.version ?? '');
+
+    return ListTile(
+      leading: const Icon(Icons.system_update_rounded),
+      title: const Text(
+        'Check for updates',
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5),
+      ),
+      subtitle: Text(version.isNotEmpty ? 'v$version (GitHub)' : 'GitHub'),
+      trailing: _isChecking
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.chevron_right_rounded),
+      onTap: _isChecking ? null : _checkUpdate,
     );
   }
 }
