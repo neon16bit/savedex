@@ -80,10 +80,11 @@ class _SavedViewState extends ConsumerState<SavedView> {
 
   Future<ImportSummary?> _syncFromReddit({
     bool showErrorSnackbar = true,
+    int maxPages = 10,
   }) async {
     final summary = await ref
         .read(importExportViewModelProvider.notifier)
-        .pullSavedFromReddit();
+        .pullSavedFromReddit(maxPages: maxPages);
     if (!mounted) return summary;
 
     if (summary != null) {
@@ -773,7 +774,13 @@ class _SavedViewState extends ConsumerState<SavedView> {
                       edgeOffset: appBarTopOffset,
                       onRefresh: () async {
                         if (isAuthenticatedWithOAuth) {
-                          await _syncFromReddit(showErrorSnackbar: true);
+                          final pages = ref
+                              .read(settingsViewModelProvider)
+                              .pullToRefreshPages;
+                          await _syncFromReddit(
+                            showErrorSnackbar: true,
+                            maxPages: pages,
+                          );
                         } else {
                           ref.invalidate(savedFeedPaginationProvider);
                         }

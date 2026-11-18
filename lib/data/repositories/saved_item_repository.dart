@@ -1093,15 +1093,22 @@ class SavedItemRepository {
             (existing.importOrder != targetOrder ||
                 existing.csvSource != 'reddit_api');
 
-        if (needsEnrichment ||
+        final needsContentUpdate =
+            needsEnrichment ||
             needsTitleFix ||
             needsScoreUpdate ||
             needsBodyUpdate ||
-            needsSubredditTypeUpdate ||
-            needsOrderReconciliation) {
-          updatedCount++;
-          final normalizedExistingAuthor =
-              SavedItem.normalizeAuthorForStorage(existing.author);
+            needsSubredditTypeUpdate;
+
+        if (needsContentUpdate || needsOrderReconciliation) {
+          if (needsContentUpdate) {
+            updatedCount++;
+          } else {
+            skippedCount++;
+          }
+          final normalizedExistingAuthor = SavedItem.normalizeAuthorForStorage(
+            existing.author,
+          );
           // preserve user modifications and flags
           toUpsert.add(
             companion.copyWith(
@@ -1230,20 +1237,9 @@ class SavedItemRepository {
     );
   }
 
-  Future<ImportSummary> pullSavedFromReddit({
-    int maxItems = 1000,
-    void Function(int fetchedCount, String status)? onProgress,
+  Future<String> _resolveRedditUsername({
+    void Function(String username)? onUsernameResolved,
   }) async {
-    final stopwatch = Stopwatch()..start();
-
-    if (!_redditApi.hasUserOAuth) {
-      throw Exception(
-        'Reddit account is not authenticated via OAuth. Please log in in Settings first.',
-      );
-    }
-
-    onProgress?.call(0, 'Connecting to Reddit...');
-
     var userResult = await _redditApi.fetchMyUsername();
     if (userResult.username == null) {
       await Future.delayed(const Duration(milliseconds: 600));
@@ -1255,6 +1251,32 @@ class SavedItemRepository {
       );
     }
     final username = userResult.username!;
+    onUsernameResolved?.call(username);
+    return username;
+  }
+
+  Future<ImportSummary> pullSavedFromReddit({
+    int maxItems = 1000,
+    void Function(int fetchedCount, String status)? onProgress,
+    void Function(String username)? onUsernameResolved,
+  }) async {
+    final stopwatch = Stopwatch()..start();
+
+    if (!_redditApi.hasUserOAuth) {
+      throw Exception(
+        'Reddit account is not authenticated via OAuth. Please log in in Settings first.',
+      );
+    }
+
+    onProgress?.call(0, 'Connecting to Reddit...');
+
+    final cachedUsername = _settingsRepository.settings.redditUsername?.trim();
+    var usedCachedUsername =
+        cachedUsername != null && cachedUsername.isNotEmpty;
+    var username = usedCachedUsername
+        ? cachedUsername
+        : await _resolveRedditUsername(onUsernameResolved: onUsernameResolved);
+
     onProgress?.call(0, 'Logged in as u/$username. Fetching saved items...');
 
     final List<SavedItemsTableCompanion> allCompanions = [];
@@ -1290,6 +1312,29 @@ class SavedItemRepository {
           after: after,
           limit: currentLimit,
         );
+      }
+
+      if (pageNum == 1 &&
+          usedCachedUsername &&
+          pageResult.error != null &&
+          (pageResult.error!.startsWith('HTTP 404') ||
+              pageResult.error!.startsWith('HTTP 403'))) {
+        usedCachedUsername = false;
+        final freshUsername = await _resolveRedditUsername(
+          onUsernameResolved: onUsernameResolved,
+        );
+        if (freshUsername != username) {
+          username = freshUsername;
+          onProgress?.call(
+            0,
+            'Logged in as u/$username. Fetching saved items...',
+          );
+          pageResult = await _redditApi.fetchSavedPage(
+            username: username,
+            after: after,
+            limit: currentLimit,
+          );
+        }
       }
 
       if (pageResult.error != null) {
@@ -1330,14 +1375,12 @@ class SavedItemRepository {
         break; // reached the end of saved items
       }
 
-      if (allCompanions.length >= maxItems) {
+      if (pageNum >= maxPages || allCompanions.length >= maxItems) {
         debugPrint(
           '[RedditSync] Reached max requested items limit ($maxItems).',
         );
         break;
       }
-
-      await Future.delayed(const Duration(milliseconds: 300));
     }
 
     if (allCompanions.isEmpty) {

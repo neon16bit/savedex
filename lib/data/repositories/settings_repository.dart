@@ -35,6 +35,7 @@ class UserSettings {
   final bool hideNsfwInFeed;
   final bool enableFrostedEffects;
   final bool hasSeenOnboarding;
+  final int pullToRefreshPages;
 
   const UserSettings({
     this.themeMode = ThemeMode.system,
@@ -59,6 +60,7 @@ class UserSettings {
     this.hideNsfwInFeed = false,
     this.enableFrostedEffects = true,
     this.hasSeenOnboarding = false,
+    this.pullToRefreshPages = 1,
   });
 
   bool get isAuthenticatedWithOAuth =>
@@ -104,6 +106,7 @@ class UserSettings {
     bool? hideNsfwInFeed,
     bool? enableFrostedEffects,
     bool? hasSeenOnboarding,
+    int? pullToRefreshPages,
     bool clearOAuthTokens = false,
   }) {
     return UserSettings(
@@ -138,6 +141,10 @@ class UserSettings {
       hideNsfwInFeed: hideNsfwInFeed ?? this.hideNsfwInFeed,
       enableFrostedEffects: enableFrostedEffects ?? this.enableFrostedEffects,
       hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
+      pullToRefreshPages: (pullToRefreshPages ?? this.pullToRefreshPages).clamp(
+        1,
+        10,
+      ),
     );
   }
 }
@@ -216,6 +223,8 @@ class SettingsRepository {
     final enableFrostedEffects =
         _prefs.getBool('enable_frosted_effects') ?? true;
     final hasSeenOnboarding = _prefs.getBool('has_seen_onboarding') ?? false;
+    final pullToRefreshPages = (_prefs.getInt('pull_to_refresh_pages') ?? 1)
+        .clamp(1, 10);
 
     return UserSettings(
       themeMode: themeMode,
@@ -240,6 +249,7 @@ class SettingsRepository {
       hideNsfwInFeed: hideNsfwInFeed,
       enableFrostedEffects: enableFrostedEffects,
       hasSeenOnboarding: hasSeenOnboarding,
+      pullToRefreshPages: pullToRefreshPages,
     );
   }
 
@@ -359,6 +369,10 @@ class SettingsRepository {
       newSettings.enableFrostedEffects,
     );
     await prefs.setBool('has_seen_onboarding', newSettings.hasSeenOnboarding);
+    await prefs.setInt(
+      'pull_to_refresh_pages',
+      newSettings.pullToRefreshPages.clamp(1, 10),
+    );
   }
 
   Future<void> updateOAuthTokens({

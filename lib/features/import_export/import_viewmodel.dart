@@ -473,7 +473,7 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
     }
   }
 
-  Future<ImportSummary?> pullSavedFromReddit() async {
+  Future<ImportSummary?> pullSavedFromReddit({int maxPages = 10}) async {
     if (!_acquireLock()) return null;
     try {
       state = state.copyWith(
@@ -486,8 +486,12 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         clearSavedFilePath: true,
       );
 
+      final maxItems = maxPages.clamp(1, 10) * 100;
+      final settingsVm = ref.read(settingsViewModelProvider.notifier);
       final repo = ref.read(savedItemRepositoryProvider);
       final summary = await repo.pullSavedFromReddit(
+        maxItems: maxItems,
+        onUsernameResolved: settingsVm.setRedditUsername,
         onProgress: (count, status) {
           state = state.copyWith(
             statusMessage: status,
@@ -502,16 +506,6 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
         progress: 1.0,
         lastImportSummary: summary,
       );
-
-      try {
-        final redditApi = ref.read(redditApiServiceProvider);
-        final userResult = await redditApi.fetchMyUsername();
-        if (userResult.username != null) {
-          ref
-              .read(settingsViewModelProvider.notifier)
-              .setRedditUsername(userResult.username);
-        }
-      } catch (_) {}
 
       ref.invalidate(savedFeedPaginationProvider);
 

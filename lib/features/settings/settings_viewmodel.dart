@@ -132,6 +132,11 @@ class SettingsViewModel extends Notifier<UserSettings> {
     ref.read(settingsRepositoryProvider).updateSettings(state);
   }
 
+  void setPullToRefreshPages(int pages) {
+    state = state.copyWith(pullToRefreshPages: pages.clamp(1, 10));
+    ref.read(settingsRepositoryProvider).updateSettings(state);
+  }
+
   void updateRedditCredentials({
     required String? clientId,
     String? clientSecret,

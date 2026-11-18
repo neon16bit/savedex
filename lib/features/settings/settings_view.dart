@@ -100,6 +100,26 @@ class SettingsView extends ConsumerWidget {
                     );
                   },
                 ),
+                const Divider(height: 1, indent: 56, endIndent: 16),
+                ListTile(
+                  leading: const Icon(Icons.refresh_rounded),
+                  title: const Text(
+                    'Pull-to-Refresh Pages',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Fetch ${settings.pullToRefreshPages} ${settings.pullToRefreshPages == 1 ? 'page' : 'pages'} (up to ${_formatNumber(settings.pullToRefreshPages * 100)} items) on Saved feed refresh',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _showPullToRefreshPagesDialog(
+                    context,
+                    settings.pullToRefreshPages,
+                    viewModel,
+                  ),
+                ),
               ],
             ),
           ),
@@ -815,6 +835,94 @@ class SettingsView extends ConsumerWidget {
             child: const Text('Close'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showPullToRefreshPagesDialog(
+    BuildContext context,
+    int currentPages,
+    SettingsViewModel viewModel,
+  ) {
+    var selectedPages = currentPages.clamp(1, 10);
+    showFrostedDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final theme = Theme.of(ctx);
+          final colorScheme = theme.colorScheme;
+          return FrostedAlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            title: const Text('Pull-to-Refresh Pages'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose how many pages to pull when refreshing the Saved feed. Manual sync elsewhere still fetches all 10 pages.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    '$selectedPages ${selectedPages == 1 ? 'page' : 'pages'} (up to ${_formatNumber(selectedPages * 100)} items)',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Slider(
+                  value: selectedPages.toDouble(),
+                  min: 1,
+                  max: 10,
+                  divisions: 9,
+                  label: '$selectedPages',
+                  onChanged: (value) {
+                    setDialogState(() {
+                      selectedPages = value.round();
+                    });
+                  },
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '1 page (100)',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      '10 pages (1,000)',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  viewModel.setPullToRefreshPages(selectedPages);
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1663,8 +1771,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
                                     ),
                                   ),
                                   const TextSpan(
-                                    text:
-                                        ' for how to get your Client ID, Redirect URI, and User Agent.',
+                                    text: ' for how to get your Client ID, Redirect URI, and User Agent.',
                                   ),
                                 ],
                               ),
