@@ -48,14 +48,10 @@ class WelcomeOnboardingDialog extends ConsumerWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.bookmarks_rounded,
+            child: SavedexLogo(
+              size: 24,
+              filled: false,
               color: colorScheme.onPrimaryContainer,
-              size: 22,
             ),
           ),
           const SizedBox(width: 12),

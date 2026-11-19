@@ -215,8 +215,11 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
                 height: tabButtonHeight,
                 label: 'Saved',
                 tooltip: 'Saved',
-                icon: Icons.bookmarks_outlined,
-                selectedIcon: Icons.bookmarks_rounded,
+                iconBuilder: (_, isSelected, color) => SavedexLogo(
+                  size: kNavBarTabIconSize,
+                  filled: isSelected,
+                  color: color,
+                ),
                 isSelected: selectedTab == 0,
                 onTap: () {
                   HapticFeedback.selectionClick();
@@ -1553,8 +1556,10 @@ class _SquircleNavTabButton extends StatelessWidget {
   final double height;
   final String label;
   final String tooltip;
-  final IconData icon;
-  final IconData selectedIcon;
+  final IconData? icon;
+  final IconData? selectedIcon;
+  final Widget Function(BuildContext context, bool isSelected, Color color)?
+  iconBuilder;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -1563,11 +1568,30 @@ class _SquircleNavTabButton extends StatelessWidget {
     required this.height,
     required this.label,
     required this.tooltip,
-    required this.icon,
-    required this.selectedIcon,
+    this.icon,
+    this.selectedIcon,
+    this.iconBuilder,
     required this.isSelected,
     required this.onTap,
-  });
+  }) : assert(
+         iconBuilder != null || (icon != null && selectedIcon != null),
+         'Provide either iconBuilder or both icon and selectedIcon.',
+       );
+
+  Widget _buildIcon(BuildContext context, Color foregroundColor) {
+    if (iconBuilder != null) {
+      return KeyedSubtree(
+        key: ValueKey<bool>(isSelected),
+        child: iconBuilder!(context, isSelected, foregroundColor),
+      );
+    }
+    return Icon(
+      isSelected ? selectedIcon! : icon!,
+      key: ValueKey<bool>(isSelected),
+      size: kNavBarTabIconSize,
+      color: foregroundColor,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1592,12 +1616,7 @@ class _SquircleNavTabButton extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          isSelected ? selectedIcon : icon,
-                          key: ValueKey<bool>(isSelected),
-                          size: kNavBarTabIconSize,
-                          color: foregroundColor,
-                        ),
+                        _buildIcon(context, foregroundColor),
                         const SizedBox(height: 3),
                         Text(
                           label,
@@ -1616,12 +1635,7 @@ class _SquircleNavTabButton extends StatelessWidget {
                       ],
                     ),
                   )
-                : Icon(
-                    isSelected ? selectedIcon : icon,
-                    key: ValueKey<bool>(isSelected),
-                    size: kNavBarTabIconSize,
-                    color: foregroundColor,
-                  ),
+                : _buildIcon(context, foregroundColor),
           ),
         ),
       ),

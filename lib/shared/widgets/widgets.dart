@@ -10,3 +10,4 @@ export 'collection_picker_sheet.dart';
 export 'collection_badge.dart';
 export 'collection_form_dialog.dart';
 export 'frosted_surface.dart';
+export 'savedex_logo.dart';

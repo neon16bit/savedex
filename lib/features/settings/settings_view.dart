@@ -23,6 +23,7 @@ import 'package:savedex/features/search/search_viewmodel.dart';
 import 'package:savedex/features/settings/rate_limits_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/settings/subreddit_user_metadata_view.dart';
+import 'package:savedex/features/settings/widgets/about_dialog.dart';
 import 'package:savedex/features/settings/widgets/update_dialog.dart';
 import 'package:savedex/features/shell/app_shell.dart';
 import 'package:savedex/features/shell/widgets/welcome_onboarding_dialog.dart';
@@ -807,9 +808,13 @@ class SettingsView extends ConsumerWidget {
                       packageInfo?.version ?? '',
                     );
                     return ListTile(
-                      leading: const Icon(Icons.info_outline_rounded),
+                      leading: SavedexLogo(
+                        size: 28,
+                        filled: false,
+                        color: colorScheme.onSurface,
+                      ),
                       title: const Text(
-                        'Savedex',
+                        'About Savedex',
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14.5,
@@ -820,6 +825,9 @@ class SettingsView extends ConsumerWidget {
                             ? 'Version $version • Reddit Saved Library Manager'
                             : 'Reddit Saved Library Manager',
                       ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          showAboutSavedexDialog(context, version: version),
                     );
                   },
                 ),

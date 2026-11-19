@@ -11,6 +11,7 @@ class AppConstants {
 
   static const String crosspostDelimiter = '\u001F';
 
+  static const String githubRepoUrl = 'https://github.com/neon16bit/savedex';
   static const String githubLatestReleaseUrl =
       'https://api.github.com/repos/neon16bit/savedex/releases/latest';
   static const String githubReleasesPageUrl =

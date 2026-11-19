@@ -280,6 +280,8 @@ class _SavedViewState extends ConsumerState<SavedView> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            //SavedexLogo(size: 22, filled: true, color: colorScheme.primary),
+            //const SizedBox(width: 8),
             Flexible(
               child: Text(
                 'Savedex',
@@ -892,13 +894,9 @@ class _SavedViewState extends ConsumerState<SavedView> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withValues(alpha: 0.4),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.bookmarks_rounded,
-                    size: 52,
+                  child: SavedexLogo(
+                    size: 56,
+                    filled: false,
                     color: colorScheme.primary,
                   ),
                 ),
