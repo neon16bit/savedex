@@ -181,6 +181,11 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
     }
   }
 
+  String _formatFileTimestamp(DateTime now) {
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${now.year}-${two(now.month)}-${two(now.day)}_${two(now.hour)}-${two(now.minute)}-${two(now.second)}';
+  }
+
   Future<String?> createBackup() async {
     if (!_acquireLock()) return null;
     try {
@@ -211,10 +216,8 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
       final service = ref.read(backupExportServiceProvider);
       final bytes = service.createBackup(allItems, subreddits: subreddits);
 
-      final now = DateTime.now();
-      final dateStr =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-      final fileName = 'savedex_backup_$dateStr.savedex';
+      final timestamp = _formatFileTimestamp(DateTime.now());
+      final fileName = 'savedex_backup_$timestamp.savedex';
 
       final savedDisplayPath = await _saveFilePickerResult(
         dialogTitle: 'Save Savedex Backup',
@@ -582,11 +585,9 @@ class ImportExportViewModel extends Notifier<ImportExportState> {
           ? service.exportToJsonBytes(allItems, subreddits: subreddits)
           : service.exportToCsvBytes(allItems);
 
-      final now = DateTime.now();
-      final dateStr =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final timestamp = _formatFileTimestamp(DateTime.now());
       final ext = asJson ? 'json' : 'csv';
-      final fileName = 'savedex_export_$dateStr.$ext';
+      final fileName = 'savedex_export_$timestamp.$ext';
       final mimeType = asJson ? 'application/json' : 'text/csv';
 
       final savedDisplayPath = await _saveFilePickerResult(
