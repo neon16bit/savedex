@@ -86,7 +86,10 @@ class UserSettings {
   });
 
   bool get isAuthenticatedWithOAuth =>
-      redditRefreshToken != null && redditRefreshToken!.isNotEmpty;
+      redditRefreshToken != null &&
+      redditRefreshToken!.isNotEmpty &&
+      redditClientId != null &&
+      redditClientId!.isNotEmpty;
 
   ThemeFlavor get themeFlavor => switch (themeMode) {
     ThemeMode.system => ThemeFlavor.system,
@@ -137,6 +140,11 @@ class UserSettings {
     int? pullPushRequestDelayMs,
     int? arcticShiftRequestDelayMs,
     bool clearOAuthTokens = false,
+    bool clearRedditClientId = false,
+    bool clearRedditClientSecret = false,
+    bool clearRedditRedirectUri = false,
+    bool clearUserAgent = false,
+    bool clearRedditUsername = false,
   }) {
     return UserSettings(
       themeMode: themeMode ?? this.themeMode,
@@ -148,10 +156,16 @@ class UserSettings {
       catppuccinAccent: catppuccinAccent ?? this.catppuccinAccent,
       useCatppuccinSeed: useCatppuccinSeed ?? this.useCatppuccinSeed,
       feedLayoutMode: feedLayoutMode ?? this.feedLayoutMode,
-      redditClientId: redditClientId ?? this.redditClientId,
-      redditClientSecret: redditClientSecret ?? this.redditClientSecret,
-      redditRedirectUri: redditRedirectUri ?? this.redditRedirectUri,
-      userAgent: userAgent ?? this.userAgent,
+      redditClientId: clearRedditClientId
+          ? null
+          : (redditClientId ?? this.redditClientId),
+      redditClientSecret: clearRedditClientSecret
+          ? null
+          : (redditClientSecret ?? this.redditClientSecret),
+      redditRedirectUri: clearRedditRedirectUri
+          ? null
+          : (redditRedirectUri ?? this.redditRedirectUri),
+      userAgent: clearUserAgent ? null : (userAgent ?? this.userAgent),
       redditRefreshToken: clearOAuthTokens
           ? null
           : (redditRefreshToken ?? this.redditRefreshToken),
@@ -161,7 +175,7 @@ class UserSettings {
       redditTokenExpiry: clearOAuthTokens
           ? null
           : (redditTokenExpiry ?? this.redditTokenExpiry),
-      redditUsername: clearOAuthTokens
+      redditUsername: (clearOAuthTokens || clearRedditUsername)
           ? null
           : (redditUsername ?? this.redditUsername),
       autoEnrichOnImport: autoEnrichOnImport ?? this.autoEnrichOnImport,
@@ -494,32 +508,5 @@ class SettingsRepository {
       'arctic_shift_request_delay_ms',
       newSettings.arcticShiftRequestDelayMs.clamp(0, 3000),
     );
-  }
-
-  Future<void> updateOAuthTokens({
-    required String accessToken,
-    required int expiresIn,
-  }) {
-    final expiry = DateTime.now().toUtc().add(
-      Duration(seconds: expiresIn - 60),
-    );
-    _settings = _settings.copyWith(
-      redditAccessToken: accessToken,
-      redditTokenExpiry: expiry,
-    );
-    final prefs = _prefs;
-    if (prefs == null) return Future.value();
-
-    return _writeQueue = _writeQueue
-        .then((_) async {
-          await prefs.setString('reddit_access_token', accessToken);
-          await prefs.setInt(
-            'reddit_token_expiry',
-            expiry.millisecondsSinceEpoch,
-          );
-        })
-        .catchError((e) {
-          debugPrint('[SettingsRepository] Error updating OAuth tokens: $e');
-        });
   }
 }

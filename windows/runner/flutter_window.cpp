@@ -25,6 +25,8 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  reddit_auth_handler_ = std::make_unique<RedditAuthHandler>(
+      GetHandle(), flutter_controller_->engine()->messenger());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +42,11 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  if (reddit_auth_handler_) {
+    reddit_auth_handler_->Dispose();
+    reddit_auth_handler_.reset();
+  }
+
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -51,6 +58,18 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == WM_COPYDATA && reddit_auth_handler_) {
+    if (reddit_auth_handler_->HandleCopyData(
+            hwnd, reinterpret_cast<const COPYDATASTRUCT*>(lparam))) {
+      return TRUE;
+    }
+  }
+
+  if (message == WM_ENDSESSION && wparam != 0 && reddit_auth_handler_) {
+    reddit_auth_handler_->Dispose();
+    reddit_auth_handler_.reset();
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
+import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/theme/app_theme.dart';
 
 final settingsViewModelProvider =
@@ -228,18 +229,35 @@ class SettingsViewModel extends Notifier<UserSettings> {
     required String? redirectUri,
     required String? userAgent,
   }) {
+    final trimmedClientId = clientId?.trim();
+    final nextClientId = (trimmedClientId == null || trimmedClientId.isEmpty)
+        ? null
+        : trimmedClientId;
+    final trimmedSecret = clientSecret?.trim();
+    final nextClientSecret = (trimmedSecret == null || trimmedSecret.isEmpty)
+        ? null
+        : trimmedSecret;
+    final trimmedRedirectUri = redirectUri?.trim();
+    final nextRedirectUri =
+        (trimmedRedirectUri == null || trimmedRedirectUri.isEmpty)
+        ? null
+        : trimmedRedirectUri;
+    final trimmedUserAgent = userAgent?.trim();
+    final nextUserAgent = (trimmedUserAgent == null || trimmedUserAgent.isEmpty)
+        ? null
+        : trimmedUserAgent;
+
     _commitSettings(
       state.copyWith(
-        redditClientId: clientId?.trim().isEmpty == true
-            ? null
-            : clientId?.trim(),
-        redditClientSecret: clientSecret?.trim().isEmpty == true
-            ? null
-            : clientSecret?.trim(),
-        redditRedirectUri: redirectUri?.trim().isEmpty == true
-            ? null
-            : redirectUri?.trim(),
-        userAgent: userAgent?.trim().isEmpty == true ? null : userAgent?.trim(),
+        redditClientId: nextClientId,
+        clearRedditClientId: nextClientId == null,
+        redditClientSecret: nextClientSecret,
+        clearRedditClientSecret:
+            clientSecret != null && nextClientSecret == null,
+        redditRedirectUri: nextRedirectUri,
+        clearRedditRedirectUri: nextRedirectUri == null,
+        userAgent: nextUserAgent,
+        clearUserAgent: nextUserAgent == null,
       ),
     );
 
@@ -247,25 +265,33 @@ class SettingsViewModel extends Notifier<UserSettings> {
         .read(redditApiServiceProvider)
         .updateCredentials(
           clientId: state.redditClientId,
+          clearClientId: state.redditClientId == null,
           clientSecret: state.redditClientSecret,
+          clearClientSecret: state.redditClientSecret == null,
           redirectUri: state.redditRedirectUri,
+          clearRedirectUri: state.redditRedirectUri == null,
           userAgent: state.userAgent,
+          clearUserAgent: state.userAgent == null,
         );
   }
 
   void setOAuthTokens({
     required String accessToken,
-    required String? refreshToken,
+    required String refreshToken,
     required int expiresIn,
   }) {
+    final trimmedRefresh = refreshToken.trim();
+    if (trimmedRefresh.isEmpty) return;
+
     final expiry = DateTime.now().toUtc().add(
-      Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
+      RedditApiService.safeTokenLifetime(expiresIn),
     );
     _commitSettings(
       state.copyWith(
         redditAccessToken: accessToken,
-        redditRefreshToken: refreshToken,
+        redditRefreshToken: trimmedRefresh,
         redditTokenExpiry: expiry,
+        clearRedditUsername: true,
       ),
     );
 
@@ -273,14 +299,15 @@ class SettingsViewModel extends Notifier<UserSettings> {
         .read(redditApiServiceProvider)
         .updateCredentials(
           accessToken: accessToken,
-          refreshToken: refreshToken,
+          refreshToken: trimmedRefresh,
           tokenExpiry: expiry,
         );
   }
 
   void saveRefreshedToken(String accessToken, int expiresIn) {
+    if (!state.isAuthenticatedWithOAuth) return;
     final expiry = DateTime.now().toUtc().add(
-      Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
+      RedditApiService.safeTokenLifetime(expiresIn),
     );
     _commitSettings(
       state.copyWith(redditAccessToken: accessToken, redditTokenExpiry: expiry),

@@ -1280,8 +1280,9 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
   late final TextEditingController _userAgentController;
 
   bool _isConnecting = false;
-  bool _copiedAuthUrl = false;
-  Timer? _copiedAuthUrlTimer;
+  bool _isWaitingForDesktopBrowser = false;
+  int _authAttemptId = 0;
+  int? _desktopAuthSessionId;
   String? _errorMessage;
 
   @override
@@ -1300,10 +1301,16 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
     if (settings.isAuthenticatedWithOAuth && settings.redditUsername == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final attemptId = _authAttemptId;
         try {
           final apiService = ref.read(redditApiServiceProvider);
           final userResult = await apiService.fetchMyUsername();
-          if (userResult.username != null && mounted) {
+          if (!mounted || attemptId != _authAttemptId) return;
+          if (!ref.read(settingsViewModelProvider).isAuthenticatedWithOAuth) {
+            return;
+          }
+          if (userResult.username != null) {
             ref
                 .read(settingsViewModelProvider.notifier)
                 .setRedditUsername(userResult.username);
@@ -1313,9 +1320,20 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     }
   }
 
+  void _abortPendingAuth() {
+    _authAttemptId++;
+    final sessionId = _desktopAuthSessionId;
+    _desktopAuthSessionId = null;
+    if (sessionId != null) {
+      unawaited(
+        RedditAuthService.cancelPendingDesktopAuth(sessionId: sessionId),
+      );
+    }
+  }
+
   @override
   void dispose() {
-    _copiedAuthUrlTimer?.cancel();
+    _abortPendingAuth();
     _clientIdController.dispose();
     _redirectUriController.dispose();
     _userAgentController.dispose();
@@ -1332,27 +1350,107 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     if (_isConnecting) return;
     final clientId = _clientIdController.text.trim();
     final redirectUri = _redirectUriController.text.trim();
+    final userAgent = _userAgentController.text.trim();
 
-    if (clientId.isEmpty || redirectUri.isEmpty) {
+    if (clientId.isEmpty || redirectUri.isEmpty || userAgent.isEmpty) {
       setState(() {
         _errorMessage =
-            'Please enter both OAuth Client ID and Redirect URI first.';
+            'Please enter OAuth Client ID, Redirect URI, and User Agent first.';
       });
       return;
     }
 
+    final attemptId = ++_authAttemptId;
+    final state = RedditApiService.generateOAuthState();
     final authUrl = RedditApiService.buildAuthorizationUrl(
       clientId: clientId,
       redirectUri: redirectUri,
+      state: state,
+      compact: RedditAuthService.isAndroid,
     );
 
-    await _launchAndroidCustomTab(authUrl, redirectUri);
+    if (RedditAuthService.isAndroid) {
+      await _launchAndroidCustomTab(
+        authUrl,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        userAgent: userAgent,
+        expectedState: state,
+        attemptId: attemptId,
+      );
+    } else if (RedditAuthService.isDesktop) {
+      if (RedditAuthService.parseCustomScheme(redirectUri) != null) {
+        await _launchDesktopCustomSchemeAuth(
+          authUrl,
+          clientId: clientId,
+          redirectUri: redirectUri,
+          userAgent: userAgent,
+          expectedState: state,
+          attemptId: attemptId,
+        );
+      } else {
+        setState(() {
+          _errorMessage = 'Redirect URI must use a valid custom URL scheme.';
+        });
+      }
+    }
+  }
+
+  Future<void> _handleAuthCallback(
+    String callbackUrl, {
+    required String clientId,
+    required String redirectUri,
+    required String userAgent,
+    required String expectedState,
+    required int attemptId,
+  }) async {
+    if (!mounted || attemptId != _authAttemptId) return;
+    final callbackUri = Uri.tryParse(callbackUrl.replaceAll('#_', ''));
+    final returnedState = callbackUri?.queryParameters['state'];
+    if (returnedState != expectedState) {
+      setState(() {
+        _isConnecting = false;
+        _errorMessage = 'OAuth state mismatch. Please try authorizing again.';
+      });
+      return;
+    }
+
+    final error = callbackUri?.queryParameters['error'];
+    if (error != null && error.isNotEmpty) {
+      setState(() {
+        _isConnecting = false;
+        _errorMessage = error == 'access_denied'
+            ? 'Authorization was canceled.'
+            : 'Reddit authorization failed ($error).';
+      });
+      return;
+    }
+
+    final code = callbackUri?.queryParameters['code'];
+    if (code != null && code.isNotEmpty) {
+      await _exchangeCode(
+        code,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        userAgent: userAgent,
+        attemptId: attemptId,
+      );
+    } else {
+      setState(() {
+        _isConnecting = false;
+        _errorMessage = 'Could not find authorization code in callback URL.';
+      });
+    }
   }
 
   Future<void> _launchAndroidCustomTab(
-    String authUrl,
-    String redirectUri,
-  ) async {
+    String authUrl, {
+    required String clientId,
+    required String redirectUri,
+    required String userAgent,
+    required String expectedState,
+    required int attemptId,
+  }) async {
     if (_isConnecting) return;
     setState(() {
       _isConnecting = true;
@@ -1371,83 +1469,147 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
         callbackScheme: scheme,
       );
 
-      final code = RedditApiService.parseCodeFromRedirectUrl(callbackUrl);
-      if (code != null && code.isNotEmpty) {
-        if (mounted) {
-          await _exchangeCode(code);
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'Could not find authorization code in callback URL.';
-            _isConnecting = false;
-          });
-        }
-      }
+      await _handleAuthCallback(
+        callbackUrl,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        userAgent: userAgent,
+        expectedState: expectedState,
+        attemptId: attemptId,
+      );
     } on PlatformException catch (e) {
+      if (!mounted || attemptId != _authAttemptId) return;
       if (e.code == 'CANCELED' || e.code == 'CANCELLED') {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Authorization was canceled.';
-            _isConnecting = false;
-          });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            _errorMessage =
-                'Custom Tab failed (${e.code}). Try copying the authorization URL below.';
-            _isConnecting = false;
-          });
-        }
-      }
-    } catch (e) {
-      if (mounted) {
         setState(() {
-          _errorMessage = 'Custom Tab error: $e';
+          _errorMessage = 'Authorization was canceled.';
+          _isConnecting = false;
+        });
+      } else {
+        final detail = (e.message != null && e.message!.trim().isNotEmpty)
+            ? ': ${e.message}'
+            : '';
+        setState(() {
+          _errorMessage =
+              'Custom Tab failed (${e.code})$detail. Please try again.';
           _isConnecting = false;
         });
       }
-    }
-  }
-
-  Future<void> _copyAuthUrl() async {
-    final clientId = _clientIdController.text.trim();
-    final redirectUri = _redirectUriController.text.trim();
-
-    if (clientId.isEmpty || redirectUri.isEmpty) {
-      setState(
-        () => _errorMessage =
-            'Please enter both OAuth Client ID and Redirect URI first.',
-      );
-      return;
-    }
-
-    final authUrl = RedditApiService.buildAuthorizationUrl(
-      clientId: clientId,
-      redirectUri: redirectUri,
-    );
-
-    await Clipboard.setData(ClipboardData(text: authUrl));
-    if (mounted) {
-      _copiedAuthUrlTimer?.cancel();
-      setState(() => _copiedAuthUrl = true);
-      _copiedAuthUrlTimer = Timer(const Duration(seconds: 2), () {
-        if (mounted) {
-          setState(() => _copiedAuthUrl = false);
-        }
+    } catch (e) {
+      if (!mounted || attemptId != _authAttemptId) return;
+      setState(() {
+        _errorMessage = 'Custom Tab error: $e';
+        _isConnecting = false;
       });
     }
   }
 
-  Future<void> _exchangeCode(String code) async {
-    final clientId = _clientIdController.text.trim();
-    final redirectUri = _redirectUriController.text.trim();
-    final userAgent = _userAgentController.text.trim();
+  Future<void> _launchDesktopCustomSchemeAuth(
+    String authUrl, {
+    required String clientId,
+    required String redirectUri,
+    required String userAgent,
+    required String expectedState,
+    required int attemptId,
+  }) async {
+    if (_isConnecting) return;
+    final sessionId = RedditAuthService.allocateDesktopAuthSessionId();
+    _desktopAuthSessionId = sessionId;
+    setState(() {
+      _isConnecting = true;
+      _isWaitingForDesktopBrowser = true;
+      _errorMessage = null;
+    });
 
+    try {
+      final callbackUrl =
+          await RedditAuthService.authenticateWithDesktopCustomScheme(
+            authUrl: authUrl,
+            redirectUri: redirectUri,
+            sessionId: sessionId,
+          );
+
+      if (_desktopAuthSessionId == sessionId) {
+        _desktopAuthSessionId = null;
+      }
+      if (!mounted || attemptId != _authAttemptId) return;
+      setState(() => _isWaitingForDesktopBrowser = false);
+
+      await _handleAuthCallback(
+        callbackUrl,
+        clientId: clientId,
+        redirectUri: redirectUri,
+        userAgent: userAgent,
+        expectedState: expectedState,
+        attemptId: attemptId,
+      );
+    } on PlatformException catch (e) {
+      if (_desktopAuthSessionId == sessionId) {
+        _desktopAuthSessionId = null;
+      }
+      if (!mounted || attemptId != _authAttemptId) return;
+      setState(() {
+        _isWaitingForDesktopBrowser = false;
+        _isConnecting = false;
+        switch (e.code) {
+          case 'CANCELED':
+          case 'CANCELLED':
+            _errorMessage = 'Authorization was canceled.';
+          case 'TIMEOUT':
+            _errorMessage = 'Authorization timed out waiting for the browser callback. Please try again.';
+          case 'INVALID_REDIRECT_URI':
+            _errorMessage = e.message ?? 'Invalid Redirect URI.';
+          case 'SCHEME_REGISTER_FAILED':
+            _errorMessage =
+                e.message ??
+                'Could not register the custom URL scheme on this device.';
+          case 'BROWSER_LAUNCH_FAILED':
+            _errorMessage =
+                e.message ?? 'Could not open browser automatically.';
+          default:
+            _errorMessage = e.message ?? 'Authorization failed (${e.code}).';
+        }
+      });
+    } on MissingPluginException {
+      if (_desktopAuthSessionId == sessionId) {
+        _desktopAuthSessionId = null;
+      }
+      if (!mounted || attemptId != _authAttemptId) return;
+      setState(() {
+        _isWaitingForDesktopBrowser = false;
+        _isConnecting = false;
+        _errorMessage = 'Desktop handler is not available in this build.';
+      });
+    } catch (e) {
+      if (_desktopAuthSessionId == sessionId) {
+        _desktopAuthSessionId = null;
+      }
+      if (!mounted || attemptId != _authAttemptId) return;
+      setState(() {
+        _isWaitingForDesktopBrowser = false;
+        _isConnecting = false;
+        _errorMessage = 'Desktop authorization error: $e';
+      });
+    }
+  }
+
+  void _cancelDesktopAuth() {
+    _abortPendingAuth();
+    setState(() {
+      _isWaitingForDesktopBrowser = false;
+      _isConnecting = false;
+      _errorMessage = 'Authorization was canceled.';
+    });
+  }
+
+  Future<void> _exchangeCode(
+    String code, {
+    required String clientId,
+    required String redirectUri,
+    required String userAgent,
+    required int attemptId,
+  }) async {
     if (clientId.isEmpty || redirectUri.isEmpty || userAgent.isEmpty) {
-      if (mounted) {
+      if (mounted && attemptId == _authAttemptId) {
         setState(() {
           _errorMessage = 'OAuth Client ID, Redirect URI, and User Agent must all be provided.';
           _isConnecting = false;
@@ -1465,6 +1627,7 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
 
     try {
       final apiService = ref.read(redditApiServiceProvider);
+      final settingsNotifier = ref.read(settingsViewModelProvider.notifier);
       final tokenResult = await apiService.exchangeAuthorizationCode(
         code: code,
         clientId: clientId,
@@ -1472,49 +1635,61 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
         userAgent: userAgent,
       );
 
+      if (!mounted || attemptId != _authAttemptId) return;
+
       if (tokenResult != null) {
+        final refreshToken = tokenResult.refreshToken?.trim();
+        if (refreshToken == null || refreshToken.isEmpty) {
+          setState(() {
+            _errorMessage = 'Reddit did not return a permanent refresh token. Please try authorizing again.';
+          });
+          return;
+        }
+
         // Save credentials
-        ref
-            .read(settingsViewModelProvider.notifier)
-            .updateRedditCredentials(
-              clientId: clientId,
-              redirectUri: redirectUri,
-              userAgent: userAgent,
-            );
+        settingsNotifier.updateRedditCredentials(
+          clientId: clientId,
+          redirectUri: redirectUri,
+          userAgent: userAgent,
+        );
+        if (_clientIdController.text != clientId) {
+          _clientIdController.text = clientId;
+        }
+        if (_redirectUriController.text != redirectUri) {
+          _redirectUriController.text = redirectUri;
+        }
+        if (_userAgentController.text != userAgent) {
+          _userAgentController.text = userAgent;
+        }
 
         // Save OAuth tokens
-        ref
-            .read(settingsViewModelProvider.notifier)
-            .setOAuthTokens(
-              accessToken: tokenResult.accessToken,
-              refreshToken: tokenResult.refreshToken,
-              expiresIn: tokenResult.expiresIn,
-            );
+        settingsNotifier.setOAuthTokens(
+          accessToken: tokenResult.accessToken,
+          refreshToken: refreshToken,
+          expiresIn: tokenResult.expiresIn,
+        );
 
         // Fetch and persist username
         try {
           final userResult = await apiService.fetchMyUsername();
+          if (!mounted || attemptId != _authAttemptId) return;
           if (userResult.username != null) {
-            ref
-                .read(settingsViewModelProvider.notifier)
-                .setRedditUsername(userResult.username);
+            settingsNotifier.setRedditUsername(userResult.username);
           }
         } catch (_) {}
       } else {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Token exchange failed. Please verify that your Client ID matches the app, Redirect URI is identical, and the code was not already used.';
-          });
-        }
+        setState(() {
+          _errorMessage = 'Token exchange failed. Please verify that your Client ID matches the app, Redirect URI is identical, and the code was not already used.';
+        });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && attemptId == _authAttemptId) {
         setState(() {
           _errorMessage = 'Error during token exchange: $e';
         });
       }
     } finally {
-      if (mounted) {
+      if (mounted && attemptId == _authAttemptId) {
         setState(() {
           _isConnecting = false;
         });
@@ -1538,10 +1713,11 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
       children: [
         TextField(
           controller: _clientIdController,
+          enabled: !_isConnecting,
           decoration: InputDecoration(
             labelText: 'OAuth Client ID',
             prefixIcon: const Icon(Icons.badge_outlined, size: 20),
-            suffixIcon: _clientIdController.text.isNotEmpty
+            suffixIcon: (_clientIdController.text.isNotEmpty && !_isConnecting)
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 16),
                     onPressed: () =>
@@ -1554,10 +1730,12 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
         const SizedBox(height: 12),
         TextField(
           controller: _redirectUriController,
+          enabled: !_isConnecting,
           decoration: InputDecoration(
             labelText: 'Redirect URI',
             prefixIcon: const Icon(Icons.link_rounded, size: 20),
-            suffixIcon: _redirectUriController.text.isNotEmpty
+            suffixIcon:
+                (_redirectUriController.text.isNotEmpty && !_isConnecting)
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 16),
                     onPressed: () =>
@@ -1570,10 +1748,11 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
         const SizedBox(height: 12),
         TextField(
           controller: _userAgentController,
+          enabled: !_isConnecting,
           decoration: InputDecoration(
             labelText: 'User Agent',
             prefixIcon: const Icon(Icons.devices_rounded, size: 20),
-            suffixIcon: _userAgentController.text.isNotEmpty
+            suffixIcon: (_userAgentController.text.isNotEmpty && !_isConnecting)
                 ? IconButton(
                     icon: const Icon(Icons.clear, size: 16),
                     onPressed: () =>
@@ -1594,337 +1773,377 @@ class _RedditOAuthDialogState extends ConsumerState<_RedditOAuthDialog> {
     final colorScheme = theme.colorScheme;
     final isConnected = settings.isAuthenticatedWithOAuth;
     final hasUnsavedChanges =
-        _clientIdController.text != (settings.redditClientId ?? '') ||
-        _redirectUriController.text != (settings.redditRedirectUri ?? '') ||
-        _userAgentController.text != (settings.userAgent ?? '');
+        _clientIdController.text.trim() != (settings.redditClientId ?? '') ||
+        _redirectUriController.text.trim() !=
+            (settings.redditRedirectUri ?? '') ||
+        _userAgentController.text.trim() != (settings.userAgent ?? '');
 
-    return FrostedAlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(12),
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) {
+          _abortPendingAuth();
+        }
+      },
+      child: FrostedAlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.vpn_key_rounded,
+                color: colorScheme.onPrimaryContainer,
+                size: 22,
+              ),
             ),
-            child: Icon(
-              Icons.vpn_key_rounded,
-              color: colorScheme.onPrimaryContainer,
-              size: 22,
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Reddit API & OAuth',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Text(
-              'Reddit API & OAuth',
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (isConnected) ...[
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.green.withValues(alpha: 0.25),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.check_rounded,
-                          color: Colors.green,
-                          size: 20,
-                        ),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isConnected) ...[
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.25),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              settings.redditUsername != null
-                                  ? 'u/${settings.redditUsername}'
-                                  : 'OAuth Connected',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withValues(alpha: 0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: Colors.green,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                settings.redditUsername != null
+                                    ? 'u/${settings.redditUsername}'
+                                    : 'OAuth Connected',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.green,
-                                    shape: BoxShape.circle,
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'OAuth Active',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                    fontSize: 12,
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'OAuth Active',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: colorScheme.onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: colorScheme.error,
+                            side: BorderSide(
+                              color: colorScheme.error.withValues(alpha: 0.35),
                             ),
-                          ],
-                        ),
-                      ),
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: colorScheme.error,
-                          side: BorderSide(
-                            color: colorScheme.error.withValues(alpha: 0.35),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        onPressed: () {
-                          ref
-                              .read(settingsViewModelProvider.notifier)
-                              .clearOAuthAuth();
-                          setState(() {
-                            _errorMessage = null;
-                          });
-                        },
-                        child: const Text(
-                          'Disconnect',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Theme(
-                  data: theme.copyWith(dividerColor: Colors.transparent),
-                  child: ExpansionTile(
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 4),
-                    childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
-                    leading: Icon(
-                      Icons.settings_outlined,
-                      size: 20,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    title: Text(
-                      'API Credentials',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    subtitle: Text(
-                      hasUnsavedChanges
-                          ? 'Unsaved changes'
-                          : 'Client ID, Redirect URI and User Agent',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: hasUnsavedChanges
-                            ? colorScheme.error
-                            : colorScheme.outline,
-                      ),
-                    ),
-                    children: [
-                      _buildTextFields(),
-                      if (hasUnsavedChanges && RedditAuthService.isAndroid) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _handleAuthorize,
-                            icon: const Icon(Icons.refresh_rounded, size: 16),
-                            label: const Text(
-                              'Authorize again with New Credentials',
+                          onPressed: _isConnecting
+                              ? null
+                              : () {
+                                  _authAttemptId++;
+                                  ref
+                                      .read(settingsViewModelProvider.notifier)
+                                      .clearOAuthAuth();
+                                  setState(() {
+                                    _errorMessage = null;
+                                  });
+                                },
+                          child: const Text(
+                            'Disconnect',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.5,
                     ),
-                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        color: colorScheme.primary,
+                  const SizedBox(height: 8),
+                  Theme(
+                    data: theme.copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+                      childrenPadding: const EdgeInsets.only(top: 8, bottom: 4),
+                      leading: Icon(
+                        Icons.settings_outlined,
                         size: 20,
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text.rich(
-                              TextSpan(
-                                text: 'See ',
-                                children: [
-                                  WidgetSpan(
-                                    alignment: PlaceholderAlignment.baseline,
-                                    baseline: TextBaseline.alphabetic,
-                                    child: _InlineLinkText(
-                                      label: 'GitHub README',
-                                      onTap: () => _launchUrl(
-                                        'https://github.com/neon16bit/savedex#where-do-i-get-a-client-id',
+                      title: Text(
+                        'API Credentials',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      subtitle: Text(
+                        hasUnsavedChanges
+                            ? 'Unsaved changes'
+                            : 'Client ID, Redirect URI and User Agent',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: hasUnsavedChanges
+                              ? colorScheme.error
+                              : colorScheme.outline,
+                        ),
+                      ),
+                      children: [
+                        _buildTextFields(),
+                        if ((hasUnsavedChanges || _isConnecting) &&
+                            RedditAuthService.isSupported) ...[
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _isConnecting
+                                      ? null
+                                      : _handleAuthorize,
+                                  icon: _isConnecting
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.refresh_rounded,
+                                          size: 16,
+                                        ),
+                                  label: Text(
+                                    _isWaitingForDesktopBrowser
+                                        ? 'Waiting for browser...'
+                                        : (_isConnecting
+                                              ? 'Connecting...'
+                                              : 'Authorize again with New Credentials'),
+                                  ),
+                                ),
+                              ),
+                              if (_isWaitingForDesktopBrowser) ...[
+                                const SizedBox(width: 8),
+                                OutlinedButton(
+                                  onPressed: _cancelDesktopAuth,
+                                  child: const Text('Cancel'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(
+                        alpha: 0.5,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text.rich(
+                                TextSpan(
+                                  text: 'See ',
+                                  children: [
+                                    WidgetSpan(
+                                      alignment: PlaceholderAlignment.baseline,
+                                      baseline: TextBaseline.alphabetic,
+                                      child: _InlineLinkText(
+                                        label: 'GitHub README',
+                                        onTap: () => _launchUrl(
+                                          'https://github.com/neon16bit/savedex#where-do-i-get-a-client-id',
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  const TextSpan(
-                                    text: ' for how to get your Client ID, Redirect URI, and User Agent.',
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _buildTextFields(),
-                const SizedBox(height: 16),
-                if (RedditAuthService.isAndroid) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed:
-                              (_clientIdController.text.trim().isEmpty ||
-                                  _redirectUriController.text.trim().isEmpty ||
-                                  _isConnecting)
-                              ? null
-                              : _handleAuthorize,
-                          icon: _isConnecting
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.open_in_browser_rounded,
-                                  size: 18,
+                                    const TextSpan(
+                                      text: ' for how to get your Client ID, Redirect URI, and User Agent.',
+                                    ),
+                                  ],
                                 ),
-                          label: Text(
-                            _isConnecting
-                                ? 'Connecting...'
-                                : 'Authorize with Reddit',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        tooltip: _copiedAuthUrl ? 'Copied!' : 'Copy Auth URL',
-                        onPressed:
-                            (_clientIdController.text.trim().isEmpty ||
-                                _redirectUriController.text.trim().isEmpty)
-                            ? null
-                            : _copyAuthUrl,
-                        icon: Icon(
-                          _copiedAuthUrl
-                              ? Icons.check_rounded
-                              : Icons.copy_rounded,
-                          size: 18,
-                          color: _copiedAuthUrl ? colorScheme.primary : null,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildTextFields(),
+                  const SizedBox(height: 16),
+                  if (RedditAuthService.isSupported) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed:
+                                (_clientIdController.text.trim().isEmpty ||
+                                    _redirectUriController.text
+                                        .trim()
+                                        .isEmpty ||
+                                    _userAgentController.text.trim().isEmpty ||
+                                    _isConnecting)
+                                ? null
+                                : _handleAuthorize,
+                            icon: _isConnecting
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.open_in_browser_rounded,
+                                    size: 18,
+                                  ),
+                            label: Text(
+                              _isWaitingForDesktopBrowser
+                                  ? 'Waiting for browser...'
+                                  : (_isConnecting
+                                        ? 'Connecting...'
+                                        : 'Authorize with Reddit'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                        if (_isWaitingForDesktopBrowser) ...[
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: _cancelDesktopAuth,
+                            child: const Text('Cancel'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
+
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline_rounded,
+                          color: colorScheme.onErrorContainer,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: TextStyle(
+                              color: colorScheme.onErrorContainer,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],
-
-              if (_errorMessage != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.error_outline_rounded,
-                        color: colorScheme.onErrorContainer,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: TextStyle(
-                            color: colorScheme.onErrorContainer,
-                            fontSize: 12.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              (isConnected && !hasUnsavedChanges) || _isConnecting
+                  ? 'Close'
+                  : 'Cancel',
+            ),
+          ),
+          if (hasUnsavedChanges || !isConnected)
+            FilledButton(
+              onPressed: _isConnecting ? null : _saveCredentials,
+              child: const Text('Save Credentials'),
+            ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(isConnected && !hasUnsavedChanges ? 'Close' : 'Cancel'),
-        ),
-        if (hasUnsavedChanges || !isConnected)
-          FilledButton(
-            onPressed: _saveCredentials,
-            child: const Text('Save Credentials'),
-          ),
-      ],
     );
   }
 }

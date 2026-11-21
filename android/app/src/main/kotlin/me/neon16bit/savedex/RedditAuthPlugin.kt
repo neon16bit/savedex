@@ -35,6 +35,7 @@ class RedditAuthPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activit
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
         channel = null
+        pendingResult = null
     }
 
     override fun onAttachedToActivity(activityBinding: ActivityPluginBinding) =
@@ -43,17 +44,26 @@ class RedditAuthPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activit
     override fun onReattachedToActivityForConfigChanges(activityBinding: ActivityPluginBinding) =
         attach(activityBinding)
 
-    override fun onDetachedFromActivityForConfigChanges() = detach()
-    override fun onDetachedFromActivity() = detach()
+    override fun onDetachedFromActivityForConfigChanges() = detach(cancelPending = false)
+    override fun onDetachedFromActivity() = detach(cancelPending = true)
 
     private fun attach(activityBinding: ActivityPluginBinding) {
         binding = activityBinding
         activityBinding.addActivityResultListener(this)
     }
 
-    private fun detach() {
+    private fun detach(cancelPending: Boolean) {
         binding?.removeActivityResultListener(this)
         binding = null
+        if (cancelPending) {
+            val pending = pendingResult
+            pendingResult = null
+            if (pending != null) {
+                try {
+                    pending.error("CANCELED", "Activity detached before authorization completed", null)
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -87,7 +97,12 @@ class RedditAuthPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Activit
             putExtra("redirectUri", redirectUri)
             putExtra("callbackScheme", callbackScheme)
         }
-        currentActivity.startActivityForResult(intent, REQUEST_CODE_AUTH)
+        try {
+            currentActivity.startActivityForResult(intent, REQUEST_CODE_AUTH)
+        } catch (e: Exception) {
+            pendingResult = null
+            result.error("LAUNCH_FAILED", e.message ?: "Failed to start authorization activity", null)
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {

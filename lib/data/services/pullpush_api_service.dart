@@ -14,15 +14,22 @@ class PullPushApiService {
 
   http.Client _client;
   final http.Client Function()? _clientFactory;
-  final String _userAgent;
+  final String? _userAgent;
+  final String? Function()? _userAgentProvider;
 
   PullPushApiService({
     http.Client? client,
     http.Client Function()? clientFactory,
-    String? userAgent,
+    this._userAgent,
+    this._userAgentProvider,
   }) : _clientFactory = clientFactory,
-       _client = client ?? clientFactory?.call() ?? http.Client(),
-       _userAgent = userAgent ?? 'Savedex/1.0';
+       _client = client ?? clientFactory?.call() ?? http.Client();
+
+  String get _effectiveUserAgent {
+    final raw = _userAgentProvider?.call() ?? _userAgent;
+    final trimmed = raw?.trim();
+    return (trimmed != null && trimmed.isNotEmpty) ? trimmed : 'Savedex/1.0';
+  }
 
   void dispose() => _client.close();
 
@@ -212,7 +219,7 @@ class PullPushApiService {
       try {
         final stopwatch = Stopwatch()..start();
         final response = await _client
-            .get(uri, headers: {'User-Agent': _userAgent})
+            .get(uri, headers: {'User-Agent': _effectiveUserAgent})
             .timeout(const Duration(seconds: 15));
         stopwatch.stop();
         lastStatusCode = response.statusCode;

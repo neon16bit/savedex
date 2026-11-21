@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "flutter_window.h"
+#include "reddit_auth_handler.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -17,10 +18,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
-  flutter::DartProject project(L"data");
-
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
+
+  for (const auto& arg : command_line_arguments) {
+    if (IsCustomSchemeAuthUri(arg) &&
+        ForwardAuthCallbackToRunningInstance(arg)) {
+      ::CoUninitialize();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  flutter::DartProject project(L"data");
 
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 

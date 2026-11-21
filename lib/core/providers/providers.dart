@@ -11,6 +11,7 @@ import 'package:savedex/data/services/pullpush_api_service.dart';
 import 'package:savedex/data/services/csv_parser_service.dart';
 import 'package:savedex/data/services/reddit_api_service.dart';
 import 'package:savedex/data/services/redgifs_api_service.dart';
+import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences?>((ref) {
@@ -39,30 +40,31 @@ final redditApiServiceProvider = Provider<RedditApiService>((ref) {
     tokenExpiry: settings.redditTokenExpiry,
   );
   api.onTokenRefreshed = (accessToken, expiresIn) {
-    final expiry = DateTime.now().toUtc().add(
-      Duration(seconds: (expiresIn - 300).clamp(60, expiresIn)),
-    );
-    settingsRepo.updateSettings(
-      settingsRepo.settings.copyWith(
-        redditAccessToken: accessToken,
-        redditTokenExpiry: expiry,
-      ),
-    );
+    ref
+        .read(settingsViewModelProvider.notifier)
+        .saveRefreshedToken(accessToken, expiresIn);
   };
-  ref.onDispose(() => api.dispose());
+  ref.onDispose(() {
+    api.onTokenRefreshed = null;
+    api.dispose();
+  });
   return api;
 });
 
 final arcticShiftApiServiceProvider = Provider<ArcticShiftApiService>((ref) {
-  final settings = ref.watch(settingsRepositoryProvider).settings;
-  final api = ArcticShiftApiService(userAgent: settings.userAgent);
+  final settingsRepo = ref.watch(settingsRepositoryProvider);
+  final api = ArcticShiftApiService(
+    userAgentProvider: () => settingsRepo.settings.userAgent,
+  );
   ref.onDispose(api.dispose);
   return api;
 });
 
 final pullPushApiServiceProvider = Provider<PullPushApiService>((ref) {
-  final settings = ref.watch(settingsRepositoryProvider).settings;
-  final api = PullPushApiService(userAgent: settings.userAgent);
+  final settingsRepo = ref.watch(settingsRepositoryProvider);
+  final api = PullPushApiService(
+    userAgentProvider: () => settingsRepo.settings.userAgent,
+  );
   ref.onDispose(api.dispose);
   return api;
 });

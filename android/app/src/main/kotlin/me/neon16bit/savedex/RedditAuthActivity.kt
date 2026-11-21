@@ -10,10 +10,13 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.browser.customtabs.CustomTabsService
 
@@ -35,6 +38,8 @@ class RedditAuthActivity : Activity() {
     private var hasLaunched = false
     private var isFirstResume = true
     private var isCompleted = false
+    private var browserResultReceived = false
+    private var backInvokedCallback: Any? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var cancelRunnable: Runnable? = null
 
@@ -56,9 +61,24 @@ class RedditAuthActivity : Activity() {
             return
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val callback = OnBackInvokedCallback {
+                if (!isCompleted) {
+                    finishWithError("CANCELED", "User canceled authorization")
+                }
+            }
+            backInvokedCallback = callback
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                callback
+            )
+        }
+
         if (savedInstanceState != null) {
             hasLaunched = savedInstanceState.getBoolean("hasLaunched", false)
             isFirstResume = savedInstanceState.getBoolean("isFirstResume", false)
+            browserResultReceived =
+                savedInstanceState.getBoolean("browserResultReceived", false)
         }
 
         if (!hasLaunched) {
@@ -71,6 +91,7 @@ class RedditAuthActivity : Activity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean("hasLaunched", hasLaunched)
         outState.putBoolean("isFirstResume", isFirstResume)
+        outState.putBoolean("browserResultReceived", browserResultReceived)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -85,6 +106,7 @@ class RedditAuthActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_BROWSER) {
+            browserResultReceived = true
             cancelPendingCancel()
             val runnable = Runnable {
                 if (!isFinishing && !isCompleted) {
@@ -104,14 +126,22 @@ class RedditAuthActivity : Activity() {
         }
 
         if (hasLaunched && !isCompleted && intent?.data == null) {
-            cancelPendingCancel()
+            if (cancelRunnable != null) {
+                return
+            }
+            val delayMs = if (browserResultReceived) 1000L else RESUME_FALLBACK_DELAY_MS
+            val message = if (browserResultReceived) {
+                "User canceled authorization"
+            } else {
+                "Browser closed without authorization"
+            }
             val runnable = Runnable {
                 if (!isFinishing && !isCompleted) {
-                    finishWithError("CANCELED", "Browser closed without authorization")
+                    finishWithError("CANCELED", message)
                 }
             }
             cancelRunnable = runnable
-            mainHandler.postDelayed(runnable, RESUME_FALLBACK_DELAY_MS)
+            mainHandler.postDelayed(runnable, delayMs)
         }
     }
 
@@ -120,6 +150,8 @@ class RedditAuthActivity : Activity() {
         cancelPendingCancel()
     }
 
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (!isCompleted) {
             finishWithError("CANCELED", "User canceled authorization")
@@ -129,6 +161,13 @@ class RedditAuthActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val callback = backInvokedCallback as? OnBackInvokedCallback
+            if (callback != null) {
+                onBackInvokedDispatcher.unregisterOnBackInvokedCallback(callback)
+            }
+            backInvokedCallback = null
+        }
         cancelPendingCancel()
     }
 
