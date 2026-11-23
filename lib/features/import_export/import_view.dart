@@ -1,6 +1,8 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/import_export/import_viewmodel.dart';
@@ -19,15 +21,44 @@ class ImportView extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
+    final isDesktop = ResponsiveLayout.isDesktop(context);
+
+    return CallbackShortcuts(
+      bindings: isDesktop
+          ? {
+              const SingleActivator(
+                LogicalKeyboardKey.escape,
+                includeRepeats: false,
+              ): () {
+                if (ModalRoute.of(context)?.isCurrent ?? false) {
+                  Navigator.of(context).maybePop();
+                }
+              },
+            }
+          : const {},
+      child: FocusScope(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         title: const Text('Import & Sync'),
         elevation: 0,
         scrolledUnderElevation: 2,
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        children: [
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final hPad = isDesktop
+              ? ResponsiveLayout.centeredHorizontalPadding(
+                  constraints.maxWidth,
+                  maxContentWidth: kSettingsMaxWidth,
+                  minPadding: 24,
+                )
+              : 20.0;
+          return ListView(
+            padding: EdgeInsets.symmetric(
+              horizontal: hPad,
+              vertical: isDesktop ? 24 : 16,
+            ),
+            children: [
           _buildSectionHeader('REDDIT API SYNC', colorScheme),
           const SizedBox(height: 8),
           Row(
@@ -39,7 +70,10 @@ class ImportView extends ConsumerWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Row(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
                   children: [
                     Text(
                       'Pull Saved from Reddit',
@@ -47,8 +81,7 @@ class ImportView extends ConsumerWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if (settings.isAuthenticatedWithOAuth) ...[
-                      const SizedBox(width: 8),
+                    if (settings.isAuthenticatedWithOAuth)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -62,6 +95,8 @@ class ImportView extends ConsumerWidget {
                           settings.redditUsername != null
                               ? 'u/${settings.redditUsername}'
                               : 'Connected',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -69,7 +104,6 @@ class ImportView extends ConsumerWidget {
                           ),
                         ),
                       ),
-                    ],
                   ],
                 ),
               ),
@@ -156,10 +190,12 @@ class ImportView extends ConsumerWidget {
                 size: 24,
               ),
               const SizedBox(width: 12),
-              Text(
-                'Import Reddit Takeout',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  'Import Reddit Takeout',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -236,7 +272,11 @@ class ImportView extends ConsumerWidget {
 
           const SizedBox(height: 24),
         ],
+          );
+        },
       ),
+    ),
+    ),
     );
   }
 

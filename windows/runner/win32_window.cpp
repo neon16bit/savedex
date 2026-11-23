@@ -26,15 +26,43 @@ constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
+constexpr int kMinClientWidth = 840;
+constexpr int kMinClientHeight = 600;
+
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
+using AdjustWindowRectExForDpiFn =
+    BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
 
 // Scale helper to convert logical scaler values to physical using passed in
 // scale factor
 int Scale(int source, double scale_factor) {
   return static_cast<int>(source * scale_factor);
+}
+
+int ScaleMinClientDimension(int logical_px, UINT dpi) {
+  return static_cast<int>((static_cast<LONGLONG>(logical_px) * dpi + 95) / 96);
+}
+
+BOOL AdjustWindowRectForDpi(LPRECT rect,
+                            DWORD style,
+                            BOOL menu,
+                            DWORD ex_style,
+                            UINT dpi) {
+  static const auto adjust_for_dpi = []() -> AdjustWindowRectExForDpiFn {
+    HMODULE user32_module = GetModuleHandleA("User32.dll");
+    if (!user32_module) {
+      return nullptr;
+    }
+    return reinterpret_cast<AdjustWindowRectExForDpiFn>(
+        GetProcAddress(user32_module, "AdjustWindowRectExForDpi"));
+  }();
+  if (adjust_for_dpi != nullptr) {
+    return adjust_for_dpi(rect, style, menu, ex_style, dpi);
+  }
+  return AdjustWindowRectEx(rect, style, menu, ex_style);
 }
 
 // Dynamically loads the |EnableNonClientDpiScaling| from the User32 module.
@@ -212,6 +240,23 @@ Win32Window::MessageHandler(HWND hwnd,
         SetFocus(child_content_);
       }
       return 0;
+
+    case WM_GETMINMAXINFO: {
+      auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
+      UINT dpi = FlutterDesktopGetDpiForHWND(hwnd);
+      if (dpi == 0) {
+        dpi = 96;
+      }
+      RECT min_rect = {0, 0, ScaleMinClientDimension(kMinClientWidth, dpi),
+                       ScaleMinClientDimension(kMinClientHeight, dpi)};
+      DWORD style = static_cast<DWORD>(GetWindowLongPtr(hwnd, GWL_STYLE));
+      DWORD ex_style =
+          static_cast<DWORD>(GetWindowLongPtr(hwnd, GWL_EXSTYLE));
+      AdjustWindowRectForDpi(&min_rect, style, FALSE, ex_style, dpi);
+      info->ptMinTrackSize.x = min_rect.right - min_rect.left;
+      info->ptMinTrackSize.y = min_rect.bottom - min_rect.top;
+      return 0;
+    }
 
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);

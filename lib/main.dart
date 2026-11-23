@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/services/foreground_enrichment_service.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/shell/app_shell.dart';
@@ -43,7 +44,19 @@ class SavedexApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsViewModelProvider);
+    final themeSettings = ref.watch(
+      settingsViewModelProvider.select(
+        (s) => (
+          themeMode: s.themeMode,
+          catppuccinLightFlavor: s.catppuccinLightFlavor,
+          catppuccinDarkFlavor: s.catppuccinDarkFlavor,
+          catppuccinAccent: s.catppuccinAccent,
+          useDynamicColor: s.useDynamicColor,
+          isAmoled: s.isAmoled,
+          useCatppuccinSeed: s.useCatppuccinSeed,
+        ),
+      ),
+    );
 
     return DynamicColorBuilder(
       builder: (lightDynamic, darkDynamic) {
@@ -55,22 +68,36 @@ class SavedexApp extends ConsumerWidget {
             ? Color(darkDynamicScheme.primary.toARGB32())
             : null;
 
-        final lightPalette = settings.catppuccinLightFlavor.palette;
-        final darkPalette = settings.catppuccinDarkFlavor.palette;
+        final lightPalette = themeSettings.catppuccinLightFlavor.palette;
+        final darkPalette = themeSettings.catppuccinDarkFlavor.palette;
+        final lightAccent =
+            themeSettings.catppuccinAccent != null &&
+                themeSettings.catppuccinAccent!.isNotEmpty
+            ? themeSettings.catppuccinAccent!
+            : 'Maroon';
+        final darkAccent =
+            themeSettings.catppuccinAccent != null &&
+                themeSettings.catppuccinAccent!.isNotEmpty
+            ? themeSettings.catppuccinAccent!
+            : 'Red';
 
         final lightTheme = AppTheme.catppuccinTheme(
           palette: lightPalette,
-          accentName: settings.effectiveAccentFor(lightPalette.brightness),
-          accentOverride: settings.useDynamicColor ? rawLightDynamic : null,
-          isAmoled: settings.isAmoled,
-          useSeedOnly: settings.useCatppuccinSeed,
+          accentName: lightAccent,
+          accentOverride: themeSettings.useDynamicColor
+              ? rawLightDynamic
+              : null,
+          isAmoled: themeSettings.isAmoled,
+          useSeedOnly: themeSettings.useCatppuccinSeed,
         );
         final darkTheme = AppTheme.catppuccinTheme(
           palette: darkPalette,
-          accentName: settings.effectiveAccentFor(darkPalette.brightness),
-          accentOverride: settings.useDynamicColor ? rawDarkDynamic : null,
-          isAmoled: settings.isAmoled,
-          useSeedOnly: settings.useCatppuccinSeed,
+          accentName: darkAccent,
+          accentOverride: themeSettings.useDynamicColor
+              ? rawDarkDynamic
+              : null,
+          isAmoled: themeSettings.isAmoled,
+          useSeedOnly: themeSettings.useCatppuccinSeed,
         );
 
         return DynamicAccentScope(
@@ -81,7 +108,27 @@ class SavedexApp extends ConsumerWidget {
             debugShowCheckedModeBanner: false,
             theme: lightTheme,
             darkTheme: darkTheme,
-            themeMode: settings.themeMode,
+            themeMode: themeSettings.themeMode,
+            builder: (context, child) => ResponsiveScope(
+              child: Builder(
+                builder: (ctx) {
+                  final theme = Theme.of(ctx);
+                  final isDesktop = ResponsiveLayout.isDesktop(ctx);
+                  return SnackBarTheme(
+                    data: theme.snackBarTheme.copyWith(
+                      behavior: isDesktop
+                          ? SnackBarBehavior.floating
+                          : theme.snackBarTheme.behavior,
+                      width: isDesktop ? kDesktopSnackBarMaxWidth : null,
+                      insetPadding: isDesktop
+                          ? const EdgeInsets.fromLTRB(16, 6, 16, 16)
+                          : theme.snackBarTheme.insetPadding,
+                    ),
+                    child: child ?? const SizedBox.shrink(),
+                  );
+                },
+              ),
+            ),
             home: const AppShell(),
           ),
         );

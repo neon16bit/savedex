@@ -105,9 +105,14 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
   @override
   void initState() {
     super.initState();
-    _searchController = TextEditingController();
+    final initialSavedQuery =
+        ref.read(searchFilterViewModelProvider).searchQuery ?? '';
+    final initialLibraryQuery = ref.read(librarySubTabProvider) == 2
+        ? ref.read(userSearchQueryProvider)
+        : ref.read(subredditSearchQueryProvider);
+    _searchController = TextEditingController(text: initialSavedQuery);
     _searchFocusNode = FocusNode()..addListener(_onSearchFocusChanged);
-    _librarySearchController = TextEditingController();
+    _librarySearchController = TextEditingController(text: initialLibraryQuery);
     _librarySearchFocusNode = FocusNode();
   }
 
@@ -582,13 +587,21 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
           (filter) => filter.hasActiveNonSearchFilters,
         ),
       );
+      final hasSearchQuery = ref.watch(
+        searchFilterViewModelProvider.select(
+          (filter) =>
+              filter.searchQuery != null &&
+              filter.searchQuery!.trim().isNotEmpty,
+        ),
+      );
 
       contextActions = [
         ContextActionSpec(
           key: 'saved_open_search',
           tooltip: 'Search Saved',
           icon: Icons.search_rounded,
-          isActive: isSavedSearching,
+          isActive: isSavedSearching || hasSearchQuery,
+          hasBadge: !isSavedSearching && hasSearchQuery,
           onTap: () {
             HapticFeedback.lightImpact();
             setState(() {
@@ -661,7 +674,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
             hasBadge: collectionSort != CollectionSortOption.newest,
             onTap: () {
               HapticFeedback.lightImpact();
-              _showCollectionSortSheet(context, ref);
+              showCollectionSortSheet(context);
             },
           ),
         ];
@@ -707,7 +720,7 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
             hasBadge: listSort != SubredditSortOption.mostSaved,
             onTap: () {
               HapticFeedback.lightImpact();
-              _showLibraryListSortSheet(context, ref, sortProvider, noun);
+              showLibraryListSortSheet(context, sortProvider, noun);
             },
           ),
         ];
@@ -1149,229 +1162,250 @@ class _FloatingNavBarState extends ConsumerState<FloatingNavBar> {
       ),
     );
   }
+}
 
-  void _showCollectionSortSheet(BuildContext context, WidgetRef ref) {
-    final currentSort = ref.read(collectionSortOptionProvider);
-
-    showFrostedModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) {
-        final theme = Theme.of(ctx);
-        final colorScheme = theme.colorScheme;
-        final textTheme = theme.textTheme;
-        return FrostedSheetContainer(
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 4, bottom: 12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.sort_rounded,
-                          size: 22,
-                          color: colorScheme.primary,
+Future<void> showCollectionSortSheet(BuildContext context) {
+  return showFrostedModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) {
+      return Consumer(
+        builder: (ctx, sheetRef, _) {
+          final currentSort = sheetRef.watch(collectionSortOptionProvider);
+          final theme = Theme.of(ctx);
+          final colorScheme = theme.colorScheme;
+          final textTheme = theme.textTheme;
+          return FrostedSheetContainer(
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 4, bottom: 12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.6,
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Sort Collections',
-                          style: textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.2,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.sort_rounded,
+                            size: 22,
+                            color: colorScheme.primary,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  ...CollectionSortOption.values.map((option) {
-                    final isSelected = option == currentSort;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Material(
-                        color: isSelected
-                            ? colorScheme.primaryContainer.withValues(
-                                alpha: 0.45,
-                              )
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            ref
-                                .read(collectionSortOptionProvider.notifier)
-                                .setSort(option);
-                            Navigator.pop(ctx);
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Sort Collections',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
                             ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    option.label,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: isSelected
-                                          ? colorScheme.primary
-                                          : colorScheme.onSurface,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+                    ...CollectionSortOption.values.map((option) {
+                      final isSelected = option == currentSort;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Material(
+                          color: isSelected
+                              ? colorScheme.primaryContainer.withValues(
+                                  alpha: 0.45,
+                                )
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              sheetRef
+                                  .read(collectionSortOptionProvider.notifier)
+                                  .setSort(option);
+                              Navigator.pop(ctx);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      option.label,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? colorScheme.primary
+                                            : colorScheme.onSurface,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (isSelected)
-                                  Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 20,
-                                    color: colorScheme.primary,
-                                  ),
-                              ],
+                                  if (isSelected)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 20,
+                                      color: colorScheme.primary,
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                ],
+                      );
+                    }),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
-    );
-  }
+          );
+        },
+      );
+    },
+  );
+}
 
-  void _showLibraryListSortSheet(
-    BuildContext context,
-    WidgetRef ref,
-    NotifierProvider<SubredditSortNotifier, SubredditSortOption> sortProvider,
-    String noun,
-  ) {
-    final currentSort = ref.read(sortProvider);
-
-    showFrostedModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) {
-        final theme = Theme.of(ctx);
-        final colorScheme = theme.colorScheme;
-        final textTheme = theme.textTheme;
-        return FrostedSheetContainer(
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 4, bottom: 12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.sort_rounded,
-                          size: 22,
-                          color: colorScheme.primary,
+Future<void> showLibraryListSortSheet(
+  BuildContext context,
+  NotifierProvider<SubredditSortNotifier, SubredditSortOption> sortProvider,
+  String noun,
+) {
+  return showFrostedModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) {
+      return Consumer(
+        builder: (ctx, sheetRef, _) {
+          final currentSort = sheetRef.watch(sortProvider);
+          final theme = Theme.of(ctx);
+          final colorScheme = theme.colorScheme;
+          final textTheme = theme.textTheme;
+          return FrostedSheetContainer(
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 4, bottom: 12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant.withValues(
+                          alpha: 0.6,
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Sort $noun',
-                          style: textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.2,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.sort_rounded,
+                            size: 22,
+                            color: colorScheme.primary,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  ...SubredditSortOption.values.map((option) {
-                    final isSelected = option == currentSort;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Material(
-                        color: isSelected
-                            ? colorScheme.primaryContainer.withValues(
-                                alpha: 0.45,
-                              )
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(14),
-                          onTap: () {
-                            ref.read(sortProvider.notifier).setSort(option);
-                            Navigator.pop(ctx);
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Sort $noun',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.2,
+                              ),
                             ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    option.label,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: isSelected
-                                          ? colorScheme.primary
-                                          : colorScheme.onSurface,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+                    ...SubredditSortOption.values.map((option) {
+                      final isSelected = option == currentSort;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Material(
+                          color: isSelected
+                              ? colorScheme.primaryContainer.withValues(
+                                  alpha: 0.45,
+                                )
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              sheetRef
+                                  .read(sortProvider.notifier)
+                                  .setSort(option);
+                              Navigator.pop(ctx);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      option.label,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? colorScheme.primary
+                                            : colorScheme.onSurface,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                if (isSelected)
-                                  Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 20,
-                                    color: colorScheme.primary,
-                                  ),
-                              ],
+                                  if (isSelected)
+                                    Icon(
+                                      Icons.check_circle_rounded,
+                                      size: 20,
+                                      color: colorScheme.primary,
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                ],
+                      );
+                    }),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
-    );
-  }
+          );
+        },
+      );
+    },
+  );
 }
 
 class NavBarLayoutMetrics {

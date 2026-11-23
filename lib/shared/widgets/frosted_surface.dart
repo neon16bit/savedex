@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import 'package:flutter/rendering.dart' show RenderProxyBox;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 
 /// Standard backdrop blur radius used across frosted glass UI surfaces.
@@ -228,7 +229,15 @@ Future<T?> showFrostedModalBottomSheet<T>({
     elevation: 0,
     shape: shape,
     clipBehavior: clipBehavior ?? Clip.none,
-    builder: builder,
+    constraints: const BoxConstraints(maxWidth: double.infinity),
+    builder: (ctx) {
+      return ConstrainedBox(
+        constraints: ResponsiveLayout.isDesktop(ctx)
+            ? const BoxConstraints(maxWidth: 600)
+            : const BoxConstraints(),
+        child: builder(ctx),
+      );
+    },
   );
 }
 

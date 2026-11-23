@@ -10,17 +10,35 @@ import 'package:savedex/shared/widgets/widgets.dart';
 
 class CommentCard extends ConsumerWidget {
   final SavedItem item;
+  final bool isDesktopCard;
 
-  const CommentCard({super.key, required this.item});
+  const CommentCard({
+    super.key,
+    required this.item,
+    this.isDesktopCard = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final cardRadius = BorderRadius.circular(16);
 
-    return Material(
-      color: colorScheme.surface,
+    final card = Material(
+      color: isDesktopCard
+          ? colorScheme.surfaceContainerLow
+          : colorScheme.surface,
+      clipBehavior: isDesktopCard ? Clip.antiAlias : Clip.none,
+      shape: isDesktopCard
+          ? RoundedRectangleBorder(
+              borderRadius: cardRadius,
+              side: BorderSide(
+                color: colorScheme.outlineVariant.withValues(alpha: 0.30),
+              ),
+            )
+          : null,
       child: InkWell(
+        borderRadius: isDesktopCard ? cardRadius : null,
         onTap: () async {
           await Navigator.of(context).push(
             MaterialPageRoute(
@@ -35,62 +53,78 @@ class CommentCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                isDesktopCard ? 14 : 10,
+                16,
+                isDesktopCard ? 8 : 4,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: [
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => ScopedFeedView.openSubreddit(
-                          context,
-                          item.subreddit,
-                        ),
-                        child: Text(
-                          item.displaySubreddit,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.2,
-                            color: colorScheme.primary,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => ScopedFeedView.openSubreddit(
+                                context,
+                                item.subreddit,
+                              ),
+                              child: Text(
+                                item.displaySubreddit,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.2,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          if (item.isArchiveRecovered) ...[
+                            const SizedBox(width: 4),
+                            const ArchiveRecoveredBadge(
+                              variant: ArchiveBadgeVariant.icon,
+                            ),
+                          ],
+                        ],
                       ),
 
-                      if (item.isArchiveRecovered) ...[
-                        const SizedBox(width: 4),
-                        const ArchiveRecoveredBadge(
-                          variant: ArchiveBadgeVariant.icon,
+                      if (item.isNsfw)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '•',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colorScheme.outlineVariant,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'NSFW',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                                color: Colors.red,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
 
-                      if (item.isNsfw) ...[
-                        const SizedBox(width: 6),
-                        Text(
-                          '•',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: colorScheme.outlineVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'NSFW',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.2,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-
-                      if (item.enrichmentStatus ==
-                          EnrichmentStatus.slugOnly) ...[
-                        const SizedBox(width: 6),
+                      if (item.enrichmentStatus == EnrichmentStatus.slugOnly)
                         const PendingMetadataBadge(),
-                      ],
                     ],
                   ),
 
@@ -100,10 +134,12 @@ class CommentCard extends ConsumerWidget {
                       item.createdAtUtc != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 2,
                         children: [
-                          if (item.author != null &&
-                              item.author!.isNotEmpty) ...[
+                          if (item.author != null && item.author!.isNotEmpty)
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: item.author != '[deleted]'
@@ -114,6 +150,8 @@ class CommentCard extends ConsumerWidget {
                                   : null,
                               child: Text(
                                 'u/${item.author}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
@@ -121,26 +159,31 @@ class CommentCard extends ConsumerWidget {
                                 ),
                               ),
                             ),
-                          ],
-                          if (item.createdAtUtc != null) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              '•',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colorScheme.outlineVariant,
-                              ),
+                          if (item.createdAtUtc != null)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (item.author != null &&
+                                    item.author!.isNotEmpty) ...[
+                                  Text(
+                                    '•',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                Text(
+                                  DateFormatter.timeAgo(item.createdAtUtc),
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              DateFormatter.timeAgo(item.createdAtUtc),
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w500,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -247,14 +290,20 @@ class CommentCard extends ConsumerWidget {
                 ],
               ),
             ),
-            Divider(
-              height: 1,
-              thickness: 0.8,
-              color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-            ),
+            if (!isDesktopCard)
+              Divider(
+                height: 1,
+                thickness: 0.8,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+              ),
           ],
         ),
       ),
     );
+
+    if (isDesktopCard) {
+      return Padding(padding: const EdgeInsets.only(bottom: 12), child: card);
+    }
+    return card;
   }
 }

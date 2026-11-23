@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/saved/saved_viewmodel.dart';
@@ -81,7 +82,7 @@ class ScopedFeedView extends ConsumerStatefulWidget {
             cleanSub.toLowerCase()) {
       return;
     }
-    FocusManager.instance.primaryFocus?.unfocus();
+    ResponsiveLayout.unfocusEditableText();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) =>
@@ -103,7 +104,7 @@ class ScopedFeedView extends ConsumerStatefulWidget {
             cleanAuthor.toLowerCase()) {
       return;
     }
-    FocusManager.instance.primaryFocus?.unfocus();
+    ResponsiveLayout.unfocusEditableText();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) =>
@@ -122,6 +123,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   late final FocusNode _searchFocusNode;
+  late final FocusScopeNode _shortcutFocusScopeNode;
+  final GlobalKey _feedPaneKey = GlobalKey();
   Timer? _searchDebounceTimer;
   Timer? _dbDebounceTimer;
   StreamSubscription? _dbUpdatesSub;
@@ -142,6 +145,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   bool _isScopedEntityNsfw = false;
 
   bool _isSearchExpanded = false;
+  bool? _lastIsDesktop;
   bool _isFilterExpanded = false;
   bool _morphFromFilter = false;
   bool _openedViaFilter = false;
@@ -151,6 +155,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
   void initState() {
     super.initState();
     _searchFocusNode = FocusNode()..addListener(_onSearchFocusChanged);
+    _shortcutFocusScopeNode = FocusScopeNode();
     _scrollController.addListener(_onScroll);
     _loadInitial(showFullScreenLoader: true);
 
@@ -278,6 +283,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     _searchController.dispose();
     _searchFocusNode.removeListener(_onSearchFocusChanged);
     _searchFocusNode.dispose();
+    _shortcutFocusScopeNode.dispose();
     _searchDebounceTimer?.cancel();
     _dbDebounceTimer?.cancel();
     _dbUpdatesSub?.cancel();
@@ -287,8 +293,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
   void _dismissKeyboard() {
     _searchFocusNode.unfocus();
-    FocusScope.of(context).unfocus();
-    FocusManager.instance.primaryFocus?.unfocus();
+    _shortcutFocusScopeNode.focusedChild?.unfocus();
     SystemChannels.textInput.invokeMethod('TextInput.hide');
   }
 
@@ -662,6 +667,20 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
       }
     });
     if (hadQuery) {
+      _loadInitial(resetScroll: true);
+    }
+  }
+
+  void _clearDesktopSearch() {
+    _searchDebounceTimer?.cancel();
+    final hadQuery =
+        _scopedFilter.searchQuery != null &&
+        _scopedFilter.searchQuery!.isNotEmpty;
+    _searchController.clear();
+    if (hadQuery) {
+      setState(() {
+        _scopedFilter = _scopedFilter.copyWith(clearSearchQuery: true);
+      });
       _loadInitial(resetScroll: true);
     }
   }
@@ -1223,25 +1242,41 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final enableFrosted = watchFrostedEffects(ref);
+    final isDesktop = ResponsiveLayout.isDesktop(context);
+    if (_lastIsDesktop == false && isDesktop && _isSearchExpanded) {
+      _isSearchExpanded = false;
+    }
+    _lastIsDesktop = isDesktop;
     final feedLayoutMode = ref.watch(
       settingsViewModelProvider.select((s) => s.feedLayoutMode),
     );
+    final hasActiveNonSearchFilters = _scopedFilter.hasActiveNonSearchFilters;
 
-    return _ScopedFeedInherited(
-      args: widget.args,
-      child: PopScope(
-        canPop: !_isSearchExpanded && !_isFilterExpanded,
-        onPopInvokedWithResult: (didPop, _) {
-          if (didPop) return;
-          if (_isFilterExpanded) {
-            _closeScopedFilter();
-          } else if (_isSearchExpanded) {
-            _closeScopedSearch();
-          }
-        },
-        child: SnackBarTheme(
+    void focusDesktopSearch() {
+      if (_searchFocusNode.canRequestFocus) {
+        _searchFocusNode.requestFocus();
+        _searchController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _searchController.text.length,
+        );
+      }
+    }
+
+    final scaffold = LayoutBuilder(
+      builder: (context, outerConstraints) {
+        final paneWidth = outerConstraints.maxWidth;
+        final searchWidth = (paneWidth * 0.25).clamp(160.0, 300.0);
+        final showFilterLabel = paneWidth >= 1080.0;
+
+        return SnackBarTheme(
           data: theme.snackBarTheme.copyWith(
-            insetPadding: kFloatingBarSnackBarMargin,
+            behavior: isDesktop
+                ? SnackBarBehavior.floating
+                : theme.snackBarTheme.behavior,
+            width: isDesktop ? kDesktopSnackBarMaxWidth : null,
+            insetPadding: isDesktop
+                ? const EdgeInsets.fromLTRB(16, 6, 16, 16)
+                : kFloatingBarSnackBarMargin,
           ),
           child: Scaffold(
             extendBodyBehindAppBar: enableFrosted,
@@ -1307,6 +1342,8 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                         : _isTotalCountPending
                         ? '$_totalCount+ saved items'
                         : '$_totalCount saved ${_totalCount == 1 ? 'item' : 'items'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
                       color: colorScheme.onSurfaceVariant,
@@ -1316,6 +1353,52 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                 ],
               ),
               actions: [
+                if (isDesktop) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Center(
+                      child: SizedBox(
+                        width: searchWidth,
+                        child: DesktopInlineSearchField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          hintText: searchWidth < 210
+                              ? 'Search...'
+                              : 'Search in ${widget.args.title}...',
+                          onChanged: _onSearchChanged,
+                          onSubmitted: _onSearchSubmitted,
+                          onClear: _clearDesktopSearch,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Center(
+                      child: DesktopFeedLayoutSwitcher(
+                        currentMode: feedLayoutMode,
+                        onChanged: (mode) => ref
+                            .read(settingsViewModelProvider.notifier)
+                            .setFeedLayoutMode(mode),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Center(
+                      child: DesktopFilterToggleButton(
+                        isOpen: _isFilterExpanded,
+                        hasActiveFilters: hasActiveNonSearchFilters,
+                        showLabel: showFilterLabel,
+                        onPressed: () {
+                          setState(() {
+                            _isFilterExpanded = !_isFilterExpanded;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ],
                 IconButton(
                   icon: const Icon(Icons.sort_rounded),
                   tooltip: 'Sort: ${_scopedFilter.sortOption.label}',
@@ -1326,6 +1409,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                   IconButton(
                     icon: const Icon(Icons.open_in_new_rounded),
                     tooltip: 'Open subreddit on Reddit',
+                    visualDensity: VisualDensity.compact,
                     onPressed: () => _openInReddit(widget.args.subreddit!),
                   ),
                 ],
@@ -1334,6 +1418,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                   IconButton(
                     icon: const Icon(Icons.open_in_new_rounded),
                     tooltip: 'Open user on Reddit',
+                    visualDensity: VisualDensity.compact,
                     onPressed: () => _openUserInReddit(widget.args.author!),
                   ),
                 ],
@@ -1389,72 +1474,98 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
             body: Builder(
               builder: (bodyContext) {
                 final appBarTopOffset = MediaQuery.paddingOf(bodyContext).top;
-                return Stack(
-                  children: [
-                    Column(
-                      children: [
-                        Expanded(
-                          child: _isLoading && _items.isEmpty
-                              ? Padding(
-                                  padding: EdgeInsets.only(
-                                    top: appBarTopOffset,
-                                  ),
-                                  child: const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                )
-                              : _errorMessage != null && _items.isEmpty
-                              ? Padding(
-                                  padding: EdgeInsets.only(
-                                    top: appBarTopOffset,
-                                  ),
-                                  child: Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.error_outline_rounded,
-                                            size: 48,
-                                            color: colorScheme.error,
+                final feedPane = KeyedSubtree(
+                  key: _feedPaneKey,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: _isLoading && _items.isEmpty
+                            ? Padding(
+                                padding: EdgeInsets.only(top: appBarTopOffset),
+                                child: const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            : _errorMessage != null && _items.isEmpty
+                            ? Padding(
+                                padding: EdgeInsets.only(top: appBarTopOffset),
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.error_outline_rounded,
+                                          size: 48,
+                                          color: colorScheme.error,
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'Error loading items',
+                                          style: theme.textTheme.titleMedium,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          _errorMessage!,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            color: colorScheme.onSurfaceVariant,
+                                            fontSize: 12,
                                           ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'Error loading items',
-                                            style: theme.textTheme.titleMedium,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        FilledButton.tonal(
+                                          onPressed: () => _loadInitial(
+                                            showFullScreenLoader: true,
                                           ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            _errorMessage!,
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              color:
-                                                  colorScheme.onSurfaceVariant,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 16),
-                                          FilledButton.tonal(
-                                            onPressed: () => _loadInitial(
-                                              showFullScreenLoader: true,
-                                            ),
-                                            child: const Text('Retry'),
-                                          ),
-                                        ],
-                                      ),
+                                          child: const Text('Retry'),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                )
-                              : _buildFeedList(
-                                  bodyContext,
-                                  feedLayoutMode: feedLayoutMode,
-                                  topPadding: appBarTopOffset,
                                 ),
-                        ),
-                      ],
+                              )
+                            : _buildFeedList(
+                                bodyContext,
+                                feedLayoutMode: feedLayoutMode,
+                                topPadding: appBarTopOffset,
+                                isDesktop: isDesktop,
+                              ),
+                      ),
+                    ],
+                  ),
+                );
+
+                final cleanAuthor = widget.args.author?.replaceFirst(
+                  RegExp(r'^[ru]/'),
+                  '',
+                );
+                if (isDesktop) {
+                  return DesktopFilterPanelHost(
+                    enabled: true,
+                    isOpen: _isFilterExpanded,
+                    availableWidth: paneWidth,
+                    topPadding: appBarTopOffset,
+                    enableFrosted: enableFrosted,
+                    onClose: _closeScopedFilter,
+                    feedChild: feedPane,
+                    filterSheetChild: FilterSheet(
+                      isSidePanel: true,
+                      scopedFilter: _scopedFilter,
+                      onScopedFilterChanged: _onScopedFilterChanged,
+                      scopedCollectionId: widget.args.collection?.id,
+                      scopedSubreddit: widget.args.subreddit,
+                      scopedAuthor: cleanAuthor,
+                      onClose: _closeScopedFilter,
                     ),
+                  );
+                }
+
+                return Stack(
+                  children: [
+                    feedPane,
                     Positioned.fill(
                       child: IgnorePointer(
                         ignoring: !_isFilterExpanded,
@@ -1488,7 +1599,58 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               },
             ),
           ),
-        ),
+        );
+      },
+    );
+
+    final popWrapped = _ScopedFeedInherited(
+      args: widget.args,
+      child: PopScope(
+        canPop: isDesktop
+            ? !_isFilterExpanded
+            : (!_isSearchExpanded && !_isFilterExpanded),
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (_isFilterExpanded) {
+            _closeScopedFilter();
+          } else if (_isSearchExpanded) {
+            _closeScopedSearch();
+          }
+        },
+        child: scaffold,
+      ),
+    );
+
+    return CallbackShortcuts(
+      bindings: isDesktop
+          ? {
+              const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+                  focusDesktopSearch,
+              const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+                  focusDesktopSearch,
+              const SingleActivator(
+                LogicalKeyboardKey.escape,
+                includeRepeats: false,
+              ): () {
+                final primaryFocus = FocusManager.instance.primaryFocus;
+                if (_searchFocusNode.hasFocus) {
+                  _searchFocusNode.unfocus();
+                } else if (ResponsiveLayout.isEditableTextFocused(
+                  primaryFocus,
+                )) {
+                  primaryFocus!.unfocus();
+                } else if (_isFilterExpanded) {
+                  _closeScopedFilter();
+                } else if (ModalRoute.of(context)?.isCurrent ?? false) {
+                  Navigator.of(context).maybePop();
+                }
+              },
+            }
+          : const {},
+      child: FocusScope(
+        node: _shortcutFocusScopeNode,
+        autofocus: true,
+        child: popWrapped,
       ),
     );
   }
@@ -1527,9 +1689,11 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
     BuildContext context, {
     required FeedLayoutMode feedLayoutMode,
     double topPadding = 0,
+    bool isDesktop = false,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final bottomPad = isDesktop ? 28.0 : 104.0;
 
     if (_items.isEmpty) {
       final isSearching =
@@ -1539,10 +1703,13 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
 
       return Center(
         child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(32, topPadding + 32, 32, 104),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+          primary: false,
+          padding: EdgeInsets.fromLTRB(32, topPadding + 32, 32, bottomPad),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -1594,6 +1761,7 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
                 const SizedBox(height: 16),
                 FilledButton.tonal(
                   onPressed: () {
+                    _searchDebounceTimer?.cancel();
                     setState(() {
                       if (isSearching) {
                         _searchController.clear();
@@ -1614,70 +1782,119 @@ class _ScopedFeedViewState extends ConsumerState<ScopedFeedView> {
               ],
             ],
           ),
+          ),
         ),
       );
     }
 
     final showFooter = _hasMore || _isLoadingMore || _paginationError != null;
-    final Widget scrollContent;
-    switch (feedLayoutMode) {
-      case FeedLayoutMode.card:
-      case FeedLayoutMode.compact:
-        scrollContent = CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          slivers: [
-            SliverPadding(
-              key: ValueKey('scoped_feed_list_$_sliverResetEpoch'),
-              padding: EdgeInsets.fromLTRB(0, topPadding, 0, 104),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  if (index >= _items.length) {
-                    return _buildPaginationFooter();
-                  }
-                  final item = _items[index];
-                  if (feedLayoutMode == FeedLayoutMode.compact) {
-                    return CompactListItem(key: ValueKey(item.id), item: item);
-                  }
-                  if (item.isComment) {
-                    return CommentCard(key: ValueKey(item.id), item: item);
-                  }
-                  return PostCard(key: ValueKey(item.id), item: item);
-                }, childCount: _items.length + (showFooter ? 1 : 0)),
-              ),
-            ),
-          ],
-        );
-        break;
-
-      case FeedLayoutMode.gallery:
-        scrollContent = CustomScrollView(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          slivers: [
-            SliverPadding(
-              key: ValueKey('scoped_feed_grid_$_sliverResetEpoch'),
-              padding: EdgeInsets.fromLTRB(10, topPadding + 8, 10, 104),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.82,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
+    final Widget scrollContent = LayoutBuilder(
+      builder: (feedContext, feedConstraints) {
+        final feedWidth = feedConstraints.maxWidth;
+        switch (feedLayoutMode) {
+          case FeedLayoutMode.card:
+          case FeedLayoutMode.compact:
+            final maxW = feedLayoutMode == FeedLayoutMode.compact
+                ? kFeedCompactMaxWidth
+                : kFeedCardMaxWidth;
+            final hPad = isDesktop
+                ? ResponsiveLayout.centeredHorizontalPadding(
+                    feedWidth,
+                    maxContentWidth: maxW,
+                    minPadding: 20,
+                  )
+                : 0.0;
+            final effectiveTop =
+                topPadding +
+                (isDesktop
+                    ? (feedLayoutMode == FeedLayoutMode.card ? 12.0 : 8.0)
+                    : 0.0);
+            return CustomScrollView(
+              key: const PageStorageKey<String>('scoped_feed_scroll'),
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                SliverPadding(
+                  key: ValueKey('scoped_feed_list_$_sliverResetEpoch'),
+                  padding: EdgeInsets.fromLTRB(
+                    hPad,
+                    effectiveTop,
+                    hPad,
+                    bottomPad,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      if (index >= _items.length) {
+                        return _buildPaginationFooter();
+                      }
+                      final item = _items[index];
+                      if (feedLayoutMode == FeedLayoutMode.compact) {
+                        return CompactListItem(
+                          key: ValueKey(item.id),
+                          item: item,
+                        );
+                      }
+                      if (item.isComment) {
+                        return CommentCard(
+                          key: ValueKey(item.id),
+                          item: item,
+                          isDesktopCard: isDesktop,
+                        );
+                      }
+                      return PostCard(
+                        key: ValueKey(item.id),
+                        item: item,
+                        isDesktopCard: isDesktop,
+                      );
+                    }, childCount: _items.length + (showFooter ? 1 : 0)),
+                  ),
                 ),
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final item = _items[index];
-                  return GalleryItem(key: ValueKey(item.id), item: item);
-                }, childCount: _items.length),
-              ),
-            ),
-            if (showFooter) SliverToBoxAdapter(child: _buildPaginationFooter()),
-          ],
-        );
-        break;
-    }
+              ],
+            );
+
+          case FeedLayoutMode.gallery:
+            return CustomScrollView(
+              key: const PageStorageKey<String>('scoped_feed_scroll'),
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                SliverPadding(
+                  key: ValueKey('scoped_feed_grid_$_sliverResetEpoch'),
+                  padding: EdgeInsets.fromLTRB(
+                    isDesktop ? 20 : 10,
+                    topPadding + (isDesktop ? 12 : 8),
+                    isDesktop ? 20 : 10,
+                    bottomPad,
+                  ),
+                  sliver: SliverGrid(
+                    gridDelegate: isDesktop
+                        ? const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: kGalleryMaxCrossAxisExtent,
+                            childAspectRatio: 0.82,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                          )
+                        : const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            childAspectRatio: 0.82,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final item = _items[index];
+                      return GalleryItem(key: ValueKey(item.id), item: item);
+                    }, childCount: _items.length),
+                  ),
+                ),
+                if (showFooter)
+                  SliverToBoxAdapter(child: _buildPaginationFooter()),
+              ],
+            );
+        }
+      },
+    );
 
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {

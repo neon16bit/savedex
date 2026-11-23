@@ -7,9 +7,22 @@ class MainFlutterWindow: NSWindow {
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
-    let windowFrame = self.frame
+    let minContentSize = NSSize(width: 840, height: 600)
+    self.contentMinSize = minContentSize
+
+    let initialFrame = self.frame
+    let currentContentSize = self.contentRect(forFrameRect: initialFrame).size
+    let clampedContentSize = NSSize(
+      width: max(currentContentSize.width, minContentSize.width),
+      height: max(currentContentSize.height, minContentSize.height)
+    )
+    var targetFrame = self.frameRect(
+      forContentRect: NSRect(origin: .zero, size: clampedContentSize)
+    )
+    targetFrame.origin = initialFrame.origin
+
     self.contentViewController = flutterViewController
-    self.setFrame(windowFrame, display: true)
+    self.setFrame(targetFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

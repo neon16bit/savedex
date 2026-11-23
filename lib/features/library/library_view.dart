@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/models/author_info.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/data/models/subreddit_info.dart';
@@ -30,11 +31,23 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late final Set<int> _visitedSubTabs;
+  late final TextEditingController _desktopSearchController;
+  late final FocusNode _desktopSearchFocusNode;
+  late final FocusScopeNode _shortcutFocusScopeNode;
+  Timer? _desktopSearchDebounce;
 
   @override
   void initState() {
     super.initState();
     final initialTab = ref.read(librarySubTabProvider).clamp(0, 2);
+    final initialQuery = switch (initialTab) {
+      1 => ref.read(subredditSearchQueryProvider),
+      2 => ref.read(userSearchQueryProvider),
+      _ => '',
+    };
+    _desktopSearchController = TextEditingController(text: initialQuery);
+    _desktopSearchFocusNode = FocusNode();
+    _shortcutFocusScopeNode = FocusScopeNode();
     _visitedSubTabs = {initialTab};
     _tabController = TabController(
       length: 3,
@@ -43,6 +56,15 @@ class _LibraryViewState extends ConsumerState<LibraryView>
     );
     _tabController.addListener(_onTabChanged);
     _tabController.animation?.addListener(_onTabAnimation);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          ResponsiveLayout.isDesktop(context) &&
+          ref.read(selectedShellTabProvider) == 1 &&
+          (ModalRoute.of(context)?.isCurrent ?? false) &&
+          !_shortcutFocusScopeNode.hasFocus) {
+        _shortcutFocusScopeNode.requestScopeFocus();
+      }
+    });
   }
 
   void _onTabChanged() {
@@ -82,6 +104,10 @@ class _LibraryViewState extends ConsumerState<LibraryView>
 
   @override
   void dispose() {
+    _desktopSearchDebounce?.cancel();
+    _desktopSearchController.dispose();
+    _desktopSearchFocusNode.dispose();
+    _shortcutFocusScopeNode.dispose();
     _tabController.animation?.removeListener(_onTabAnimation);
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
@@ -95,132 +121,342 @@ class _LibraryViewState extends ConsumerState<LibraryView>
       settingsViewModelProvider.select((s) => s.hideNsfwInFeed),
     );
     final colorScheme = Theme.of(context).colorScheme;
+    final isDesktop = ResponsiveLayout.isDesktop(context);
+    final activeSubTab = isDesktop
+        ? ref.watch(librarySubTabProvider).clamp(0, 2)
+        : _tabController.index;
 
-    return Scaffold(
-      extendBodyBehindAppBar: enableFrosted,
-      appBar: AppBar(
-        backgroundColor: enableFrosted ? Colors.transparent : null,
-        elevation: 0,
-        scrolledUnderElevation: enableFrosted ? 0 : null,
-        surfaceTintColor: enableFrosted ? Colors.transparent : null,
-        flexibleSpace: FrostedAppBarBackground(
-          enableBlur: enableFrosted,
-          showBottomBorder: false,
-        ),
-        title: const Text(
-          'Library',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          FrostedPopupMenuButton<_LibraryMenuAction>(
-            icon: const Icon(Icons.more_vert_rounded),
-            tooltip: 'More options',
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            style: IconButton.styleFrom(visualDensity: VisualDensity.compact),
-            onSelected: (action) {
-              switch (action) {
-                case _LibraryMenuAction.toggleNsfw:
-                  if (ref.read(searchFilterViewModelProvider).isNsfw != null) {
-                    ref
-                        .read(searchFilterViewModelProvider.notifier)
-                        .setNsfwFilter(null);
-                  }
-                  ref
-                      .read(settingsViewModelProvider.notifier)
-                      .toggleHideNsfwInFeed(!hideNsfwInFeed);
-                  break;
-                case _LibraryMenuAction.metadataSettings:
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SubredditUserMetadataView(),
-                    ),
-                  );
-                  break;
-              }
-            },
-            itemBuilder: (ctx) => [
-              PopupMenuItem<_LibraryMenuAction>(
-                value: _LibraryMenuAction.toggleNsfw,
-                child: Row(
-                  children: [
-                    Icon(
-                      hideNsfwInFeed
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      size: 20,
-                      color: hideNsfwInFeed
-                          ? colorScheme.error
-                          : colorScheme.onSurface,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(hideNsfwInFeed ? 'Show NSFW' : 'Hide NSFW'),
-                    ),
-                    if (hideNsfwInFeed)
-                      Text(
-                        'Hidden',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.error,
+    ref.listen<int>(librarySubTabProvider, (prev, next) {
+      if (prev != next) {
+        _desktopSearchDebounce?.cancel();
+        _desktopSearchController.clear();
+        ref.read(subredditSearchQueryProvider.notifier).clear();
+        ref.read(userSearchQueryProvider.notifier).clear();
+      }
+    });
+    ref.listen<int>(selectedShellTabProvider, (prev, next) {
+      if (prev == 1 && next != 1) {
+        _desktopSearchDebounce?.cancel();
+        _desktopSearchController.clear();
+        ref.read(subredditSearchQueryProvider.notifier).clear();
+        ref.read(userSearchQueryProvider.notifier).clear();
+      } else if (prev != 1 && next == 1) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted &&
+              ResponsiveLayout.isDesktop(context) &&
+              (ModalRoute.of(context)?.isCurrent ?? false) &&
+              !_shortcutFocusScopeNode.hasFocus) {
+            _shortcutFocusScopeNode.requestScopeFocus();
+          }
+        });
+      }
+    });
+    ref.listen<String>(subredditSearchQueryProvider, (prev, next) {
+      if (ref.read(librarySubTabProvider) == 1) {
+        if (next.isEmpty) {
+          _desktopSearchDebounce?.cancel();
+          if (_desktopSearchController.text.isNotEmpty) {
+            _desktopSearchController.clear();
+          }
+        } else if (!_desktopSearchFocusNode.hasFocus &&
+            _desktopSearchController.text != next) {
+          _desktopSearchDebounce?.cancel();
+          _desktopSearchController.text = next;
+        }
+      }
+    });
+    ref.listen<String>(userSearchQueryProvider, (prev, next) {
+      if (ref.read(librarySubTabProvider) == 2) {
+        if (next.isEmpty) {
+          _desktopSearchDebounce?.cancel();
+          if (_desktopSearchController.text.isNotEmpty) {
+            _desktopSearchController.clear();
+          }
+        } else if (!_desktopSearchFocusNode.hasFocus &&
+            _desktopSearchController.text != next) {
+          _desktopSearchDebounce?.cancel();
+          _desktopSearchController.text = next;
+        }
+      }
+    });
+
+    final collectionSort = ref.watch(collectionSortOptionProvider);
+    final listSortProvider = activeSubTab == 2
+        ? userSortOptionProvider
+        : subredditSortOptionProvider;
+    final listSort = ref.watch(listSortProvider);
+
+    void focusDesktopSearch() {
+      if (isDesktop &&
+          activeSubTab >= 1 &&
+          _desktopSearchFocusNode.canRequestFocus) {
+        _desktopSearchFocusNode.requestFocus();
+        _desktopSearchController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _desktopSearchController.text.length,
+        );
+      }
+    }
+
+    return CallbackShortcuts(
+      bindings: isDesktop
+          ? {
+              const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+                  focusDesktopSearch,
+              const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+                  focusDesktopSearch,
+              const SingleActivator(
+                LogicalKeyboardKey.escape,
+                includeRepeats: false,
+              ): () {
+                if (_desktopSearchFocusNode.hasFocus) {
+                  _desktopSearchFocusNode.unfocus();
+                }
+              },
+            }
+          : const {},
+      child: FocusScope(
+        node: _shortcutFocusScopeNode,
+        autofocus: true,
+        child: LayoutBuilder(
+          builder: (context, outerConstraints) {
+            final searchWidth = (outerConstraints.maxWidth * 0.30).clamp(
+              160.0,
+              280.0,
+            );
+            return Scaffold(
+              extendBodyBehindAppBar: enableFrosted,
+              appBar: AppBar(
+                backgroundColor: enableFrosted ? Colors.transparent : null,
+                elevation: 0,
+                scrolledUnderElevation: enableFrosted ? 0 : null,
+                surfaceTintColor: enableFrosted ? Colors.transparent : null,
+                flexibleSpace: FrostedAppBarBackground(
+                  enableBlur: enableFrosted,
+                  showBottomBorder: false,
+                ),
+                titleSpacing: isDesktop ? 20 : null,
+                title: const Text(
+                  'Library',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+                actions: [
+                  if (isDesktop) ...[
+                    if (activeSubTab == 0) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Center(
+                          child: FilledButton.tonalIcon(
+                            onPressed: () => showCollectionFormDialog(context),
+                            icon: const Icon(Icons.add_rounded, size: 18),
+                            label: const Text('New Collection'),
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
                         ),
                       ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.sort_rounded,
+                          color: collectionSort != CollectionSortOption.newest
+                              ? colorScheme.primary
+                              : null,
+                        ),
+                        tooltip: 'Sort Collections: ${collectionSort.label}',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => showCollectionSortSheet(context),
+                      ),
+                    ] else ...[
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Center(
+                          child: DesktopInlineSearchField(
+                            controller: _desktopSearchController,
+                            focusNode: _desktopSearchFocusNode,
+                            maxWidth: searchWidth,
+                            hintText: activeSubTab == 2
+                                ? 'Search users...'
+                                : 'Search subreddits...',
+                            onChanged: (val) {
+                              _desktopSearchDebounce?.cancel();
+                              final queryProvider = activeSubTab == 2
+                                  ? userSearchQueryProvider
+                                  : subredditSearchQueryProvider;
+                              if (val.trim().isEmpty) {
+                                ref.read(queryProvider.notifier).clear();
+                                return;
+                              }
+                              _desktopSearchDebounce = Timer(
+                                const Duration(milliseconds: 250),
+                                () {
+                                  if (!mounted) return;
+                                  ref
+                                      .read(queryProvider.notifier)
+                                      .setQuery(val);
+                                },
+                              );
+                            },
+                            onSubmitted: (val) {
+                              _desktopSearchDebounce?.cancel();
+                              final queryProvider = activeSubTab == 2
+                                  ? userSearchQueryProvider
+                                  : subredditSearchQueryProvider;
+                              if (val.trim().isEmpty) {
+                                ref.read(queryProvider.notifier).clear();
+                              } else {
+                                ref.read(queryProvider.notifier).setQuery(val);
+                              }
+                            },
+                            onClear: () {
+                              _desktopSearchDebounce?.cancel();
+                              _desktopSearchController.clear();
+                              final queryProvider = activeSubTab == 2
+                                  ? userSearchQueryProvider
+                                  : subredditSearchQueryProvider;
+                              ref.read(queryProvider.notifier).clear();
+                            },
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.sort_rounded,
+                          color: listSort != SubredditSortOption.mostSaved
+                              ? colorScheme.primary
+                              : null,
+                        ),
+                        tooltip:
+                            'Sort ${activeSubTab == 2 ? 'Users' : 'Subreddits'}: ${listSort.label}',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => showLibraryListSortSheet(
+                          context,
+                          listSortProvider,
+                          activeSubTab == 2 ? 'Users' : 'Subreddits',
+                        ),
+                      ),
+                    ],
                   ],
-                ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem<_LibraryMenuAction>(
-                value: _LibraryMenuAction.metadataSettings,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.tune_rounded,
-                      size: 20,
-                      color: colorScheme.onSurface,
+                  FrostedPopupMenuButton<_LibraryMenuAction>(
+                    icon: const Icon(Icons.more_vert_rounded),
+                    tooltip: 'More options',
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(child: Text('Subreddit & User Metadata')),
+                    style: IconButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onSelected: (action) {
+                      switch (action) {
+                        case _LibraryMenuAction.toggleNsfw:
+                          if (ref.read(searchFilterViewModelProvider).isNsfw !=
+                              null) {
+                            ref
+                                .read(searchFilterViewModelProvider.notifier)
+                                .setNsfwFilter(null);
+                          }
+                          ref
+                              .read(settingsViewModelProvider.notifier)
+                              .toggleHideNsfwInFeed(!hideNsfwInFeed);
+                          break;
+                        case _LibraryMenuAction.metadataSettings:
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SubredditUserMetadataView(),
+                            ),
+                          );
+                          break;
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      PopupMenuItem<_LibraryMenuAction>(
+                        value: _LibraryMenuAction.toggleNsfw,
+                        child: Row(
+                          children: [
+                            Icon(
+                              hideNsfwInFeed
+                                  ? Icons.visibility_off_rounded
+                                  : Icons.visibility_rounded,
+                              size: 20,
+                              color: hideNsfwInFeed
+                                  ? colorScheme.error
+                                  : colorScheme.onSurface,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                hideNsfwInFeed ? 'Show NSFW' : 'Hide NSFW',
+                              ),
+                            ),
+                            if (hideNsfwInFeed)
+                              Text(
+                                'Hidden',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.error,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem<_LibraryMenuAction>(
+                        value: _LibraryMenuAction.metadataSettings,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 20,
+                              color: colorScheme.onSurface,
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text('Subreddit & User Metadata'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                bottom: TabBar(
+                  controller: _tabController,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                  labelStyle: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  unselectedLabelStyle: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  tabs: const [
+                    _TabTitleWithCount(tabIndex: 0, label: 'Collections'),
+                    _TabTitleWithCount(tabIndex: 1, label: 'Subreddits'),
+                    _TabTitleWithCount(tabIndex: 2, label: 'Users'),
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(width: 4),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorSize: TabBarIndicatorSize.tab,
-          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-          labelStyle: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w700,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-          ),
-          tabs: const [
-            _TabTitleWithCount(tabIndex: 0, label: 'Collections'),
-            _TabTitleWithCount(tabIndex: 1, label: 'Subreddits'),
-            _TabTitleWithCount(tabIndex: 2, label: 'Users'),
-          ],
+              body: TabBarView(
+                controller: _tabController,
+                children: [
+                  _visitedSubTabs.contains(0)
+                      ? const _CollectionsTab()
+                      : const SizedBox.shrink(),
+                  _visitedSubTabs.contains(1)
+                      ? const _SubredditsTab()
+                      : const SizedBox.shrink(),
+                  _visitedSubTabs.contains(2)
+                      ? const _UsersTab()
+                      : const SizedBox.shrink(),
+                ],
+              ),
+            );
+          },
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _visitedSubTabs.contains(0)
-              ? const _CollectionsTab()
-              : const SizedBox.shrink(),
-          _visitedSubTabs.contains(1)
-              ? const _SubredditsTab()
-              : const SizedBox.shrink(),
-          _visitedSubTabs.contains(2)
-              ? const _UsersTab()
-              : const SizedBox.shrink(),
-        ],
       ),
     );
   }
@@ -305,208 +541,235 @@ class _CollectionsTabState extends ConsumerState<_CollectionsTab>
     return collectionsAsync.when(
       data: (collections) {
         if (collections.isEmpty) {
+          final bottomPad = ResponsiveLayout.feedBottomPadding(context);
           return Padding(
             padding: EdgeInsets.only(top: topOffset),
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withValues(
-                          alpha: 0.35,
+              child: SingleChildScrollView(
+                primary: false,
+                padding: EdgeInsets.fromLTRB(32, 32, 32, bottomPad),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer.withValues(
+                            alpha: 0.35,
+                          ),
+                          shape: BoxShape.circle,
                         ),
-                        shape: BoxShape.circle,
+                        child: Icon(
+                          Icons.folder_open_rounded,
+                          size: 52,
+                          color: colorScheme.primary,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.folder_open_rounded,
-                        size: 52,
-                        color: colorScheme.primary,
+                      const SizedBox(height: 20),
+                      Text(
+                        'No Collections Yet',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'No Collections Yet',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
+                      const SizedBox(height: 8),
+                      Text(
+                        'Create custom collections to categorize and group your favorite Reddit posts and comments.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colorScheme.onSurfaceVariant,
+                          height: 1.4,
+                          fontSize: 13.5,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Create custom collections to categorize and group your favorite Reddit posts and comments.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        height: 1.4,
-                        fontSize: 13.5,
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: () => showCollectionFormDialog(context),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Create Collection'),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: () => showCollectionFormDialog(context),
-                      icon: const Icon(Icons.add_rounded),
-                      label: const Text('Create Collection'),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           );
         }
 
-        return ListView.separated(
-          padding: EdgeInsets.only(top: topOffset + 6, bottom: 104),
-          itemCount: collections.length,
-          separatorBuilder: (context, _) => Divider(
-            height: 1,
-            indent: 68,
-            endIndent: 14,
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-          itemBuilder: (context, index) {
-            final col = collections[index];
-            final colColor = Color(col.colorValue);
-            final hasDescription =
-                col.description != null && col.description!.trim().isNotEmpty;
+        final isDesktop = ResponsiveLayout.isDesktop(context);
+        final bottomPad = ResponsiveLayout.feedBottomPadding(context);
 
-            return InkWell(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (ctx) =>
-                        ScopedFeedView(args: ScopedFeedArgs.collection(col)),
-                  ),
-                );
-              },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-                child: Row(
-                  crossAxisAlignment: hasDescription
-                      ? CrossAxisAlignment.start
-                      : CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      margin: EdgeInsets.only(top: hasDescription ? 2 : 0),
-                      decoration: BoxDecoration(
-                        color: colColor.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: colColor.withValues(alpha: 0.45),
-                          width: 1.5,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final hPad = isDesktop
+                ? ResponsiveLayout.centeredHorizontalPadding(
+                    constraints.maxWidth,
+                    maxContentWidth: kLibraryMaxWidth,
+                    minPadding: 24,
+                  )
+                : 0.0;
+            return ListView.separated(
+              primary: false,
+              padding: EdgeInsets.fromLTRB(
+                hPad,
+                topOffset + 6,
+                hPad,
+                bottomPad,
+              ),
+              itemCount: collections.length,
+              separatorBuilder: (context, _) => Divider(
+                height: 1,
+                indent: 68,
+                endIndent: 14,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+              ),
+              itemBuilder: (context, index) {
+                final col = collections[index];
+                final colColor = Color(col.colorValue);
+                final hasDescription =
+                    col.description != null &&
+                    col.description!.trim().isNotEmpty;
+
+                return InkWell(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (ctx) => ScopedFeedView(
+                          args: ScopedFeedArgs.collection(col),
                         ),
                       ),
-                      child: Center(
-                        child: Icon(
-                          Icons.bookmark_rounded,
-                          color: colColor,
-                          size: 18,
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                    child: Row(
+                      crossAxisAlignment: hasDescription
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          margin: EdgeInsets.only(top: hasDescription ? 2 : 0),
+                          decoration: BoxDecoration(
+                            color: colColor.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: colColor.withValues(alpha: 0.45),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.bookmark_rounded,
+                              color: colColor,
+                              size: 18,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Flexible(
-                                child: Text(
-                                  col.name,
-                                  maxLines: 1,
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      col.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '• ${col.itemCount} saved',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (hasDescription) ...[
+                                const SizedBox(height: 3),
+                                Text(
+                                  col.description!.trim(),
+                                  maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.35,
+                                    color: colorScheme.onSurfaceVariant,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '• ${col.itemCount} saved',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
+                              ],
                             ],
                           ),
-                          if (hasDescription) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              col.description!.trim(),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                height: 1.35,
-                                color: colorScheme.onSurfaceVariant,
+                        ),
+                        FrostedPopupMenuButton<String>(
+                          icon: Icon(
+                            Icons.more_vert_rounded,
+                            size: 20,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          tooltip: 'Collection options',
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          onSelected: (val) {
+                            if (val == 'edit') {
+                              showCollectionFormDialog(
+                                context,
+                                initialCollection: col,
+                              );
+                            } else if (val == 'delete') {
+                              _deleteCollection(context, col);
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit_note_rounded, size: 20),
+                                  SizedBox(width: 10),
+                                  Text('Edit Collection'),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 20,
+                                    color: colorScheme.error,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    'Delete Collection',
+                                    style: TextStyle(color: colorScheme.error),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
-                        ],
-                      ),
-                    ),
-                    FrostedPopupMenuButton<String>(
-                      icon: Icon(
-                        Icons.more_vert_rounded,
-                        size: 20,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      tooltip: 'Collection options',
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      onSelected: (val) {
-                        if (val == 'edit') {
-                          showCollectionFormDialog(
-                            context,
-                            initialCollection: col,
-                          );
-                        } else if (val == 'delete') {
-                          _deleteCollection(context, col);
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        const PopupMenuItem(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit_note_rounded, size: 20),
-                              SizedBox(width: 10),
-                              Text('Edit Collection'),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.delete_outline_rounded,
-                                size: 20,
-                                color: colorScheme.error,
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Delete Collection',
-                                style: TextStyle(color: colorScheme.error),
-                              ),
-                            ],
-                          ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -755,24 +1018,42 @@ class _PagedDirectoryTabState<T> extends ConsumerState<_PagedDirectoryTab<T>>
           endIndent: 14,
           color: colorScheme.outlineVariant.withValues(alpha: 0.3),
         );
+        final isDesktop = ResponsiveLayout.isDesktop(context);
+        final bottomPad = ResponsiveLayout.feedBottomPadding(context);
 
-        return ListView.builder(
-          controller: _scrollController,
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.fromLTRB(0, topOffset + 8, 0, 104),
-          itemCount: items.length + (pageState.hasMore ? 1 : 0),
-          prototypeItem: widget.prototypeBuilder(colorScheme, divider),
-          itemBuilder: (context, index) {
-            if (index >= items.length) {
-              return const Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-              );
-            }
-            return widget.rowBuilder(context, items[index], divider);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final hPad = isDesktop
+                ? ResponsiveLayout.centeredHorizontalPadding(
+                    constraints.maxWidth,
+                    maxContentWidth: kLibraryMaxWidth,
+                    minPadding: 24,
+                  )
+                : 0.0;
+            return ListView.builder(
+              controller: _scrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                hPad,
+                topOffset + 8,
+                hPad,
+                bottomPad,
+              ),
+              itemCount: items.length + (pageState.hasMore ? 1 : 0),
+              prototypeItem: widget.prototypeBuilder(colorScheme, divider),
+              itemBuilder: (context, index) {
+                if (index >= items.length) {
+                  return const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  );
+                }
+                return widget.rowBuilder(context, items[index], divider);
+              },
+            );
           },
         );
       },
@@ -855,50 +1136,56 @@ class _SubredditsTab extends ConsumerWidget {
             .read(settingsViewModelProvider)
             .hideNsfwInFeed;
         final showingSfwEmpty = query.isEmpty && hideNsfwInFeed;
+        final bottomPad = ResponsiveLayout.feedBottomPadding(context);
         return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  showingSfwEmpty
-                      ? Icons.visibility_off_rounded
-                      : Icons.search_off_rounded,
-                  size: 48,
-                  color: colorScheme.outline,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  query.isNotEmpty
-                      ? 'No subreddits matching "$query"'
-                      : showingSfwEmpty
-                      ? 'No SFW subreddits found'
-                      : 'No saved subreddits found',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+          child: SingleChildScrollView(
+            primary: false,
+            padding: EdgeInsets.fromLTRB(32, 32, 32, bottomPad),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    showingSfwEmpty
+                        ? Icons.visibility_off_rounded
+                        : Icons.search_off_rounded,
+                    size: 48,
+                    color: colorScheme.outline,
                   ),
-                ),
-                if (query.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      ref.read(subredditSearchQueryProvider.notifier).clear();
-                    },
-                    child: const Text('Clear Search'),
+                  const SizedBox(height: 16),
+                  Text(
+                    query.isNotEmpty
+                        ? 'No subreddits matching "$query"'
+                        : showingSfwEmpty
+                        ? 'No SFW subreddits found'
+                        : 'No saved subreddits found',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ] else if (showingSfwEmpty) ...[
-                  const SizedBox(height: 12),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      ref
-                          .read(settingsViewModelProvider.notifier)
-                          .toggleHideNsfwInFeed(false);
-                    },
-                    child: const Text('Show NSFW'),
-                  ),
+                  if (query.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () {
+                        ref.read(subredditSearchQueryProvider.notifier).clear();
+                      },
+                      child: const Text('Clear Search'),
+                    ),
+                  ] else if (showingSfwEmpty) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () {
+                        ref
+                            .read(settingsViewModelProvider.notifier)
+                            .toggleHideNsfwInFeed(false);
+                      },
+                      child: const Text('Show NSFW'),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -923,7 +1210,7 @@ class _SubredditsTab extends ConsumerWidget {
           ),
           divider: divider,
           onTap: () {
-            FocusManager.instance.primaryFocus?.unfocus();
+            ResponsiveLayout.unfocusEditableText();
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (ctx) =>
@@ -985,64 +1272,70 @@ class _UsersTab extends ConsumerWidget {
             .read(settingsViewModelProvider)
             .hideNsfwInFeed;
         final showingSfwEmpty = query.isEmpty && hideNsfwInFeed;
+        final bottomPad = ResponsiveLayout.feedBottomPadding(context);
         return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  query.isNotEmpty
-                      ? Icons.search_off_rounded
-                      : showingSfwEmpty
-                      ? Icons.visibility_off_rounded
-                      : Icons.person_off_rounded,
-                  size: 48,
-                  color: colorScheme.outline,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  query.isNotEmpty
-                      ? 'No users matching "$query"'
-                      : showingSfwEmpty
-                      ? 'No SFW users found'
-                      : 'No saved users found',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+          child: SingleChildScrollView(
+            primary: false,
+            padding: EdgeInsets.fromLTRB(32, 32, 32, bottomPad),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    query.isNotEmpty
+                        ? Icons.search_off_rounded
+                        : showingSfwEmpty
+                        ? Icons.visibility_off_rounded
+                        : Icons.person_off_rounded,
+                    size: 48,
+                    color: colorScheme.outline,
                   ),
-                ),
-                if (query.isEmpty && !showingSfwEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   Text(
-                    'Authors of your saved posts and comments will appear here.',
+                    query.isNotEmpty
+                        ? 'No users matching "$query"'
+                        : showingSfwEmpty
+                        ? 'No SFW users found'
+                        : 'No saved users found',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: colorScheme.onSurfaceVariant,
-                      height: 1.4,
-                      fontSize: 13,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
+                  if (query.isEmpty && !showingSfwEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Authors of your saved posts and comments will appear here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        height: 1.4,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                  if (query.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () {
+                        ref.read(userSearchQueryProvider.notifier).clear();
+                      },
+                      child: const Text('Clear Search'),
+                    ),
+                  ] else if (showingSfwEmpty) ...[
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () {
+                        ref
+                            .read(settingsViewModelProvider.notifier)
+                            .toggleHideNsfwInFeed(false);
+                      },
+                      child: const Text('Show NSFW'),
+                    ),
+                  ],
                 ],
-                if (query.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      ref.read(userSearchQueryProvider.notifier).clear();
-                    },
-                    child: const Text('Clear Search'),
-                  ),
-                ] else if (showingSfwEmpty) ...[
-                  const SizedBox(height: 12),
-                  FilledButton.tonal(
-                    onPressed: () {
-                      ref
-                          .read(settingsViewModelProvider.notifier)
-                          .toggleHideNsfwInFeed(false);
-                    },
-                    child: const Text('Show NSFW'),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         );
@@ -1059,7 +1352,7 @@ class _UsersTab extends ConsumerWidget {
           placeholder: userPlaceholder,
           divider: divider,
           onTap: () {
-            FocusManager.instance.primaryFocus?.unfocus();
+            ResponsiveLayout.unfocusEditableText();
             ScopedFeedView.openAuthor(context, author);
           },
           onLongPress: () => _showLibraryEntityOptionsSheet(

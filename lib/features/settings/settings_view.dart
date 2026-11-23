@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/repositories/settings_repository.dart';
 import 'package:savedex/data/services/github_update_service.dart';
 import 'package:savedex/theme/app_theme.dart';
@@ -39,16 +40,33 @@ class SettingsView extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    final isDesktop = ResponsiveLayout.isDesktop(context);
+
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: isDesktop ? 20 : null,
         title: const Text('Settings'),
         elevation: 0,
         scrolledUnderElevation: 2,
       ),
-      body: ListView(
-        primary: false,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 104),
-        children: [
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final hPad = isDesktop
+              ? ResponsiveLayout.centeredHorizontalPadding(
+                  constraints.maxWidth,
+                  maxContentWidth: kSettingsMaxWidth,
+                  minPadding: 24,
+                )
+              : 16.0;
+          return ListView(
+            primary: false,
+            padding: EdgeInsets.fromLTRB(
+              hPad,
+              12,
+              hPad,
+              isDesktop ? 32 : 104,
+            ),
+            children: [
           _buildSectionHeader('Account & Sync', colorScheme),
           Card(
             margin: const EdgeInsets.only(bottom: 16),
@@ -835,6 +853,8 @@ class SettingsView extends ConsumerWidget {
             ),
           ),
         ],
+          );
+        },
       ),
     );
   }

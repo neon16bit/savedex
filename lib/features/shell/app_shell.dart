@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/services/github_update_service.dart';
 import 'package:savedex/features/enrichment/enrichment_viewmodel.dart';
 import 'package:savedex/features/library/library_view.dart';
@@ -10,6 +11,7 @@ import 'package:savedex/features/saved/saved_view.dart';
 import 'package:savedex/features/settings/settings_view.dart';
 import 'package:savedex/features/settings/settings_viewmodel.dart';
 import 'package:savedex/features/settings/widgets/update_dialog.dart';
+import 'package:savedex/features/shell/widgets/desktop_nav_sidebar.dart';
 import 'package:savedex/features/shell/widgets/floating_nav_bar.dart';
 import 'package:savedex/features/shell/widgets/welcome_onboarding_dialog.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
@@ -115,6 +117,9 @@ class _AppShellState extends ConsumerState<AppShell> {
   final Set<int> _visitedTabs = {0};
   bool _didCheckOnboarding = false;
   bool _didCheckUpdates = false;
+  bool? _manualSidebarExtended;
+  bool? _lastWideDesktop;
+  bool? _lastIsDesktop;
   Timer? _updateCheckTimer;
 
   @override
@@ -196,12 +201,39 @@ class _AppShellState extends ConsumerState<AppShell> {
         }
       },
     );
+    ref.listen<int>(selectedShellTabProvider, (prev, next) {
+      if (prev != next) {
+        ResponsiveLayout.unfocusEditableText();
+      }
+    });
 
     final selectedIndex = ref.watch(selectedShellTabProvider).clamp(0, 2);
     _visitedTabs.add(selectedIndex);
 
+    final isDesktop = ResponsiveLayout.isDesktop(context);
+    final isWideDesktop = ResponsiveLayout.isWideDesktop(context);
+    if (_lastIsDesktop == true && !isDesktop) {
+      _manualSidebarExtended = null;
+    } else if (_lastIsDesktop == false && isDesktop) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(isSavedSearchExpandedProvider.notifier).setExpanded(false);
+        ref
+            .read(isSavedSearchOpenedViaFilterProvider.notifier)
+            .setOpened(false);
+        ref.read(isLibrarySearchExpandedProvider.notifier).setExpanded(false);
+      });
+    }
+    _lastIsDesktop = isDesktop;
+    if (_lastWideDesktop == true && !isWideDesktop) {
+      _manualSidebarExtended = null;
+    }
+    _lastWideDesktop = isWideDesktop;
+    final isSidebarExtended = _manualSidebarExtended ?? isWideDesktop;
     final isSavedFilterExpanded =
-        selectedIndex == 0 && ref.watch(isSavedFilterExpandedProvider);
+        !isDesktop &&
+        selectedIndex == 0 &&
+        ref.watch(isSavedFilterExpandedProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -211,53 +243,88 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return SnackBarTheme(
       data: theme.snackBarTheme.copyWith(
-        insetPadding: kFloatingBarSnackBarMargin,
+        behavior: isDesktop
+            ? SnackBarBehavior.floating
+            : theme.snackBarTheme.behavior,
+        width: isDesktop ? kDesktopSnackBarMaxWidth : null,
+        insetPadding: isDesktop
+            ? const EdgeInsets.fromLTRB(16, 6, 16, 16)
+            : kFloatingBarSnackBarMargin,
       ),
       child: Scaffold(
-        body: Stack(
+        body: Row(
           children: [
-            IndexedStack(
-              index: selectedIndex,
-              children: [
-                const SavedView(),
-                _visitedTabs.contains(1)
-                    ? const LibraryView()
-                    : const SizedBox.shrink(),
-                _visitedTabs.contains(2)
-                    ? const SettingsView()
-                    : const SizedBox.shrink(),
-              ],
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                ignoring: !isSavedFilterExpanded,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  opacity: isSavedFilterExpanded ? 1.0 : 0.0,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: dismissFilter,
-                    onVerticalDragUpdate: (details) {
-                      if ((details.primaryDelta ?? 0) > 6) {
-                        dismissFilter();
-                      }
-                    },
-                    child: Container(
-                      color: Colors.black.withValues(
-                        alpha: isDark ? 0.40 : 0.22,
-                      ),
+            if (isDesktop)
+              DesktopNavSidebar(
+                extended: isSidebarExtended,
+                onToggleExtended: () {
+                  setState(() {
+                    _manualSidebarExtended = !isSidebarExtended;
+                  });
+                },
+              ),
+            Expanded(
+              key: const ValueKey('app_shell_main_pane'),
+              child: ClipRect(
+                child: Stack(
+                  children: [
+                    IndexedStack(
+                      index: selectedIndex,
+                      children: [
+                        ExcludeFocus(
+                          excluding: selectedIndex != 0,
+                          child: const SavedView(),
+                        ),
+                        ExcludeFocus(
+                          excluding: selectedIndex != 1,
+                          child: _visitedTabs.contains(1)
+                              ? const LibraryView()
+                              : const SizedBox.shrink(),
+                        ),
+                        ExcludeFocus(
+                          excluding: selectedIndex != 2,
+                          child: _visitedTabs.contains(2)
+                              ? const SettingsView()
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
                     ),
-                  ),
+                    if (!isDesktop) ...[
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          ignoring: !isSavedFilterExpanded,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOut,
+                            opacity: isSavedFilterExpanded ? 1.0 : 0.0,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: dismissFilter,
+                              onVerticalDragUpdate: (details) {
+                                if ((details.primaryDelta ?? 0) > 6) {
+                                  dismissFilter();
+                                }
+                              },
+                              child: Container(
+                                color: Colors.black.withValues(
+                                  alpha: isDark ? 0.40 : 0.22,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Positioned(
+                        key: ValueKey('app_shell_floating_nav_bar'),
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: RepaintBoundary(child: FloatingNavBar()),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ),
-            const Positioned(
-              key: ValueKey('app_shell_floating_nav_bar'),
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: RepaintBoundary(child: FloatingNavBar()),
             ),
           ],
         ),

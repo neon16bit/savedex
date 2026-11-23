@@ -42,6 +42,7 @@ class FilterCardDragCancelNotification extends FilterCardDragNotification {
 class FilterSheet extends ConsumerStatefulWidget {
   final VoidCallback? onClose;
   final bool isFloatingCard;
+  final bool isSidePanel;
   final FilterCriteria? scopedFilter;
   final ValueChanged<FilterCriteria>? onScopedFilterChanged;
   final int? scopedCollectionId;
@@ -52,6 +53,7 @@ class FilterSheet extends ConsumerStatefulWidget {
     super.key,
     this.onClose,
     this.isFloatingCard = false,
+    this.isSidePanel = false,
     this.scopedFilter,
     this.onScopedFilterChanged,
     this.scopedCollectionId,
@@ -480,33 +482,33 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   }
 
   void _onVerticalDragStart(DragStartDetails details) {
-    if (widget.isFloatingCard) {
+    if (widget.isFloatingCard && !widget.isSidePanel) {
       const FilterCardDragCancelNotification().dispatch(context);
     }
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails details) {
-    if (widget.isFloatingCard) {
+    if (widget.isFloatingCard && !widget.isSidePanel) {
       FilterCardDragUpdateNotification(details.primaryDelta ?? 0.0)
           .dispatch(context);
     }
   }
 
   void _onVerticalDragEnd(DragEndDetails details) {
-    if (widget.isFloatingCard) {
+    if (widget.isFloatingCard && !widget.isSidePanel) {
       FilterCardDragEndNotification(details.primaryVelocity ?? 0.0)
           .dispatch(context);
     }
   }
 
   void _onVerticalDragCancel() {
-    if (widget.isFloatingCard) {
+    if (widget.isFloatingCard && !widget.isSidePanel) {
       const FilterCardDragCancelNotification().dispatch(context);
     }
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
-    if (!widget.isFloatingCard) return false;
+    if (!widget.isFloatingCard || widget.isSidePanel) return false;
 
     if (notification is ScrollStartNotification) {
       const FilterCardDragCancelNotification().dispatch(context);
@@ -737,7 +739,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    if (widget.isFloatingCard) {
+    if (widget.isFloatingCard || widget.isSidePanel) {
       return _buildSheetBody(
         context,
         _cardScrollController,
@@ -781,10 +783,134 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     bool? effectiveIsNsfw,
   ) {
     final isFloating = widget.isFloatingCard;
+    final isSidePanel = widget.isSidePanel;
     final isAllSelected =
         filter.itemType == null &&
         filter.isStarred != true &&
         effectiveIsNsfw == null;
+
+    final quickAndMediaFilters = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 5,
+                children: [
+                  _buildCompactChoiceChip(
+                    label: 'All',
+                    isSelected: isAllSelected,
+                    onSelected: () => _selectAllQuickFilters(
+                      filter,
+                      viewModel,
+                      hideNsfwInFeed,
+                    ),
+                    colorScheme: colorScheme,
+                  ),
+                  _buildCompactChoiceChip(
+                    label: 'Posts',
+                    isSelected: filter.itemType == ItemType.post,
+                    onSelected: () => _setItemType(
+                      filter,
+                      viewModel,
+                      filter.itemType == ItemType.post ? null : ItemType.post,
+                    ),
+                    colorScheme: colorScheme,
+                  ),
+                  _buildCompactChoiceChip(
+                    label: 'Comments',
+                    isSelected: filter.itemType == ItemType.comment,
+                    onSelected: () => _setItemType(
+                      filter,
+                      viewModel,
+                      filter.itemType == ItemType.comment
+                          ? null
+                          : ItemType.comment,
+                    ),
+                    colorScheme: colorScheme,
+                  ),
+                  _buildCompactChoiceChip(
+                    label: 'Starred',
+                    isSelected: filter.isStarred == true,
+                    onSelected: () => _toggleStarredOnly(
+                      filter,
+                      viewModel,
+                      filter.isStarred != true,
+                    ),
+                    colorScheme: colorScheme,
+                  ),
+                  _buildCompactChoiceChip(
+                    label: 'NSFW',
+                    isSelected: effectiveIsNsfw == true,
+                    onSelected: () => _setNsfwFilter(
+                      filter,
+                      viewModel,
+                      hideNsfwInFeed,
+                      effectiveIsNsfw == true ? null : true,
+                    ),
+                    colorScheme: colorScheme,
+                  ),
+                  _buildCompactChoiceChip(
+                    label: 'SFW',
+                    isSelected: effectiveIsNsfw == false,
+                    onSelected: () => _setNsfwFilter(
+                      filter,
+                      viewModel,
+                      hideNsfwInFeed,
+                      effectiveIsNsfw == false ? null : false,
+                    ),
+                    colorScheme: colorScheme,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Divider(
+          height: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.25),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 5,
+                children:
+                    [
+                      (MediaType.image, 'Images'),
+                      (MediaType.video, 'Videos'),
+                      (MediaType.gallery, 'Galleries'),
+                      (MediaType.text, 'Text'),
+                      (MediaType.link, 'Links'),
+                      (MediaType.gif, 'GIFs'),
+                    ].map((opt) {
+                      final isSelected = filter.selectedMediaTypes.contains(
+                        opt.$1,
+                      );
+                      return _buildCompactChoiceChip(
+                        label: opt.$2,
+                        isSelected: isSelected,
+                        onSelected: () =>
+                            _toggleMediaType(filter, viewModel, opt.$1),
+                        colorScheme: colorScheme,
+                      );
+                    }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
 
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -799,23 +925,26 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // drag pill handle
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Container(
-                    width: 40,
-                    height: 4.5,
-                    decoration: BoxDecoration(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(3),
+              if (!isSidePanel)
+                // drag pill handle
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Container(
+                      width: 40,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
                     ),
                   ),
                 ),
-              ),
 
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 2, 10, 6),
+                padding: isSidePanel
+                    ? const EdgeInsets.fromLTRB(16, 12, 10, 8)
+                    : const EdgeInsets.fromLTRB(14, 2, 10, 6),
                 child: Row(
                   children: [
                     Icon(
@@ -864,124 +993,21 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 5,
-                      children: [
-                        _buildCompactChoiceChip(
-                          label: 'All',
-                          isSelected: isAllSelected,
-                          onSelected: () => _selectAllQuickFilters(
-                            filter,
-                            viewModel,
-                            hideNsfwInFeed,
-                          ),
-                          colorScheme: colorScheme,
-                        ),
-                        _buildCompactChoiceChip(
-                          label: 'Posts',
-                          isSelected: filter.itemType == ItemType.post,
-                          onSelected: () => _setItemType(
-                            filter,
-                            viewModel,
-                            filter.itemType == ItemType.post
-                                ? null
-                                : ItemType.post,
-                          ),
-                          colorScheme: colorScheme,
-                        ),
-                        _buildCompactChoiceChip(
-                          label: 'Comments',
-                          isSelected: filter.itemType == ItemType.comment,
-                          onSelected: () => _setItemType(
-                            filter,
-                            viewModel,
-                            filter.itemType == ItemType.comment
-                                ? null
-                                : ItemType.comment,
-                          ),
-                          colorScheme: colorScheme,
-                        ),
-                        _buildCompactChoiceChip(
-                          label: 'Starred',
-                          isSelected: filter.isStarred == true,
-                          onSelected: () => _toggleStarredOnly(
-                            filter,
-                            viewModel,
-                            filter.isStarred != true,
-                          ),
-                          colorScheme: colorScheme,
-                        ),
-                        _buildCompactChoiceChip(
-                          label: 'NSFW',
-                          isSelected: effectiveIsNsfw == true,
-                          onSelected: () => _setNsfwFilter(
-                            filter,
-                            viewModel,
-                            hideNsfwInFeed,
-                            effectiveIsNsfw == true ? null : true,
-                          ),
-                          colorScheme: colorScheme,
-                        ),
-                        _buildCompactChoiceChip(
-                          label: 'SFW',
-                          isSelected: effectiveIsNsfw == false,
-                          onSelected: () => _setNsfwFilter(
-                            filter,
-                            viewModel,
-                            hideNsfwInFeed,
-                            effectiveIsNsfw == false ? null : false,
-                          ),
-                          colorScheme: colorScheme,
-                        ),
-                      ],
+              if (isSidePanel)
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: (MediaQuery.sizeOf(context).height * 0.40).clamp(
+                      130.0,
+                      300.0,
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 8),
-              Divider(
-                height: 1,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.25),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 5,
-                      children:
-                          [
-                            (MediaType.image, 'Images'),
-                            (MediaType.video, 'Videos'),
-                            (MediaType.gallery, 'Galleries'),
-                            (MediaType.text, 'Text'),
-                            (MediaType.link, 'Links'),
-                            (MediaType.gif, 'GIFs'),
-                          ].map((opt) {
-                            final isSelected = filter.selectedMediaTypes
-                                .contains(opt.$1);
-                            return _buildCompactChoiceChip(
-                              label: opt.$2,
-                              isSelected: isSelected,
-                              onSelected: () =>
-                                  _toggleMediaType(filter, viewModel, opt.$1),
-                              colorScheme: colorScheme,
-                            );
-                          }).toList(),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                  child: SingleChildScrollView(
+                    primary: false,
+                    child: quickAndMediaFilters,
+                  ),
+                )
+              else
+                quickAndMediaFilters,
 
               const SizedBox(height: 8),
               Divider(
@@ -1049,6 +1075,10 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
       ],
     );
 
+    if (isSidePanel) {
+      return body;
+    }
+
     if (isFloating) {
       return Container(
         decoration: BoxDecoration(
@@ -1088,8 +1118,8 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         break;
     }
 
-    return SizedBox(
-      height: 32,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 32),
       child: TextField(
         controller: controller,
         style: const TextStyle(fontSize: 12),
@@ -1134,7 +1164,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 8,
-            vertical: 0,
+            vertical: 6,
           ),
         ),
       ),
@@ -1432,7 +1462,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
           decoration: BoxDecoration(
             color: isSelected
                 ? colorScheme.primaryContainer.withValues(alpha: 0.65)
@@ -1448,14 +1478,19 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (count > 0) ...[

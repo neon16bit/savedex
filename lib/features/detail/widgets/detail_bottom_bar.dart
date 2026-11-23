@@ -1,7 +1,8 @@
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:savedex/core/providers/providers.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
 
@@ -34,73 +35,91 @@ class DetailBottomBar extends ConsumerWidget {
       offset: const Offset(0, 6),
     );
 
+    final isDesktop = ResponsiveLayout.isDesktop(context);
+    final bar = ConstrainedBox(
+      key: const ValueKey('detail_bottom_bar_content'),
+      constraints: const BoxConstraints(minHeight: 48),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [buttonShadow],
+              ),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+                onPressed: onOpenReddit,
+                icon: RedditIcon(size: 18, color: colorScheme.onPrimary),
+                label: const Text(
+                  'Open on Reddit',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Consumer(
+            builder: (context, ref, _) {
+              final collectionsAsync = ref.watch(
+                itemCollectionsProvider(item.id),
+              );
+              final collections =
+                  collectionsAsync.asData?.value ?? item.collections;
+              final hasCollections = collections.isNotEmpty;
+
+              return _FrostedDetailActionButton(
+                enableFrosted: enableFrosted,
+                isDark: isDark,
+                isActive: hasCollections,
+                icon: hasCollections
+                    ? Icons.bookmark_added_rounded
+                    : Icons.collections_bookmark_outlined,
+                tooltip: hasCollections
+                    ? 'Collections (${collections.length})'
+                    : 'Add to Collection',
+                onPressed: () =>
+                    showCollectionPickerSheet(context, item.id),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+          _FrostedDetailActionButton(
+            enableFrosted: enableFrosted,
+            isDark: isDark,
+            icon: Icons.share_outlined,
+            tooltip: 'Share',
+            onPressed: () => _share(context),
+          ),
+        ],
+      ),
+    );
+
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: SizedBox(
-          height: 48,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [buttonShadow],
-                  ),
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                    ),
-                    onPressed: onOpenReddit,
-                    icon: RedditIcon(size: 18, color: colorScheme.onPrimary),
-                    label: const Text(
-                      'Open on Reddit',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
+        child: isDesktop
+            ? Center(
+                heightFactor: 1.0,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: bar,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Consumer(
-                builder: (context, ref, _) {
-                  final collectionsAsync = ref.watch(
-                    itemCollectionsProvider(item.id),
-                  );
-                  final collections =
-                      collectionsAsync.asData?.value ?? item.collections;
-                  final hasCollections = collections.isNotEmpty;
-
-                  return _FrostedDetailActionButton(
-                    enableFrosted: enableFrosted,
-                    isDark: isDark,
-                    isActive: hasCollections,
-                    icon: hasCollections
-                        ? Icons.bookmark_added_rounded
-                        : Icons.collections_bookmark_outlined,
-                    tooltip: hasCollections
-                        ? 'Collections (${collections.length})'
-                        : 'Add to Collection',
-                    onPressed: () =>
-                        showCollectionPickerSheet(context, item.id),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              _FrostedDetailActionButton(
-                enableFrosted: enableFrosted,
-                isDark: isDark,
-                icon: Icons.share_outlined,
-                tooltip: 'Share',
-                onPressed: () => _share(context),
-              ),
-            ],
-          ),
-        ),
+              )
+            : bar,
       ),
     );
   }

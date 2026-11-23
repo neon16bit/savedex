@@ -1,9 +1,10 @@
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/providers/providers.dart';
 import 'package:savedex/core/utils/date_formatter.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/item_detail_viewmodel.dart';
 import 'package:savedex/features/detail/widgets/detail_badges.dart';
@@ -33,11 +34,19 @@ class ItemDetailView extends ConsumerStatefulWidget {
 
 class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
   late int _mediaIndex;
+  late final FocusScopeNode _shortcutFocusScopeNode;
 
   @override
   void initState() {
     super.initState();
     _mediaIndex = widget.initialMediaIndex;
+    _shortcutFocusScopeNode = FocusScopeNode();
+  }
+
+  @override
+  void dispose() {
+    _shortcutFocusScopeNode.dispose();
+    super.dispose();
   }
 
   Future<void> _refreshMetadata(
@@ -136,8 +145,9 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
     final actions = ref.read(itemDetailActionsProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDesktop = ResponsiveLayout.isDesktop(context);
 
-    return itemAsync.when(
+    final content = itemAsync.when(
       skipLoadingOnReload: true,
       data: (rawItem) {
         if (rawItem == null) {
@@ -173,6 +183,420 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
         final item = parentPost ?? rawItem;
         final isComment = item.itemType == ItemType.comment;
         final enableFrosted = watchFrostedEffects(ref);
+        final viewportHeight = MediaQuery.sizeOf(context).height;
+
+        final scaffold = Scaffold(
+          extendBodyBehindAppBar: enableFrosted,
+          extendBody: true,
+          appBar: AppBar(
+            leading: BackButton(
+              onPressed: () => Navigator.of(context).pop(_mediaIndex),
+            ),
+            backgroundColor: enableFrosted ? Colors.transparent : null,
+            elevation: 0,
+            scrolledUnderElevation: enableFrosted ? 0 : 2,
+            surfaceTintColor: enableFrosted ? Colors.transparent : null,
+            flexibleSpace: FrostedAppBarBackground(enableBlur: enableFrosted),
+            titleSpacing: 0,
+            title: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () =>
+                  ScopedFeedView.openSubreddit(context, item.subreddit),
+              child: Text(
+                item.displaySubreddit,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            actions: [
+              IconButton(
+                icon: Icon(
+                  item.isStarred
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
+                  color: item.isStarred ? colorScheme.primary : null,
+                ),
+                tooltip: item.isStarred ? 'Starred' : 'Star',
+                onPressed: () => actions.toggleStar(item),
+              ),
+              Consumer(
+                builder: (context, ref, _) {
+                  final isEnriching = ref.watch(
+                    enrichingItemsProvider.select((s) => s.contains(item.id)),
+                  );
+
+                  return FrostedPopupMenuButton<String>(
+                    icon: isEnriching
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: colorScheme.primary,
+                            ),
+                          )
+                        : const Icon(Icons.more_vert_rounded),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    onSelected: (val) {
+                      if (val == 'refresh') {
+                        _refreshMetadata(actions, item);
+                      } else if (val == 'recover_archive') {
+                        _recoverFromArchive(actions, item);
+                      } else if (val == 'copy_text') {
+                        if (item.body != null && item.body!.trim().isNotEmpty) {
+                          Clipboard.setData(
+                            ClipboardData(text: item.body!.trim()),
+                          );
+                          showAppSnackBar(
+                            context,
+                            item.isComment
+                                ? 'Comment text copied to clipboard'
+                                : 'Post text copied to clipboard',
+                          );
+                        }
+                      } else if (val == 'open_reddit') {
+                        openRedditUrl(context, item.fullPermalink);
+                      } else if (val == 'copy_link') {
+                        Clipboard.setData(
+                          ClipboardData(text: item.fullPermalink),
+                        );
+                        showAppSnackBar(
+                          context,
+                          'Permalink copied to clipboard',
+                        );
+                      } else if (val == 'collections') {
+                        showCollectionPickerSheet(context, item.id);
+                      } else if (val == 'delete') {
+                        showConfirmDeleteDialog(
+                          context,
+                          actions,
+                          item.id,
+                          isComment: item.isComment,
+                          onDeletedSelf: () => Navigator.of(context).pop(),
+                        );
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      if (item.canAttemptArchiveRecovery)
+                        PopupMenuItem(
+                          value: 'recover_archive',
+                          enabled: !isEnriching,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.archive_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Try Archive Recovery'),
+                            ],
+                          ),
+                        ),
+                      PopupMenuItem(
+                        value: 'refresh',
+                        enabled: !isEnriching,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onLongPress: isEnriching
+                              ? null
+                              : () => Navigator.of(ctx).pop('recover_archive'),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.sync_rounded, size: 18),
+                              const SizedBox(width: 10),
+                              Text(
+                                isEnriching
+                                    ? 'Refreshing...'
+                                    : 'Refresh Metadata',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (item.body != null && item.body!.trim().isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'copy_text',
+                          child: Row(
+                            children: [
+                              Icon(Icons.copy_rounded, size: 18),
+                              SizedBox(width: 10),
+                              Text('Copy Text'),
+                            ],
+                          ),
+                        ),
+                      PopupMenuItem(
+                        value: 'open_reddit',
+                        child: Row(
+                          children: [
+                            RedditIcon(
+                              size: 18,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 10),
+                            const Text('Open in Reddit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'copy_link',
+                        child: Row(
+                          children: [
+                            Icon(Icons.link_rounded, size: 18),
+                            SizedBox(width: 10),
+                            Text('Copy Link'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'collections',
+                        child: Row(
+                          children: [
+                            Icon(Icons.collections_bookmark_outlined, size: 18),
+                            SizedBox(width: 10),
+                            Text('Manage Collections'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: colorScheme.error,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              item.isComment ? 'Delete Comment' : 'Delete Item',
+                              style: TextStyle(color: colorScheme.error),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          body: Builder(
+            builder: (bodyContext) {
+              final bodyPadding = MediaQuery.paddingOf(bodyContext);
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final hPad = isDesktop
+                      ? ResponsiveLayout.centeredHorizontalPadding(
+                          constraints.maxWidth,
+                          maxContentWidth: kPostDetailMaxWidth,
+                          minPadding: 24,
+                        )
+                      : 0.0;
+                  return ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      hPad,
+                      bodyPadding.top + (isDesktop ? 16 : 8),
+                      hPad,
+                      bodyPadding.bottom + 32,
+                    ),
+                    children: [
+                      if (isComment) ...[
+                        DetailDiscussionHeader(commentItem: item),
+                        const SizedBox(height: 8),
+                      ],
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (!isComment ||
+                                item.parentPostTitle == null ||
+                                item.parentPostTitle!.isEmpty) ...[
+                              Text(
+                                item.title,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.4,
+                                  height: 1.3,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final colsAsync = ref.watch(
+                                  itemCollectionsProvider(item.id),
+                                );
+                                final cols =
+                                    colsAsync.asData?.value ?? item.collections;
+                                return DetailBadgeRow(
+                                  isComment: isComment,
+                                  isNsfw: item.isNsfw,
+                                  postFlair: item.postFlair,
+                                  isArchiveRecovered: item.isArchiveRecovered,
+                                  collections: cols,
+                                  onCollectionTap: (_) =>
+                                      showCollectionPickerSheet(
+                                        context,
+                                        item.id,
+                                      ),
+                                );
+                              },
+                            ),
+                            if (item.author != null &&
+                                item.author!.isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: item.author != '[deleted]'
+                                        ? () => ScopedFeedView.openAuthor(
+                                            context,
+                                            item.author!,
+                                          )
+                                        : null,
+                                    child: Text(
+                                      'u/${item.author}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: colorScheme.onSurface,
+                                      ),
+                                    ),
+                                  ),
+                                  if (item.createdAtUtc != null)
+                                    Text(
+                                      ' • ${DateFormatter.timeAgo(item.createdAtUtc)}',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                            if (item.isCrosspost) ...[
+                              const SizedBox(height: 12),
+                              DetailCrosspostOriginCard(item: item),
+                            ],
+                          ],
+                        ),
+                      ),
+                      DetailMediaView(
+                        item: item,
+                        initialIndex: _mediaIndex,
+                        maxMediaHeight: isDesktop
+                            ? (viewportHeight * 0.62).clamp(320.0, 620.0)
+                            : null,
+                        mediaBorderRadius: isDesktop
+                            ? BorderRadius.circular(14)
+                            : null,
+                        mediaPadding: isDesktop
+                            ? const EdgeInsets.symmetric(horizontal: 16)
+                            : null,
+                        onIndexChanged: (idx) => _mediaIndex = idx,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (item.body != null &&
+                                item.body!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              const Divider(height: 1),
+                              const SizedBox(height: 16),
+                              DetailMarkdownContent(data: item.body!.trim()),
+                            ],
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final note = ref.watch(
+                                  itemNoteProvider((
+                                    id: item.id,
+                                    initialNote: item.userNote,
+                                  )),
+                                );
+                                if (note == null || note.trim().isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 14),
+                                  child: DetailUserNoteCard(
+                                    note: note.trim(),
+                                    onTap: () => showEditNoteDialog(
+                                      context,
+                                      actions,
+                                      item.id,
+                                      note,
+                                    ),
+                                    onDelete: () {
+                                      actions.updateNote(item.id, null);
+                                      showNoteSnackBar(
+                                        context,
+                                        message: 'Note removed',
+                                        onUndo: () =>
+                                            actions.updateNote(item.id, note),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                DetailScoreChip(score: item.score),
+                                if (!isComment && item.numComments > 0) ...[
+                                  const SizedBox(width: 8),
+                                  DetailCommentsChip(count: item.numComments),
+                                ],
+                                const Spacer(),
+                                ItemNoteButton(
+                                  itemId: item.id,
+                                  initialNote: item.userNote,
+                                  showLabel: true,
+                                  onEditNote: (currentNote) =>
+                                      showEditNoteDialog(
+                                        context,
+                                        actions,
+                                        item.id,
+                                        currentNote,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+                      ),
+                      DetailCommentsSection(
+                        threadRootId: widget.itemId,
+                        currentItem: item,
+                        actions: actions,
+                        highlightedCommentId: widget.itemId != item.id
+                            ? widget.itemId
+                            : null,
+                        onRefresh: (comment) =>
+                            _refreshMetadata(actions, comment),
+                        onRecoverArchive: (comment) =>
+                            _recoverFromArchive(actions, comment),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+          bottomNavigationBar: DetailBottomBar(
+            item: item,
+            onOpenReddit: () => openRedditUrl(context, item.fullPermalink),
+          ),
+        );
 
         return PopScope(
           canPop: false,
@@ -180,400 +604,7 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
             if (didPop) return;
             Navigator.of(context).pop(_mediaIndex);
           },
-          child: Scaffold(
-            extendBodyBehindAppBar: enableFrosted,
-            extendBody: true,
-            appBar: AppBar(
-              leading: BackButton(
-                onPressed: () => Navigator.of(context).pop(_mediaIndex),
-              ),
-              backgroundColor: enableFrosted ? Colors.transparent : null,
-              elevation: 0,
-              scrolledUnderElevation: enableFrosted ? 0 : 2,
-              surfaceTintColor: enableFrosted ? Colors.transparent : null,
-              flexibleSpace: FrostedAppBarBackground(enableBlur: enableFrosted),
-              titleSpacing: 0,
-              title: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () =>
-                    ScopedFeedView.openSubreddit(context, item.subreddit),
-                child: Text(
-                  item.displaySubreddit,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              actions: [
-                IconButton(
-                  icon: Icon(
-                    item.isStarred
-                        ? Icons.star_rounded
-                        : Icons.star_border_rounded,
-                    color: item.isStarred ? colorScheme.primary : null,
-                  ),
-                  tooltip: item.isStarred ? 'Starred' : 'Star',
-                  onPressed: () => actions.toggleStar(item),
-                ),
-                Consumer(
-                  builder: (context, ref, _) {
-                    final isEnriching = ref.watch(
-                      enrichingItemsProvider.select((s) => s.contains(item.id)),
-                    );
-
-                    return FrostedPopupMenuButton<String>(
-                      icon: isEnriching
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colorScheme.primary,
-                              ),
-                            )
-                          : const Icon(Icons.more_vert_rounded),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      onSelected: (val) {
-                        if (val == 'refresh') {
-                          _refreshMetadata(actions, item);
-                        } else if (val == 'recover_archive') {
-                          _recoverFromArchive(actions, item);
-                        } else if (val == 'copy_text') {
-                          if (item.body != null &&
-                              item.body!.trim().isNotEmpty) {
-                            Clipboard.setData(
-                              ClipboardData(text: item.body!.trim()),
-                            );
-                            showAppSnackBar(
-                              context,
-                              item.isComment
-                                  ? 'Comment text copied to clipboard'
-                                  : 'Post text copied to clipboard',
-                            );
-                          }
-                        } else if (val == 'open_reddit') {
-                          openRedditUrl(context, item.fullPermalink);
-                        } else if (val == 'copy_link') {
-                          Clipboard.setData(
-                            ClipboardData(text: item.fullPermalink),
-                          );
-                          showAppSnackBar(
-                            context,
-                            'Permalink copied to clipboard',
-                          );
-                        } else if (val == 'collections') {
-                          showCollectionPickerSheet(context, item.id);
-                        } else if (val == 'delete') {
-                          showConfirmDeleteDialog(
-                            context,
-                            actions,
-                            item.id,
-                            isComment: item.isComment,
-                            onDeletedSelf: () => Navigator.of(context).pop(),
-                          );
-                        }
-                      },
-                      itemBuilder: (ctx) => [
-                        if (item.canAttemptArchiveRecovery)
-                          PopupMenuItem(
-                            value: 'recover_archive',
-                            enabled: !isEnriching,
-                            child: const Row(
-                              children: [
-                                Icon(Icons.archive_rounded, size: 18),
-                                SizedBox(width: 10),
-                                Text('Try Archive Recovery'),
-                              ],
-                            ),
-                          ),
-                        PopupMenuItem(
-                          value: 'refresh',
-                          enabled: !isEnriching,
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onLongPress: isEnriching
-                                ? null
-                                : () =>
-                                      Navigator.of(ctx).pop('recover_archive'),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.sync_rounded, size: 18),
-                                const SizedBox(width: 10),
-                                Text(
-                                  isEnriching
-                                      ? 'Refreshing...'
-                                      : 'Refresh Metadata',
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (item.body != null && item.body!.trim().isNotEmpty)
-                          const PopupMenuItem(
-                            value: 'copy_text',
-                            child: Row(
-                              children: [
-                                Icon(Icons.copy_rounded, size: 18),
-                                SizedBox(width: 10),
-                                Text('Copy Text'),
-                              ],
-                            ),
-                          ),
-                        PopupMenuItem(
-                          value: 'open_reddit',
-                          child: Row(
-                            children: [
-                              RedditIcon(
-                                size: 18,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: 10),
-                              const Text('Open in Reddit'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'copy_link',
-                          child: Row(
-                            children: [
-                              Icon(Icons.link_rounded, size: 18),
-                              SizedBox(width: 10),
-                              Text('Copy Link'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'collections',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.collections_bookmark_outlined,
-                                size: 18,
-                              ),
-                              SizedBox(width: 10),
-                              Text('Manage Collections'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuDivider(),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.delete_outline_rounded,
-                                size: 18,
-                                color: colorScheme.error,
-                              ),
-                              const SizedBox(width: 10),
-                              Text(
-                                item.isComment
-                                    ? 'Delete Comment'
-                                    : 'Delete Item',
-                                style: TextStyle(color: colorScheme.error),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(width: 8),
-              ],
-            ),
-            body: Builder(
-              builder: (bodyContext) {
-                final bodyPadding = MediaQuery.paddingOf(bodyContext);
-                return ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    0,
-                    bodyPadding.top + 8,
-                    0,
-                    bodyPadding.bottom + 32,
-                  ),
-                  children: [
-                    if (isComment) ...[
-                      DetailDiscussionHeader(commentItem: item),
-                      const SizedBox(height: 8),
-                    ],
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (!isComment ||
-                              item.parentPostTitle == null ||
-                              item.parentPostTitle!.isEmpty) ...[
-                            Text(
-                              item.title,
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: -0.4,
-                                height: 1.3,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
-                          Consumer(
-                            builder: (context, ref, _) {
-                              final colsAsync = ref.watch(
-                                itemCollectionsProvider(item.id),
-                              );
-                              final cols =
-                                  colsAsync.asData?.value ?? item.collections;
-                              return DetailBadgeRow(
-                                isComment: isComment,
-                                isNsfw: item.isNsfw,
-                                postFlair: item.postFlair,
-                                isArchiveRecovered: item.isArchiveRecovered,
-                                collections: cols,
-                                onCollectionTap: (_) =>
-                                    showCollectionPickerSheet(context, item.id),
-                              );
-                            },
-                          ),
-                          if (item.author != null &&
-                              item.author!.isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: item.author != '[deleted]'
-                                      ? () => ScopedFeedView.openAuthor(
-                                          context,
-                                          item.author!,
-                                        )
-                                      : null,
-                                  child: Text(
-                                    'u/${item.author}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: colorScheme.onSurface,
-                                    ),
-                                  ),
-                                ),
-                                if (item.createdAtUtc != null)
-                                  Text(
-                                    ' • ${DateFormatter.timeAgo(item.createdAtUtc)}',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                          if (item.isCrosspost) ...[
-                            const SizedBox(height: 12),
-                            DetailCrosspostOriginCard(item: item),
-                          ],
-                        ],
-                      ),
-                    ),
-                    DetailMediaView(
-                      item: item,
-                      initialIndex: _mediaIndex,
-                      onIndexChanged: (idx) => _mediaIndex = idx,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (item.body != null &&
-                              item.body!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            const Divider(height: 1),
-                            const SizedBox(height: 16),
-                            DetailMarkdownContent(data: item.body!.trim()),
-                          ],
-                          Consumer(
-                            builder: (context, ref, _) {
-                              final note = ref.watch(
-                                itemNoteProvider((
-                                  id: item.id,
-                                  initialNote: item.userNote,
-                                )),
-                              );
-                              if (note == null || note.trim().isEmpty) {
-                                return const SizedBox.shrink();
-                              }
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 14),
-                                child: DetailUserNoteCard(
-                                  note: note.trim(),
-                                  onTap: () => showEditNoteDialog(
-                                    context,
-                                    actions,
-                                    item.id,
-                                    note,
-                                  ),
-                                  onDelete: () {
-                                    actions.updateNote(item.id, null);
-                                    showNoteSnackBar(
-                                      context,
-                                      message: 'Note removed',
-                                      onUndo: () =>
-                                          actions.updateNote(item.id, note),
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              DetailScoreChip(score: item.score),
-                              if (!isComment && item.numComments > 0) ...[
-                                const SizedBox(width: 8),
-                                DetailCommentsChip(count: item.numComments),
-                              ],
-                              const Spacer(),
-                              ItemNoteButton(
-                                itemId: item.id,
-                                initialNote: item.userNote,
-                                showLabel: true,
-                                onEditNote: (currentNote) => showEditNoteDialog(
-                                  context,
-                                  actions,
-                                  item.id,
-                                  currentNote,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                      ),
-                    ),
-                    DetailCommentsSection(
-                      threadRootId: widget.itemId,
-                      currentItem: item,
-                      actions: actions,
-                      highlightedCommentId: widget.itemId != item.id
-                          ? widget.itemId
-                          : null,
-                      onRefresh: (comment) =>
-                          _refreshMetadata(actions, comment),
-                      onRecoverArchive: (comment) =>
-                          _recoverFromArchive(actions, comment),
-                    ),
-                  ],
-                );
-              },
-            ),
-            bottomNavigationBar: DetailBottomBar(
-              item: item,
-              onOpenReddit: () => openRedditUrl(context, item.fullPermalink),
-            ),
-          ),
+          child: scaffold,
         );
       },
       loading: () => Scaffold(
@@ -583,6 +614,26 @@ class _ItemDetailViewState extends ConsumerState<ItemDetailView> {
       error: (e, _) => Scaffold(
         appBar: AppBar(),
         body: Center(child: Text('Error: $e')),
+      ),
+    );
+
+    return Actions(
+      actions: isDesktop
+          ? <Type, Action<Intent>>{
+              DismissIntent: CallbackAction<DismissIntent>(
+                onInvoke: (_) {
+                  if (ModalRoute.of(context)?.isCurrent ?? false) {
+                    Navigator.of(context).maybePop(_mediaIndex);
+                  }
+                  return null;
+                },
+              ),
+            }
+          : const <Type, Action<Intent>>{},
+      child: FocusScope(
+        node: _shortcutFocusScopeNode,
+        autofocus: true,
+        child: content,
       ),
     );
   }

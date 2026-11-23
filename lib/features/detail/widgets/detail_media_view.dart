@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:extended_image/extended_image.dart' hide MediaType;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:gal/gal.dart';
@@ -11,6 +12,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:savedex/core/constants/constants.dart';
 import 'package:savedex/core/utils/external_url_launcher.dart';
+import 'package:savedex/core/utils/responsive_layout.dart';
 import 'package:savedex/data/models/saved_item_model.dart';
 import 'package:savedex/features/detail/widgets/media_video_player.dart';
 import 'package:savedex/shared/widgets/widgets.dart';
@@ -21,6 +23,7 @@ class ItemMediaView extends StatefulWidget {
   final ValueChanged<int>? onIndexChanged;
   final BorderRadius? borderRadius;
   final bool enableFrostedControls;
+  final double? maxMediaHeight;
 
   const ItemMediaView({
     super.key,
@@ -29,6 +32,7 @@ class ItemMediaView extends StatefulWidget {
     this.onIndexChanged,
     this.borderRadius,
     this.enableFrostedControls = false,
+    this.maxMediaHeight,
   });
 
   @override
@@ -147,12 +151,13 @@ class _ItemMediaViewState extends State<ItemMediaView> {
     String url, {
     BoxFit fit = BoxFit.fitWidth,
     required ColorScheme colorScheme,
+    bool isGallery = false,
     bool isFirstItem = false,
   }) {
     return ExtendedImage.network(
       url,
       width: double.infinity,
-      cacheWidth: 800,
+      cacheWidth: 1000,
       fit: fit,
       cache: true,
       retries: 1,
@@ -174,7 +179,8 @@ class _ItemMediaViewState extends State<ItemMediaView> {
             ),
           );
         }
-        if (state.extendedImageLoadState == LoadState.completed &&
+        if (isGallery &&
+            state.extendedImageLoadState == LoadState.completed &&
             (isFirstItem || _galleryAspectRatio == null)) {
           final info = state.extendedImageInfo;
           if (info != null && info.image.width > 0 && info.image.height > 0) {
@@ -228,86 +234,117 @@ class _ItemMediaViewState extends State<ItemMediaView> {
             alignment: Alignment.center,
             children: [
               if (isGallery)
-                AspectRatio(
-                  aspectRatio: _galleryAspectRatio ?? (16 / 9),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      PageView.builder(
-                        controller: _pageController,
-                        itemCount: urls.length,
-                        onPageChanged: (index) {
-                          setState(() => _currentIndex = index);
-                          widget.onIndexChanged?.call(index);
-                        },
-                        itemBuilder: (context, index) {
-                          final isVid = _isIndexVideo(index, urls);
-                          final isG = !isVid && _isIndexGif(index, urls);
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final ratio = _galleryAspectRatio ?? (16 / 9);
+                    final targetHeight = constraints.maxWidth / ratio;
+                    final maxH = widget.maxMediaHeight;
+                    final boundedHeight = maxH != null
+                        ? targetHeight.clamp(
+                            maxH < 220.0 ? maxH : 220.0,
+                            maxH,
+                          )
+                        : targetHeight;
+                    return SizedBox(
+                      width: constraints.maxWidth,
+                      height: boundedHeight,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          PageView.builder(
+                            controller: _pageController,
+                            itemCount: urls.length,
+                            onPageChanged: (index) {
+                              setState(() => _currentIndex = index);
+                              widget.onIndexChanged?.call(index);
+                            },
+                            itemBuilder: (context, index) {
+                              final isVid = _isIndexVideo(index, urls);
+                              final isG = !isVid && _isIndexGif(index, urls);
 
-                          return Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              _buildImage(
-                                urls[index],
-                                fit: BoxFit.contain,
-                                colorScheme: colorScheme,
-                                isFirstItem: index == 0,
-                              ),
-                              if (isVid || isG) _buildPlayBadge(isVideo: isVid),
-                            ],
-                          );
-                        },
-                      ),
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: _DetailGalleryCounter(
-                          current: _currentIndex + 1,
-                          total: urls.length,
-                          enableBlur: widget.enableFrostedControls,
-                        ),
-                      ),
-                      if (_isDesktop)
-                        Positioned.fill(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _DetailGalleryButton(
-                                icon: Icons.chevron_left_rounded,
-                                enabled: _currentIndex > 0,
-                                enableBlur: widget.enableFrostedControls,
-                                onPressed: () => _pageController.previousPage(
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOut,
-                                ),
-                              ),
-                              _DetailGalleryButton(
-                                icon: Icons.chevron_right_rounded,
-                                enabled: _currentIndex < urls.length - 1,
-                                enableBlur: widget.enableFrostedControls,
-                                onPressed: () => _pageController.nextPage(
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOut,
-                                ),
-                              ),
-                            ],
+                              return Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  _buildImage(
+                                    urls[index],
+                                    fit: BoxFit.contain,
+                                    colorScheme: colorScheme,
+                                    isGallery: true,
+                                    isFirstItem: index == 0,
+                                  ),
+                                  if (isVid || isG)
+                                    _buildPlayBadge(isVideo: isVid),
+                                ],
+                              );
+                            },
                           ),
-                        ),
-                    ],
-                  ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: _DetailGalleryCounter(
+                              current: _currentIndex + 1,
+                              total: urls.length,
+                              enableBlur: widget.enableFrostedControls,
+                            ),
+                          ),
+                          if (_isDesktop)
+                            Positioned.fill(
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  _DetailGalleryButton(
+                                    icon: Icons.chevron_left_rounded,
+                                    enabled: _currentIndex > 0,
+                                    enableBlur: widget.enableFrostedControls,
+                                    onPressed: () =>
+                                        _pageController.previousPage(
+                                          duration: const Duration(
+                                            milliseconds: 220,
+                                          ),
+                                          curve: Curves.easeOut,
+                                        ),
+                                  ),
+                                  _DetailGalleryButton(
+                                    icon: Icons.chevron_right_rounded,
+                                    enabled: _currentIndex < urls.length - 1,
+                                    enableBlur: widget.enableFrostedControls,
+                                    onPressed: () => _pageController.nextPage(
+                                      duration: const Duration(
+                                        milliseconds: 220,
+                                      ),
+                                      curve: Curves.easeOut,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 )
               else if (singleUrl != null) ...[
                 () {
                   final isVid = item.isVideo || _isIndexVideo(0, urls);
                   final isG = !isVid && (item.isGif || _isIndexGif(0, urls));
+                  final image = ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: widget.maxMediaHeight ?? double.infinity,
+                    ),
+                    child: _buildImage(
+                      singleUrl,
+                      fit: widget.maxMediaHeight != null
+                          ? BoxFit.contain
+                          : BoxFit.fitWidth,
+                      colorScheme: colorScheme,
+                      isGallery: false,
+                    ),
+                  );
                   return Stack(
                     alignment: Alignment.center,
                     children: [
-                      _buildImage(
-                        singleUrl,
-                        fit: BoxFit.fitWidth,
-                        colorScheme: colorScheme,
-                      ),
+                      image,
                       if (isVid || isG) _buildPlayBadge(isVideo: isVid),
                     ],
                   );
@@ -318,10 +355,10 @@ class _ItemMediaViewState extends State<ItemMediaView> {
         ),
       );
 
-      if (widget.borderRadius != null) {
-        content = ClipRRect(borderRadius: widget.borderRadius!, child: content);
-      }
-      return content;
+      return ClipRRect(
+        borderRadius: widget.borderRadius ?? BorderRadius.zero,
+        child: content,
+      );
     }
 
     if (item.isPlayableMedia) {
@@ -380,12 +417,18 @@ class DetailMediaView extends ConsumerWidget {
   final SavedItem item;
   final int initialIndex;
   final ValueChanged<int>? onIndexChanged;
+  final double? maxMediaHeight;
+  final BorderRadius? mediaBorderRadius;
+  final EdgeInsetsGeometry? mediaPadding;
 
   const DetailMediaView({
     super.key,
     required this.item,
     this.initialIndex = 0,
     this.onIndexChanged,
+    this.maxMediaHeight,
+    this.mediaBorderRadius,
+    this.mediaPadding,
   });
 
   static bool _isSelfThreadUrl(SavedItem item, String rawUrl) {
@@ -475,11 +518,16 @@ class DetailMediaView extends ConsumerWidget {
       children: [
         if (item.hasDisplayImage || item.isPlayableMedia) ...[
           const SizedBox(height: 14),
-          ItemMediaView(
-            item: item,
-            initialIndex: initialIndex,
-            onIndexChanged: onIndexChanged,
-            enableFrostedControls: enableFrosted,
+          Padding(
+            padding: mediaPadding ?? EdgeInsets.zero,
+            child: ItemMediaView(
+              item: item,
+              initialIndex: initialIndex,
+              onIndexChanged: onIndexChanged,
+              enableFrostedControls: enableFrosted,
+              maxMediaHeight: maxMediaHeight,
+              borderRadius: mediaBorderRadius,
+            ),
           ),
         ],
 
@@ -658,11 +706,6 @@ class _FullscreenMediaViewerState extends ConsumerState<FullscreenMediaViewer> {
   late int _currentIndex;
   late final List<String> _mediaUrls;
 
-  bool get _isDesktop =>
-      defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.macOS ||
-      defaultTargetPlatform == TargetPlatform.linux;
-
   @override
   void initState() {
     super.initState();
@@ -816,7 +859,12 @@ class _FullscreenMediaViewerState extends ConsumerState<FullscreenMediaViewer> {
         _ => 'image/jpeg',
       };
 
-      if (_isDesktop) {
+      final isDesktopPlatform =
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux;
+
+      if (isDesktopPlatform) {
         final saveUri = await FilePickerPlatform.instance.saveFile(
           dialogTitle: 'Save File',
           fileName: filename,
@@ -868,30 +916,29 @@ class _FullscreenMediaViewerState extends ConsumerState<FullscreenMediaViewer> {
   @override
   Widget build(BuildContext context) {
     final enableFrosted = watchFrostedEffects(ref);
+    final isDesktop = ResponsiveLayout.isDesktop(context);
 
-    if (_mediaUrls.isEmpty) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: Text(
-            'No media available',
-            style: TextStyle(color: Colors.white70),
-          ),
-        ),
-      );
-    }
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        Navigator.of(context).pop(_currentIndex);
-      },
-      child: Scaffold(
+    final Widget content = _mediaUrls.isEmpty
+        ? Scaffold(
+            backgroundColor: Colors.black,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              foregroundColor: Colors.white,
+            ),
+            body: const Center(
+              child: Text(
+                'No media available',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+          )
+        : PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop) return;
+              Navigator.of(context).pop(_currentIndex);
+            },
+            child: Scaffold(
         backgroundColor: Colors.black,
         extendBodyBehindAppBar: true,
         appBar: AppBar(
@@ -1018,7 +1065,7 @@ class _FullscreenMediaViewerState extends ConsumerState<FullscreenMediaViewer> {
               },
             ),
 
-            if (_isDesktop && _mediaUrls.length > 1) ...[
+            if (isDesktop && _mediaUrls.length > 1) ...[
               Positioned(
                 left: 16,
                 top: 0,
@@ -1059,6 +1106,46 @@ class _FullscreenMediaViewerState extends ConsumerState<FullscreenMediaViewer> {
           ],
         ),
       ),
+    );
+
+    return CallbackShortcuts(
+      bindings: isDesktop
+          ? {
+              const SingleActivator(
+                LogicalKeyboardKey.escape,
+                includeRepeats: false,
+              ): () {
+                if (ModalRoute.of(context)?.isCurrent ?? false) {
+                  Navigator.of(
+                    context,
+                  ).maybePop(_mediaUrls.isEmpty ? null : _currentIndex);
+                }
+              },
+              const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
+                if (_mediaUrls.length <= 1 ||
+                    !_pageController.hasClients ||
+                    _currentIndex <= 0) {
+                  return;
+                }
+                _pageController.previousPage(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                );
+              },
+              const SingleActivator(LogicalKeyboardKey.arrowRight): () {
+                if (_mediaUrls.length <= 1 ||
+                    !_pageController.hasClients ||
+                    _currentIndex >= _mediaUrls.length - 1) {
+                  return;
+                }
+                _pageController.nextPage(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOut,
+                );
+              },
+            }
+          : const {},
+      child: FocusScope(autofocus: true, child: content),
     );
   }
 }
