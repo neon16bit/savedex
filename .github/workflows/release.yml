@@ -1,0 +1,343 @@
+name: Build And Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build Android (arm64-v8a & Universal)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Gradle Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .flutter-version
+          cache: true
+
+      - name: Install Dependencies
+        run: |
+          flutter config --no-analytics
+          flutter pub get --enforce-lockfile
+
+      - name: Configure Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using custom release keystore from repository secrets..."
+            echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > android/app/keystore.jks
+            printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=keystore.jks\n" \
+              "$STORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+          else
+            echo "No custom release keystore secret configured. Creating fallback signing key for CI/testing..."
+            keytool -genkey -v -keystore android/app/keystore.jks \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+            printf "storePassword=android\nkeyPassword=android\nkeyAlias=androiddebugkey\nstoreFile=keystore.jks\n" > android/key.properties
+          fi
+
+      - name: Build Android Release APKs (arm64-v8a and Universal)
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          fi
+
+          mkdir -p dist
+
+          echo "Building split-per-ABI APKs..."
+          flutter build apk --release --split-per-abi
+          cp "build/app/outputs/flutter-apk/app-arm64-v8a-release.apk" "dist/savedex-android-arm64-v8a-v${VERSION}.apk"
+
+          echo "Building universal APK..."
+          flutter build apk --release
+          cp "build/app/outputs/flutter-apk/app-release.apk" "dist/savedex-android-universal-v${VERSION}.apk"
+
+          rm -rf build/app/intermediates
+
+      - name: Clean Up Keystore Files
+        if: always()
+        run: |
+          rm -f android/app/keystore.jks android/key.properties
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: savedex-android
+          path: dist/*.apk
+
+  build-linux:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            libmpv-dev \
+            libsqlite3-dev
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .flutter-version
+          cache: true
+
+      - name: Install Dependencies
+        run: |
+          flutter config --no-analytics
+          flutter pub get --enforce-lockfile
+
+      - name: Build Linux Release
+        run: flutter build linux --release
+
+      - name: Package Linux Formats (Tarball, .deb)
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          fi
+
+          mkdir -p dist
+
+          TAR_NAME="savedex-linux-x64-v${VERSION}.tar.gz"
+          tar -czf "dist/${TAR_NAME}" -C build/linux/x64/release/bundle .
+
+          DEB_DIR="build/deb"
+          mkdir -p "${DEB_DIR}/DEBIAN"
+          mkdir -p "${DEB_DIR}/usr/bin"
+          mkdir -p "${DEB_DIR}/usr/lib/savedex"
+          mkdir -p "${DEB_DIR}/usr/share/applications"
+          mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/scalable/apps"
+
+          cp -r build/linux/x64/release/bundle/* "${DEB_DIR}/usr/lib/savedex/"
+
+          cat << 'EOF' > "${DEB_DIR}/usr/bin/savedex"
+          #!/bin/sh
+          export LD_LIBRARY_PATH="/usr/lib/savedex/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          exec /usr/lib/savedex/savedex "$@"
+          EOF
+          chmod +x "${DEB_DIR}/usr/bin/savedex"
+
+          cat << 'EOF' > "${DEB_DIR}/usr/share/applications/me.neon16bit.savedex.desktop"
+          [Desktop Entry]
+          Name=Savedex
+          Comment=Local-first Reddit saved posts and comments library manager
+          Exec=/usr/bin/savedex %u
+          Icon=savedex
+          StartupWMClass=me.neon16bit.savedex
+          Terminal=false
+          Type=Application
+          Categories=Utility;Network;
+          Keywords=reddit;saved;bookmarks;archive;
+          EOF
+
+          cp .github/assets/savedex_icon_fill.png "${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/savedex.png"
+          cp assets/icons/savedex_icon_filled.svg "${DEB_DIR}/usr/share/icons/hicolor/scalable/apps/savedex.svg"
+
+          cat << EOF > "${DEB_DIR}/DEBIAN/control"
+          Package: savedex
+          Version: ${VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Neon16bit
+          Depends: libgtk-3-0, libmpv2 | libmpv1, libsqlite3-0
+          Description: Local-first Reddit saved posts and comments library manager.
+           Browse, search, organize, and back up your saved Reddit posts and comments locally.
+          EOF
+
+          dpkg-deb --build --root-owner-group "${DEB_DIR}" "dist/savedex-linux-amd64-v${VERSION}.deb"
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: savedex-linux
+          path: dist/*
+
+  build-windows:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Enable Git Longpaths
+        shell: pwsh
+        run: git config --system core.longpaths true
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .flutter-version
+          cache: true
+
+      - name: Install Dependencies
+        shell: pwsh
+        run: |
+          flutter config --no-analytics
+          flutter pub get --enforce-lockfile
+
+      - name: Build Windows Release
+        shell: pwsh
+        run: flutter build windows --release
+
+      - name: Package Windows Release (Installer and Portable Zip)
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -like 'refs/tags/v*') {
+            $VERSION = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            $VERSION = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches.Groups[1].Value.Trim()
+          }
+
+          New-Item -ItemType Directory -Force -Path dist
+
+          # Compile Inno Setup Installer (.exe)
+          $isccPath = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $isccPath)) {
+            Write-Host "Installing Inno Setup..."
+            $installer = "$env:TEMP\innosetup.exe"
+            Invoke-WebRequest -Uri "https://jrsoftware.org/download.php/is.exe" -OutFile $installer -UseBasicParsing
+            Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-" -Wait -NoNewWindow
+          }
+
+          if (-not (Test-Path $isccPath)) {
+            throw "ISCC.exe not found after installation attempt."
+          }
+
+          Write-Host "Building Windows Setup Installer..."
+          & $isccPath /DAppVersion="$VERSION" packaging\windows\inno_setup.iss
+          if ($LASTEXITCODE -ne 0) {
+            throw "ISCC failed with exit code $LASTEXITCODE"
+          }
+
+          # Package Portable Zip
+          $ZIP_NAME = "savedex-windows-x64-v${VERSION}.zip"
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath "dist\$ZIP_NAME"
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: savedex-windows
+          path: dist/*
+
+  build-macos:
+    name: Build macOS (Universal)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version-file: .flutter-version
+          cache: true
+
+      - name: Install Dependencies
+        run: |
+          flutter config --no-analytics
+          flutter pub get --enforce-lockfile
+
+      - name: Build macOS Release
+        run: flutter build macos --release
+
+      - name: Package macOS Zip
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          fi
+
+          APP_PATH=$(find build/macos/Build/Products/Release -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "Built macOS .app bundle not found in build/macos/Build/Products/Release!"
+            exit 1
+          fi
+
+          mkdir -p dist
+          ZIP_NAME="savedex-macos-universal-v${VERSION}.zip"
+          ditto -c -k --keepParent "$APP_PATH" "dist/${ZIP_NAME}"
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: savedex-macos
+          path: dist/*.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-android, build-linux, build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Download All Platform Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.apk
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.exe
+          draft: true
+          prerelease: false
+          generate_release_notes: true
