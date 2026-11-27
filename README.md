@@ -12,6 +12,11 @@
 </p>
 
 ---
+<img width=32% alt="savedfeed" src="https://github.com/user-attachments/assets/7438220e-3001-42b6-8538-d24a106b2f75" />
+<img width=32% alt="filters" src="https://github.com/user-attachments/assets/3500f0b1-baef-42a8-9e12-8b0c71c9597d" />
+<img width=32% alt="collections" src="https://github.com/user-attachments/assets/ebce5088-02d8-4c00-94ff-672f859ed797" />
+
+---
 
 ## Features
 
