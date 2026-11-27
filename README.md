@@ -1,8 +1,27 @@
-# Savedex
+<p align="center">
+  <img alt="Savedex Logo" src=".github/assets/savedex_icon_fill.png" width="100" height="100">
+</p>
+<h1 align="center">Savedex</h1>
+<p align="center">
+  Reddit saved library manager for browsing, organizing, searching, and backing up your saved posts and comments locally.
+</p>
 
-Reddit saved library manager for browsing, organizing, searching, and backing up your saved posts and comments locally.
+<p align="center">
+  <a href="https://github.com/neon16bit/savedex/releases"><img src="https://img.shields.io/github/v/release/neon16bit/savedex?color=blue&logo=github" alt="Latest Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL-3.0"></a>
+</p>
+
+---
 
 ## Features
+
+- **Reddit API Sync & Takeout Import:** Sync up to 1,000 recent saves directly via Reddit OAuth, or import your complete history from a Reddit GDPR Takeout `.zip` / `.csv`.
+- **Search & Filter:** Filter by media type, subreddit, author, flair, date range, or NSFW status, and search locally across saved posts, comments.
+- **Organize Your Library:** Group saves into custom collections, add personal notes, star favorites, and browse by subreddit or user.
+- **Archive Recovery:** Recover content removed from Reddit using Arctic Shift and PullPush archive fallbacks.
+- **Backup & Restore:** Export compressed `.savedex`, JSON, and CSV and restore your whole library anytime between diffrent devices.
+
+---
 
 ## Get Started
 
@@ -13,4 +32,23 @@ Reddit saved library manager for browsing, organizing, searching, and backing up
 
 ### Where do I get a Client ID?
 
-Use [RedReader](https://github.com/QuantumBadger/RedReader/releases/latest) and log in, RedReader will email you the OAuth ID, or you can simply Google it along with it's Redirect URI and User Agent.
+Use [RedReader](https://github.com/QuantumBadger/RedReader/releases/latest) and log in, RedReader will email you the OAuth ID, or you can simply Google it along with its Redirect URI and User Agent.
+
+---
+
+## Download & Installation
+
+Binaries compiled by GitHub Actions for all supported platforms are available on the [**GitHub Releases**](https://github.com/neon16bit/savedex/releases/latest) page.
+
+| Platform | Download |
+| :--- | :--- |
+| **Android** | [![Download arm64-v8a](https://img.shields.io/badge/Download-APK%20(arm64)-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/neon16bit/savedex/releases/latest) [![Download Universal](https://img.shields.io/badge/Download-APK%20(universal)-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/neon16bit/savedex/releases/latest) |
+| **Windows** | [![Download Installer](https://img.shields.io/badge/Download-Installer%20(.exe)-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/neon16bit/savedex/releases/latest) [![Download Portable](https://img.shields.io/badge/Download-Portable%20(.zip)-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/neon16bit/savedex/releases/latest) |
+| **Linux** | [![Download .deb](https://img.shields.io/badge/Download-.deb-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/neon16bit/savedex/releases/latest) [![Download .tar.gz](https://img.shields.io/badge/Download-.tar.gz-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/neon16bit/savedex/releases/latest) |
+| **macOS** | [![Download .zip](https://img.shields.io/badge/Download-Universal%20(.zip)-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/neon16bit/savedex/releases/latest) |
+
+---
+
+## License
+
+Savedex is licensed under the [GNU General Public License v3.0](LICENSE).
